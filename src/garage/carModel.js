@@ -205,7 +205,7 @@ function createMaterials(paintColor, finish) {
   };
 }
 
-function tireGeometry() {
+function tireGeometry(segments = 40) {
   // Rounded tire cross-section revolved around the wheel axis.
   const pts = [];
   const inner = 0.235;
@@ -222,7 +222,7 @@ function tireGeometry() {
     pts.push(new THREE.Vector2(outer - r + Math.cos(a) * r, half - r + Math.sin(a) * r));
   }
   pts.push(new THREE.Vector2(inner, half));
-  const geo = new THREE.LatheGeometry(pts, 40);
+  const geo = new THREE.LatheGeometry(pts, segments);
   geo.rotateX(Math.PI / 2);
   return geo;
 }
@@ -273,20 +273,22 @@ function createWheel(m, side, sharedTire) {
   return { wheel, spin };
 }
 
-export function createCar({ paintColor, finish }) {
+// `detail` scales the loft resolution (1 = showroom; the race uses a lighter mesh).
+export function createCar({ paintColor, finish, detail = 1 }) {
+  const res = (n) => Math.max(8, Math.round((n * detail) / 4) * 4);
   const m = createMaterials(paintColor, finish);
   const car = new THREE.Group();
   car.name = 'starter-coupe';
 
   const body = new THREE.Mesh(
-    loft(bodySection, { x0: -2.3, x1: 2.3, stations: 96, ring: 64, deform: carveArches }),
+    loft(bodySection, { x0: -2.3, x1: 2.3, stations: res(96), ring: res(64), deform: carveArches }),
     m.paint
   );
   body.name = 'body';
   car.add(body);
 
   const cabin = new THREE.Mesh(
-    loft(cabinSection, { x0: -2.02, x1: 0.98, stations: 64, ring: 48, materialOf: cabinMaterial }),
+    loft(cabinSection, { x0: -2.02, x1: 0.98, stations: res(64), ring: res(48), materialOf: cabinMaterial }),
     [m.paint, m.glass]
   );
   cabin.name = 'body';
@@ -370,7 +372,7 @@ export function createCar({ paintColor, finish }) {
   lights.tail.push(tailGlow);
 
   // Wheels.
-  const tireGeo = tireGeometry();
+  const tireGeo = tireGeometry(res(40));
   const wheels = [];
   const wheelPositions = [
     [WHEEL_BASE, TRACK],

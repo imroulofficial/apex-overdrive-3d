@@ -10,6 +10,7 @@ const defaults = () => ({
   ownedPaints: ['apex-red', 'midnight', 'arctic', 'carbon'],
   upgrades: { engine: 0, nitro: 0, handling: 0, tires: 0 },
   settings: { quality: 'auto', sound: true, showFps: false },
+  records: {}, // per track: { bestTime, stars, races, wins }
 });
 
 function load() {
@@ -23,6 +24,7 @@ function load() {
       ...data,
       upgrades: { ...base.upgrades, ...data.upgrades },
       settings: { ...base.settings, ...data.settings },
+      records: { ...base.records, ...data.records },
     };
   } catch {
     return defaults();
@@ -44,6 +46,10 @@ export function save() {
 export function subscribe(fn) {
   listeners.add(fn);
   return () => listeners.delete(fn);
+}
+
+export function addCoins(amount) {
+  state.coins += Math.max(0, Math.round(amount));
 }
 
 export function spendCoins(amount) {

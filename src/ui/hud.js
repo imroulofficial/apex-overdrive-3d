@@ -20,7 +20,7 @@ export function toast(message, ms = 2400) {
   toastTimer = setTimeout(() => (el.hidden = true), ms);
 }
 
-export function createHud(garage) {
+export function createHud(garage, { onRaceStart } = {}) {
   const hud = $('#hud');
   let previewPaint = state.paint;
 
@@ -218,33 +218,13 @@ export function createHud(garage) {
   };
 
   // ---- Race start ----
-  const countdown = $('#countdown');
-  let racing = false;
   $('#btn-race').addEventListener('click', () => {
-    if (racing) return;
-    racing = true;
     revertPreview();
     sfx.rev();
     garage.rev();
     garage.snap('rear');
     setActiveShot('rear');
-    hud.style.opacity = '0.25';
-    countdown.hidden = false;
-    let n = 3;
-    const step = () => {
-      if (n === 0) {
-        countdown.hidden = true;
-        hud.style.opacity = '';
-        racing = false;
-        toast('Tracks unlock in the next update. Keep tuning your coupe!', 3200);
-        return;
-      }
-      countdown.innerHTML = `<span>${n}</span>`;
-      sfx.tap();
-      n -= 1;
-      setTimeout(step, 700);
-    };
-    step();
+    onRaceStart?.();
   });
 
   function renderAll() {
@@ -259,6 +239,20 @@ export function createHud(garage) {
   return {
     show() {
       hud.hidden = false;
+    },
+    hide() {
+      hud.hidden = true;
+    },
+    // Replays the coin counter from an earlier value (after race winnings are banked).
+    animateCoinsFrom(value) {
+      shownCoins = value;
+      coinEl.textContent = fmt(shownCoins);
+      renderCoins();
+    },
+    // Back from a race: frame the whole car again.
+    snapBody() {
+      garage.snap('body');
+      setActiveShot('body');
     },
     revertPreview,
   };
