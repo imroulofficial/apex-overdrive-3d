@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#05070d" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="description" content="Apex Overdrive: 3D Racing by Red Pen Studio" />
+    <title>Apex Overdrive: 3D Racing</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <canvas id="scene" aria-label="3D garage"></canvas>
+
+    <div id="hud" class="hud" hidden>
+      <header class="topbar">
+        <div class="brand glass angled">
+          <span class="brand-mark">APEX</span><span class="brand-word">OVERDRIVE</span>
+          <small>3D RACING</small>
+        </div>
+        <div class="top-actions">
+          <div class="coins glass angled" aria-label="Coins">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="coin-face" /><path d="M12 7v10M9.5 9.5h4a1.5 1.5 0 0 1 0 3h-3a1.5 1.5 0 0 0 0 3h4" class="coin-mark" /></svg>
+            <span id="coin-count">0</span>
+          </div>
+          <button id="btn-settings" class="icon-btn glass angled" aria-label="Settings">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" /></svg>
+          </button>
+        </div>
+      </header>
+
+      <aside class="customizer glass angled" aria-label="Garage">
+        <div class="tabs" role="tablist">
+          <button class="tab is-active" role="tab" aria-selected="true" data-tab="paint">Paint</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="upgrades">Upgrades</button>
+        </div>
+        <section class="tab-panel" data-panel="paint" role="tabpanel">
+          <div class="paint-grid" id="paint-grid"></div>
+          <div class="paint-footer">
+            <div class="paint-meta"><strong id="paint-name"></strong><span id="paint-finish"></span></div>
+            <button id="paint-action" class="pill-btn"></button>
+          </div>
+        </section>
+        <section class="tab-panel" data-panel="upgrades" role="tabpanel" hidden>
+          <ul class="upgrade-list" id="upgrade-list"></ul>
+        </section>
+      </aside>
+
+      <section class="car-card glass angled" aria-label="Vehicle">
+        <div class="car-title"><small>STARTER COUPE</small><strong>RP-1 VANTA</strong></div>
+        <ul class="stats" id="stats"></ul>
+      </section>
+
+      <nav class="cam-bar glass angled" aria-label="Camera">
+        <button class="cam-btn is-active" data-shot="body">Body</button>
+        <button class="cam-btn" data-shot="wheels">Wheels</button>
+        <button class="cam-btn" data-shot="front">Front</button>
+        <button class="cam-btn" data-shot="rear">Rear</button>
+        <span class="divider" aria-hidden="true"></span>
+        <button class="cam-btn light-btn" id="btn-lights" aria-pressed="false" aria-label="Toggle lights">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12c0-4 3-6 7-6h1v12h-1c-4 0-7-2-7-6Z" /><path d="M14 8l7-2M14 12h7M14 16l7 2" /></svg>
+          <span class="label">Lights</span>
+        </button>
+      </nav>
+
+      <button id="btn-race" class="race-btn"><span>RACE START</span></button>
+    </div>
+
+    <dialog id="settings" class="dialog glass angled" aria-labelledby="settings-title">
+      <header class="dialog-head">
+        <h2 id="settings-title">Settings</h2>
+        <button class="icon-btn close" data-close aria-label="Close settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+        </button>
+      </header>
+      <div class="dialog-body">
+        <div class="setting">
+          <span>Graphics</span>
+          <div class="segmented" id="quality-options" role="radiogroup" aria-label="Graphics quality">
+            <button data-quality="auto" role="radio">Auto</button>
+            <button data-quality="low" role="radio">Low</button>
+            <button data-quality="medium" role="radio">Medium</button>
+            <button data-quality="high" role="radio">High</button>
+          </div>
+        </div>
+        <label class="setting">
+          <span>Sound effects</span>
+          <input type="checkbox" class="switch" id="opt-sound" />
+        </label>
+        <label class="setting">
+          <span>Show FPS</span>
+          <input type="checkbox" class="switch" id="opt-fps" />
+        </label>
+        <div class="setting legal">
+          <span>Legal</span>
+          <div class="legal-links">
+            <button class="pill-btn ghost" id="link-privacy">Privacy Policy</button>
+            <button class="pill-btn ghost" id="link-terms">Terms of Service</button>
+          </div>
+        </div>
+        <p class="about" id="about"></p>
+      </div>
+    </dialog>
+
+    <div id="countdown" class="countdown" hidden></div>
+    <div id="toast" class="toast glass angled" role="status" aria-live="polite" hidden></div>
+    <div id="fps" class="fps" hidden></div>
+
+    <div id="splash" class="splash">
+      <div class="splash-logo"><span>APEX</span> OVERDRIVE</div>
+      <div class="splash-bar"><i></i></div>
+      <small>RED PEN STUDIO</small>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
