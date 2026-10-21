@@ -14,9 +14,19 @@
 
     <div id="hud" class="hud" hidden>
       <header class="topbar">
-        <div class="brand glass angled">
-          <span class="brand-mark">APEX</span><span class="brand-word">OVERDRIVE</span>
-          <small>3D RACING</small>
+        <div class="top-left">
+          <div class="brand glass angled">
+            <span class="brand-mark">APEX</span><span class="brand-word">OVERDRIVE</span>
+            <small>3D RACING</small>
+          </div>
+          <button id="cloud-badge" class="cloud-badge" data-state="synced" aria-live="polite">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path class="cloud-shape" d="M7 18.5a4.5 4.5 0 0 1-.7-8.95A6 6 0 0 1 17.9 9a4.25 4.25 0 0 1-.4 9.5H7Z" />
+              <path class="cloud-tick" d="m9.3 13.6 2 2 3.6-3.7" />
+              <path class="cloud-slash" d="M4 4.5 20 20.5" />
+            </svg>
+            <span id="cloud-label">Saved to Cloud</span>
+          </button>
         </div>
         <div class="top-actions">
           <button id="btn-crate" class="crate-btn glass angled" aria-label="Free coins reward crate">

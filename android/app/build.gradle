@@ -22,7 +22,7 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // CI passes -PversionCode=<run number> so every uploaded bundle is unique.
         versionCode((project.findProperty('versionCode') ?: '1') as Integer)
-        versionName "0.3.0"
+        versionName "0.4.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         // AdMob app id: Google's sample id until a store release passes -PadmobAppId.
         manifestPlaceholders = [admobAppId: (project.findProperty('admobAppId') ?: 'ca-app-pub-3940256099942544~3347511713')]
@@ -73,11 +73,10 @@ dependencies {
 
 apply from: 'capacitor.build.gradle'
 
-try {
-    def servicesJSON = file('google-services.json')
-    if (servicesJSON.text) {
-        apply plugin: 'com.google.gms.google-services'
-    }
-} catch(Exception e) {
-    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+// Firebase (anonymous Auth + Cloud Firestore cloud save). google-services.json is committed
+// for com.redpenstudio.apexoverdrive; without it the build still works but cloud sync is off.
+if (file('google-services.json').exists()) {
+    apply plugin: 'com.google.gms.google-services'
+} else {
+    logger.warn("google-services.json not found: Firebase cloud save is disabled in this build")
 }

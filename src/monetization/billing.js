@@ -180,6 +180,11 @@ function createBilling() {
       return syncFromStore();
     },
 
+    // Re-derives entitlements after the save was replaced (a newer cloud save at launch).
+    refresh() {
+      commit({ type: 'refresh' });
+    },
+
     // Called when the sandbox toggle flips; re-derives entitlements for the new mode.
     async modeChanged() {
       commit({ type: 'mode' });

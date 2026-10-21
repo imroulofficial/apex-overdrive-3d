@@ -20,10 +20,10 @@ ul{padding-left:22px}footer{margin-top:48px;color:var(--muted);font-size:13px}
 <main>
 <header>
 <h1>Privacy Policy</h1>
-<p class="meta">Apex Overdrive: 3D Racing · Red Pen Studio · Effective October 21, 2026</p>
+<p class="meta">Apex Overdrive: 3D Racing · Red Pen Studio · Effective October 21, 2026 (updated for cloud save)</p>
 </header>
 
-<div class="card"><strong>Summary:</strong> Apex Overdrive plays fully offline and Red Pen Studio does not run any servers that receive your data. Your progress is saved only on your device. The free version shows ads served by Google AdMob, which collects device data (including your advertising ID) as described below. Optional purchases are processed by Google Play.</div>
+<div class="card"><strong>Summary:</strong> Apex Overdrive plays fully offline. Your progress is saved on your device first, and a backup copy of your game progress is kept in Google Firebase under a random anonymous player ID, with no name, email or sign-up. The free version shows ads served by Google AdMob, which collects device data (including your advertising ID) as described below. Optional purchases are processed by Google Play.</div>
 
 <h2>Who we are</h2>
 <p>Apex Overdrive: 3D Racing (the "Game", package <code>com.redpenstudio.apexoverdrive</code>) is developed and published by Red Pen Studio ("we", "us").</p>
@@ -31,12 +31,21 @@ ul{padding-left:22px}footer{margin-top:48px;color:var(--muted);font-size:13px}
 <h2>Information we collect</h2>
 <p>Red Pen Studio does not collect personal information. The Game does not:</p>
 <ul>
-<li>require an account, sign-in, name, email address or phone number;</li>
+<li>require a sign-up, name, email address or phone number (the cloud save uses an anonymous ID created automatically);</li>
 <li>access your contacts, photos, camera, microphone or precise location;</li>
 <li>use analytics or crash reporting SDKs;</li>
-<li>send gameplay data to any server operated by us.</li>
+<li>send anything to the cloud other than the game progress listed under <em>Cloud save</em> below.</li>
 </ul>
-<p>Two Google services built into the Game do process data, under Google's own policies:</p>
+<p>Three Google services built into the Game process data, under Google's own policies:</p>
+<h2>Cloud save (Google Firebase)</h2>
+<p>So your progress is not lost, the Game backs it up with Google Firebase (Google LLC), using Firebase Authentication and Cloud Firestore in a Firebase project operated by Red Pen Studio:</p>
+<ul>
+<li>When the Game first goes online, Firebase Authentication creates an <strong>anonymous player ID</strong> for this installation. It is a random identifier and is not linked to your name, email, phone number or Google account.</li>
+<li>Under that ID, Cloud Firestore stores your <strong>game progress</strong>: coin balance, unlocked paints, upgrades, selected car, race records (best times, stars, races and wins), which Play products are owned and have paid their coin bonus, the reward-crate timer, and the time and game version of the save.</li>
+<li>Progress is uploaded only at a few moments (when you return to the garage after a race, after a purchase, and at launch when the cloud copy is checked), and only if something changed. Settings stay on your device.</li>
+<li>Firebase receives the technical data needed to provide the service, such as your IP address and device and app information, as described in <a href="https://firebase.google.com/support/privacy">Privacy and Security in Firebase</a>.</li>
+</ul>
+<p>Only the Game, signed in as your anonymous ID, can read or change your cloud save. If you are offline, the Game keeps working and uploads later. The cloud save is not used for advertising or analytics.</p>
 <h2>Advertising (Google AdMob)</h2>
 <p>The Game shows a banner ad in the garage, a full-screen ad after every few races, and optional rewarded video ads that you choose to watch for in-game coins. These ads are provided by Google AdMob (Google LLC). To serve, measure and limit ads and to prevent fraud, the AdMob SDK collects and shares with Google:</p>
 <ul>
@@ -50,19 +59,19 @@ ul{padding-left:22px}footer{margin-top:48px;color:var(--muted);font-size:13px}
 <p>Optional one-time purchases are processed entirely by Google Play Billing. Google handles your payment details; we never receive your card or payment information. The Game receives only a purchase confirmation (product, purchase token and status) from Google Play on your device, which it uses to unlock what you bought and to restore it with <em>Settings → Restore purchases</em>. Google's processing of your payment is described in the <a href="https://payments.google.com/payments/apis-secure/u/0/get_legal_document?ldo=0&amp;ldt=privacynotice">Google Payments Privacy Notice</a>.</p>
 
 <h2>Data stored on your device</h2>
-<p>The Game saves your coin balance, unlocked cars and paints, upgrades, settings, purchase status and reward-crate timer locally on your device so you can continue where you left off. This data never leaves your device unless your Android device's own backup service is enabled, in which case it is handled by Google under its privacy policy. Uninstalling the Game or clearing its storage deletes this data.</p>
+<p>The Game saves your coin balance, unlocked cars and paints, upgrades, settings, purchase status and reward-crate timer locally on your device so you can continue where you left off. The progress part of it is also backed up to the cloud save described above; settings never leave your device unless your Android device's own backup service is enabled, in which case it is handled by Google under its privacy policy. Uninstalling the Game or clearing its storage deletes this data.</p>
 
 <h2>Children's privacy</h2>
 <p>The Game is intended for players aged 13 and over and is not directed to children under 13, consistent with the U.S. Children's Online Privacy Protection Act (COPPA). We do not knowingly collect personal information from children under 13, and the Game is not designed to show ads to them. If you believe a child under 13 is using the Game, or has provided personal information through it, contact us and we will help remove it; you can also reset the device's advertising ID in Android settings.</p>
 
 <h2>Data retention and security</h2>
-<p>We do not hold any of your data. Data collected by Google AdMob and Google Play is retained and secured by Google under its privacy policy at <a href="https://policies.google.com/privacy">policies.google.com/privacy</a>.</p>
+<p>Your cloud save is kept for as long as the Game's Firebase project runs, or until you ask us to delete it. It is protected by Firebase security rules that only let your own anonymous ID read or write it, and is encrypted in transit and at rest by Google. Data collected by Google AdMob and Google Play is retained and secured by Google under its privacy policy at <a href="https://policies.google.com/privacy">policies.google.com/privacy</a>.</p>
 
 <h2>Links to other sites</h2>
 <p>The settings screen links to this policy and our Terms of Service, which open in your web browser. Websites are governed by their own privacy practices.</p>
 
 <h2>Your rights</h2>
-<p>Because we do not hold personal information about you, there is nothing for us to access, correct or delete on our side. You can remove all locally stored game data at any time by clearing the app's storage or uninstalling it (Play purchases stay on your Google account and can be restored). To manage data held by Google, including ad personalization, use your Google Account settings or <em>Settings → Ad privacy</em> in the Game.</p>
+<p>To have your cloud save deleted, send us the <em>Player ID</em> shown at the bottom of the Game's Settings screen and we will delete it. You can remove all locally stored game data at any time by clearing the app's storage or uninstalling it (Play purchases stay on your Google account and can be restored). To manage data held by Google, including ad personalization, use your Google Account settings or <em>Settings → Ad privacy</em> in the Game.</p>
 
 <h2>Changes to this policy</h2>
 <p>We may update this policy as the Game evolves. Material changes will be reflected by a new effective date on this page.</p>

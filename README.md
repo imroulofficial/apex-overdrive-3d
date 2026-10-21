@@ -7,9 +7,34 @@ Offline-first 3D arcade racer for Android by **Red Pen Studio**.
 | Package | `com.redpenstudio.apexoverdrive` |
 | Android | minSdk 24 · targetSdk 36 · compileSdk 36 · edge-to-edge |
 | Stack | Three.js (WebGL2) + Vite, wrapped with Capacitor 8 |
-| Audience | 13+, no accounts, no analytics; gameplay is offline, ads and Play Billing use the network when available |
+| Audience | 13+, no sign-up, no analytics; gameplay is offline, cloud save, ads and Play Billing use the network when available |
 
-## Phase 3 (this release): monetization and the 3D model pipeline
+## Phase 4 (this release): zero-cost Firebase cloud save
+
+- **Anonymous player profiles** (`@capacitor-firebase/authentication`): the first time the game is online it signs in anonymously, so every install gets a Firebase player ID with no sign-up. The native Firebase SDK keeps the session across launches.
+- **Cloud Firestore save** (`@capacitor-firebase/firestore`, `src/core/cloud.js`): one document per player at `players/{uid}` holding `{ v, save, updatedAt, appVersion }`, where `save` is the progress JSON (coins, paints, upgrades, selected car, race records, Play products owned and bonuses paid, crate timer). Settings, sandbox purchases and ad pacing stay on the device.
+- **Local first**: every change is saved to the device instantly as before (`src/core/store.js`); the cloud only mirrors it. `savedAt` moves only when progress changes, so launching or changing settings never makes a device look newer than its cloud copy.
+- **Batched sync at milestones only**:
+  - **Launch**: one read of the player document; if its `updatedAt` is newer than the device's save it replaces local progress (coin bonuses already paid and the crate timer are merged so neither can be gamed), otherwise the device's save is uploaded if it differs.
+  - **Back in the garage after a race**: one write.
+  - **Buying an upgrade, a paint finish or a Play product** (or a Restore that paid out): one write, with purchases inside 4 s collapsed together.
+  - Writes are skipped when the progress is identical to the last upload, never closer than 15 s apart, and retried once the device is back online.
+  - Budget: about 1 read per launch and a few writes per session per player, against the Spark plan's 50,000 reads and 20,000 writes per day (and 1 GiB storage; a save is about 1 KB).
+- **Garage HUD indicator**: a quiet cloud next to the logo: green tick **Saved to Cloud**, pulsing **Syncing…**, amber **Sync pending** or crossed-out **Offline**; tapping it explains the state (and retries a pending upload). Settings shows the Player ID for support and data-deletion requests.
+- **Scope of an anonymous ID**: it belongs to the installation. It survives restarts, updates and going offline, but a reinstall or *Clear storage* starts a new player unless Android backup restores the app data. Linking it to Play Games or Google sign-in later keeps the same ID and save.
+- **Security rules** (`firestore.rules`): a player can only `get`, create and update their own document, with the four fields type- and size-checked; listing and deleting are closed.
+- The desktop browser build saves on device only (the indicator reads **Saved on device**) unless `VITE_FIREBASE_API_KEY` and `VITE_FIREBASE_APP_ID` of a Firebase web app are set at build time.
+
+### Firebase console setup (once)
+
+1. **Authentication → Sign-in method**: enable **Anonymous**.
+2. **Firestore Database**: create the database (production mode, any region).
+3. Deploy the rules: `npx firebase-tools deploy --only firestore:rules` (project `apex-overdrive`, see `.firebaserc`), or paste `firestore.rules` into the console's Rules tab.
+4. Optional hardening: in Google Cloud Console → Credentials, restrict the Android API key to package `com.redpenstudio.apexoverdrive` with your debug, upload and Play app-signing SHA-1s.
+
+`android/app/google-services.json` is committed. The key in it identifies the Firebase project and is not a secret; access is governed by the security rules above.
+
+## Phase 3: monetization and the 3D model pipeline
 
 - **Google AdMob** (`src/monetization/ads.js`, `@capacitor-community/admob`), on Google's test ad units until a release build:
   - **Rewarded video**: "Watch ad · 2× coins" on the race results screen pays the race's coins a second time (once per race); the garage's **Free 500** reward crate pays 500 coins once every 24 hours and shows a live countdown.
@@ -66,7 +91,7 @@ Requirements: Node 22, JDK 21, Android SDK platform 36.
 src/
   main.js              boot, lifecycle, Android back button, ad/race flow
   config.js            studio constants, legal URLs, ad units, Play products
-  core/                save data (localStorage), synthesized UI/engine audio, Capacitor helpers
+  core/                save data (localStorage), Firebase cloud save, synthesized audio, Capacitor helpers
   assets/              GLTF vehicle spawner with procedural fallback
   monetization/        AdMob service (+ browser simulator), Play Billing and entitlements
   data/catalog.js      paints, finishes, upgrades, prices

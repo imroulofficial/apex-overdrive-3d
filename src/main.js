@@ -6,12 +6,14 @@ import { createRaceHud } from './ui/raceHud.js';
 import { Race } from './race/Race.js';
 import { createRaceInput } from './race/input.js';
 import { createStore } from './ui/store.js';
+import { createCloudBadge } from './ui/cloudBadge.js';
 import { PAINTS, UPGRADES, STAT_PER_LEVEL } from './data/catalog.js';
 import { carById } from './data/cars.js';
 import { EMERALD_COAST } from './data/tracks.js';
 import { state, save, addCoins } from './core/store.js';
 import { ads } from './monetization/ads.js';
 import { billing } from './monetization/billing.js';
+import { cloud } from './core/cloud.js';
 import { suspendAudio, resumeAudio } from './core/audio.js';
 import { onAppStateChange, onBackButton } from './core/platform.js';
 
@@ -46,6 +48,20 @@ const settings = createSettings(garage, {
   onCrateReset: () => store.resetCrate(),
 });
 fpsEl.hidden = !state.settings.showFps;
+createCloudBadge();
+
+// Cloud save milestones (see core/cloud.js). Play purchases and restores that paid out
+// upload shortly after; paint and upgrade purchases are wired in the garage HUD.
+billing.subscribe((e) => {
+  if (e.type === 'purchase' || (e.type === 'sync' && (e.restored.length || e.coins))) cloud.syncSoon();
+});
+cloud.subscribe((_, { restored } = {}) => {
+  if (!restored) return;
+  billing.refresh();
+  ads.refreshEntitlements();
+  hud.reloadSave();
+  toast('Cloud save restored');
+});
 
 const raceInput = createRaceInput({ steerPad: $('#rc-steer'), drift: $('#rc-drift'), nitro: $('#rc-nitro') });
 const raceHud = createRaceHud({
@@ -217,6 +233,7 @@ async function exitToGarage() {
     toast(`+${lastWinnings.toLocaleString('en-US')} coins banked`);
     lastWinnings = 0;
   }
+  cloud.syncNow();
 }
 
 garage.start();
@@ -230,6 +247,8 @@ requestAnimationFrame(() =>
     // Monetization starts after the first frame so it never delays the garage reveal.
     billing.init().then(() => ads.refreshEntitlements());
     ads.init().then(() => ads.setBanner(mode === 'garage'));
+    // Fetches the cloud save (adopted if newer than this device's), then uploads if needed.
+    cloud.init();
   })
 );
 
@@ -278,5 +297,5 @@ window.addEventListener('keydown', (e) => {
 });
 
 if (new URLSearchParams(location.search).has('debug')) {
-  window.__app = { get race() { return race; }, startRace, exitToGarage, state, ads, billing, store };
+  window.__app = { get race() { return race; }, startRace, exitToGarage, state, ads, billing, store, cloud };
 }

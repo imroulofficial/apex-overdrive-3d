@@ -118,6 +118,37 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .top-actions { display: flex; gap: 10px; align-items: center; }
 
+/* Cloud save status: deliberately quiet, it should never compete with the coins. */
+.top-left { display: flex; gap: 12px; align-items: center; pointer-events: none; }
+.top-left > * { pointer-events: auto; }
+.cloud-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px 0 8px;
+  border-radius: 15px;
+  background: rgba(5, 7, 13, 0.42);
+  box-shadow: inset 0 0 0 1px var(--edge);
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: color 0.3s;
+}
+.cloud-badge svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.cloud-badge .cloud-tick,
+.cloud-badge .cloud-slash { opacity: 0; transition: opacity 0.3s; }
+.cloud-badge[data-state='synced'] { color: #8fe9b4; }
+.cloud-badge[data-state='synced'] .cloud-tick { opacity: 1; }
+.cloud-badge[data-state='syncing'] svg { animation: cloud-pulse 1.1s ease-in-out infinite; }
+.cloud-badge[data-state='offline'] .cloud-slash { opacity: 1; }
+.cloud-badge[data-state='offline'],
+.cloud-badge[data-state='pending'] { color: #f3c98b; }
+@keyframes cloud-pulse { 50% { opacity: 0.35; } }
+
 .coins {
   display: flex;
   align-items: center;
@@ -476,6 +507,8 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   :root { --gap: 8px; }
   .hud { grid-template-columns: minmax(220px, 250px) 1fr minmax(170px, 210px); }
   .brand { font-size: 15px; padding: 6px 14px; }
+  .top-left { gap: 8px; }
+  .cloud-badge { height: 26px; font-size: 9.5px; }
   .coins { font-size: 15px; padding: 6px 12px 6px 10px; min-width: 96px; }
   .icon-btn { width: 40px; height: 40px; }
   .tab { padding: 7px 0; font-size: 10.5px; letter-spacing: 0.04em; }

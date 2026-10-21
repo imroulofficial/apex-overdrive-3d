@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "627407634176",
+    "project_id": "apex-overdrive",
+    "storage_bucket": "apex-overdrive.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:627407634176:android:7eac662facec4c6d487de5",
+        "android_client_info": {
+          "package_name": "com.redpenstudio.apexoverdrive"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCTeXplaLo4SW4tSqMmNnT8xuuozLEcRts"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

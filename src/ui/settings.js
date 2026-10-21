@@ -4,6 +4,7 @@ import { openExternal } from '../core/platform.js';
 import { GAME, LEGAL, PRODUCTS } from '../config.js';
 import { billing } from '../monetization/billing.js';
 import { ads } from '../monetization/ads.js';
+import { cloud } from '../core/cloud.js';
 import { toast } from './hud.js';
 
 export function createSettings(garage, { onFpsToggle, onEntitlementsChanged, onCrateReset }) {
@@ -12,10 +13,13 @@ export function createSettings(garage, { onFpsToggle, onEntitlementsChanged, onC
   const sound = dialog.querySelector('#opt-sound');
   const fps = dialog.querySelector('#opt-fps');
 
-  dialog.querySelector('#about').textContent =
-    `${GAME.title}: ${GAME.subtitle} v${GAME.version} · © ${new Date().getFullYear()} ${GAME.studio}. ` +
-    'Plays fully offline. Ads are served by Google AdMob and purchases are processed by Google Play; ' +
-    'see the Privacy Policy for what they collect.';
+  const renderAbout = () =>
+    (dialog.querySelector('#about').textContent =
+      `${GAME.title}: ${GAME.subtitle} v${GAME.version} · © ${new Date().getFullYear()} ${GAME.studio}. ` +
+      'Plays fully offline; progress is backed up to Google Firebase under an anonymous player ID. ' +
+      'Ads are served by Google AdMob and purchases are processed by Google Play; ' +
+      'see the Privacy Policy for what they collect.' +
+      (cloud.playerId ? ` Player ID: ${cloud.playerId}` : ''));
 
   // ---- Purchases ----
   const restoreBtn = dialog.querySelector('#btn-restore');
@@ -60,6 +64,7 @@ export function createSettings(garage, { onFpsToggle, onEntitlementsChanged, onC
   });
 
   function render() {
+    renderAbout();
     qualityButtons.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.quality === state.settings.quality)));
     sound.checked = state.settings.sound;
     fps.checked = state.settings.showFps;
