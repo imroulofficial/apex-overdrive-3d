@@ -1,5 +1,5 @@
 import { state, save } from '../core/store.js';
-import { sfx } from '../core/audio.js';
+import { sfx, applyAudioSettings } from '../core/audio.js';
 import { openExternal } from '../core/platform.js';
 import { GAME, LEGAL, PRODUCTS } from '../config.js';
 import { billing } from '../monetization/billing.js';
@@ -11,6 +11,8 @@ export function createSettings(garage, { onFpsToggle, onEntitlementsChanged, onC
   const dialog = document.getElementById('settings');
   const qualityButtons = [...dialog.querySelectorAll('[data-quality]')];
   const sound = dialog.querySelector('#opt-sound');
+  const music = dialog.querySelector('#opt-music');
+  const auto = dialog.querySelector('#opt-auto');
   const fps = dialog.querySelector('#opt-fps');
 
   const renderAbout = () =>
@@ -67,6 +69,8 @@ export function createSettings(garage, { onFpsToggle, onEntitlementsChanged, onC
     renderAbout();
     qualityButtons.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.quality === state.settings.quality)));
     sound.checked = state.settings.sound;
+    music.checked = state.settings.music;
+    auto.checked = state.settings.autoAccelerate;
     fps.checked = state.settings.showFps;
     // In the browser the store is always simulated, so the toggle shows on and locked.
     sandbox.checked = billing.sandbox;
@@ -85,6 +89,18 @@ export function createSettings(garage, { onFpsToggle, onEntitlementsChanged, onC
   );
   sound.addEventListener('change', () => {
     state.settings.sound = sound.checked;
+    save();
+    applyAudioSettings();
+    sfx.tap();
+  });
+  music.addEventListener('change', () => {
+    state.settings.music = music.checked;
+    save();
+    applyAudioSettings();
+    sfx.tap();
+  });
+  auto.addEventListener('change', () => {
+    state.settings.autoAccelerate = auto.checked;
     save();
     sfx.tap();
   });
@@ -106,10 +122,14 @@ export function createSettings(garage, { onFpsToggle, onEntitlementsChanged, onC
     }
   });
 
+  // The banner ad shows only while Settings is open (blueprint: Settings and Stage Map only).
+  dialog.addEventListener('close', () => ads.setBanner(false));
+
   function open() {
     render();
     sfx.tap();
     dialog.showModal();
+    ads.setBanner(true);
   }
   function close() {
     if (dialog.open) dialog.close();

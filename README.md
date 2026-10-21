@@ -9,7 +9,28 @@ Offline-first 3D arcade racer for Android by **Red Pen Studio**.
 | Stack | Three.js (WebGL2) + Vite, wrapped with Capacitor 8 |
 | Audience | 13+, no sign-up, no analytics; gameplay is offline, cloud save, ads and Play Billing use the network when available |
 
-## Graphics & performance pass (this release)
+## Phase 6: audio engine and blueprint compliance (this release)
+
+All audio is still generated on the device (Web Audio synthesis plus loops rendered at startup); the game ships no audio files and downloads nothing. Code in `src/audio/`, game-facing API in `src/core/audio.js`.
+
+- **Engine** (`src/audio/engine.js`): three RPM loops (1,100 / 3,600 / 6,600 rpm) rendered at startup from a V8 firing model (eight uneven exhaust pulses per cycle, each ringing four exhaust resonances), pitch-shifted by RPM and crossfaded with equal power, through a load-dependent tone filter and a low-mid "throat" boost. Under them: a saturated sub-bass rumble at half and full firing frequency, mechanical gear/cam whine that climbs with RPM, intake roar, turbo spool, wind, and a six-speed virtual gearbox (`Gearbox`) that turns road speed and throttle into RPM with real ratio drops on upshifts, rev-matched downshifts, clutch slip off the line, a bouncing rev limiter and revs flaring in the air.
+- **Turbo blow-off**: a "pshh" vent followed by a decaying compressor flutter ("tu-tu-tu") when lifting after boost, and a lighter one on boosted upshifts. Exhaust crackle on the overrun.
+- **Nitro**: sub-bass ignition thump plus a sweeping pink-noise whoosh and a resonant two-band howl; Pulse Nitro adds a jet spool and pans across the stereo field. A sustained airflow layer plays while the boost lasts.
+- **Tyres**: stick-slip screech from three narrow inharmonic bands and a buzzing saw whose pitch follows the slip angle and wanders like real rubber; a chirp on drift entry.
+- **Race soundtrack** (`src/audio/music.js`): an original 126 BPM synthwave / electro-rock track sequenced live on the audio clock (kick/snare/hats, sidechained pumping bass, pads, pulse arp with dotted-eighth echo, lead hook, distorted power chords, hall reverb). Sections rotate (intro → drive → lift → drive with power chords → break → lift…), the green light drops straight into the full track, pause muffles it, and it ducks under heavy throttle and nitro. Every instrument is a persistent voice automated per note, so playback creates no nodes (about 13× faster than real time in an offline render).
+- **Garage and UI**: the headlight toggle plays a relay clunk and an aggressive throttle stab into the limiter with blow-off; Race Start blips and pulls; holographic click, swipe, confirm and deny sounds on every garage and race HUD button.
+- **Settings**: separate **Sound effects** and **Music** switches.
+- **Listening previews**: `node tools/audio/render.mjs` renders the engine through six gears, blow-offs, nitro, drift, the soundtrack, all SFX and a full race mix to `tools/audio/out/*.wav` with the same code, and prints peak/RMS levels.
+
+Blueprint compliance:
+
+- **Ads**: the banner shows only while Settings is open (the future Stage Map is the other allowed place), never in the 3D garage or a race. Interstitials never play during the first 3 finished races (`ADS.interstitialGraceRaces`, existing saves count the races already recorded), then every 2nd-3rd race with a 3-minute cooldown that survives restarts.
+- **Nitro**: Blue Nitro fires from 25% of the bar (Pulse needs 50%); the gauge marks moved to match.
+- **Props**: cones and barricades no longer slow any car; they still scatter and give the player a little nitro and coins.
+- **Auto-accelerate** (Settings, on by default): off shows a **GAS** pedal next to Nitro, and W / Up become the throttle (N / Shift fire nitro).
+- **Economy and branding**: the RP-1 Vanta is the **Tier D Starter Coupe**; the $2.99 product is presented as the **No Ads Pack** and now also unlocks the exclusive **Red Pen Studio Founder** iridescent metallic paint (a thin-film finish over heavy flake; locked swatch opens the Store, and it follows the purchase through restores and refunds).
+
+## Graphics & performance pass
 
 Fixes from the first device test (22 FPS, white bars, cartoon look, stock icon).
 
@@ -49,12 +70,12 @@ Fixes from the first device test (22 FPS, white bars, cartoon look, stock icon).
 
 - **Google AdMob** (`src/monetization/ads.js`, `@capacitor-community/admob`), on Google's test ad units until a release build:
   - **Rewarded video**: "Watch ad · 2× coins" on the race results screen pays the race's coins a second time (once per race); the garage's **Free 500** reward crate pays 500 coins once every 24 hours and shows a live countdown.
-  - **Interstitial**: every 2nd or 3rd finished race (re-rolled each time, never within 90 s of another full-screen ad), played behind the wipe on the way back to the garage.
-  - **Banner**: adaptive banner at the bottom of the garage, lifted above the gesture bar; the garage HUD pads itself by the banner's height. Hidden for the whole race.
+  - **Interstitial**: every 2nd or 3rd finished race (re-rolled each time), played behind the wipe on the way back to the garage. Since Phase 6: never in the first 3 races and never within 3 minutes of another full-screen ad.
+  - **Banner**: adaptive banner at the bottom of the screen, lifted above the gesture bar. Since Phase 6 it shows only while Settings is open (Settings moves up to clear it); hidden in the garage and the whole race.
   - Google UMP consent form where required (EEA/UK/US states), with an **Ad privacy** button in Settings when Google requires one; ad content capped at Teen; not child-directed.
   - Desktop browser: the same calls drive an on-page simulator (striped test banner, skippable interstitial, 3 s rewarded countdown).
 - **Google Play Billing** (`src/monetization/billing.js`, `@capgo/native-purchases`, Play Billing 9):
-  - `remove_ads` ($2.99): removes banner and interstitial ads permanently, +5,000 coins.
+  - `remove_ads` ($2.99, shown as the No Ads Pack): removes banner and interstitial ads permanently, +5,000 coins and the Red Pen Studio Founder paint.
   - `supercar_bundle` ($6.99): unlocks the Tier A **RP-X Hyperion**, +25,000 coins and No Ads.
   - Store dialog (cart button in the top bar, or tapping the locked Hyperion in the **Cars** tab) with localized Play prices; purchases are acknowledged, pending payments unlock when they clear, refunds revoke the entitlement on next launch.
   - Purchase state is saved on device and re-synced with Play on every launch, so it survives restarts and works offline. Coin bonuses are paid once per install, so Restore never pays twice.
@@ -67,10 +88,10 @@ Fixes from the first device test (22 FPS, white bars, cartoon look, stock icon).
 
 - **Track "Emerald Coast" (Biome 1)**: a 2.8 km closed-loop coastal highway generated from a spline: cliff-top straights above the ocean, an inland climb to a hilltop hairpin, a downhill S and sweeping bends back to the sea (18 m to 54 m elevation). Wooden barrier fences line both sides, kerbs and chevron boards mark the corners, and a start/finish gantry spans the grid.
 - **Scenery**: procedural terrain carved around the road (grass, rock faces and sand by slope and height), an animated ocean with emerald shallows, sea stacks and rocks, palms, umbrella pines and cypress, a lighthouse headland, sailboats, a sky with sun glow and image-based lighting rendered from it, and a distant ridge on the horizon.
-- **Jump ramps and smashable props**: three ramps (two partial, one full-width downhill jump) launch cars ballistically; traffic-cone slaloms and wooden barricades tumble, bounce and settle when hit, cost a little speed and reward nitro and coins.
+- **Jump ramps and smashable props**: three ramps (two partial, one full-width downhill jump) launch cars ballistically; traffic-cone slaloms and wooden barricades tumble, bounce and settle when hit and reward nitro and coins without slowing the car.
 - **Arcade physics** (`src/race/vehicle.js`): smooth acceleration with a top-speed cap and braking; speed is preserved through turns. Tapping **Drift** while steering kicks the car into a controlled power-slide (~30° slip); holding the slide charges nitro and drift points, and a long drift ends with a mini boost.
 - **Dual-tier nitro**: a tap fires **Blue Nitro**; a second tap inside the sweet-spot window (0.16 s to 0.42 s after the first, shown by a needle on the Nitro ring) upgrades it to **Pulse Nitro** (orange/purple) with an explosive kick, higher top speed, a wider camera FOV, speed lines and a screen glow.
-- **Touch controls**: a slide-to-steer pad (left/right halves), Drift/Brake and Nitro buttons, all inside the Android 15 safe-area insets. Keyboard on desktop: arrows/A/D steer, Space/S drift and brake, W/Up/Shift nitro, Esc pauses.
+- **Touch controls**: a slide-to-steer pad (left/right halves), Drift/Brake and Nitro buttons, all inside the Android 15 safe-area insets. Keyboard on desktop: arrows/A/D steer, Space/S drift and brake, W/Up/Shift nitro (N/Shift with Auto-accelerate off, when W/Up is the throttle), Esc pauses.
 - **Five AI rivals** (Riptide, Volta, Solaris, Noctis, Monarch): waypoint pure-pursuit drivers that brake for corners from the track's speed profile, pass on the side with more room, steer around props (or smash them), choose whether to hit ramps and fire nitro on straights, each with its own aggression and skill. Light rubber banding keeps races close, and they scale a little with your upgrades.
 - **Race loop**: Race Start revs the coupe and wipes to the track (the world is built and its shaders compiled behind the wipe), a fly-in camera shows the grid, then 3-2-1-GO. The HUD shows speed (km/h), position (1st/6th), lap, race time, a progress strip with every car and the nitro gauge. Two laps; the finish screen shows position, race time, best lap, drift score, props smashed, coins earned and a 1 to 3 star rating, then returns to the garage where the wallet animates up. Coins and best times are saved on device the moment you cross the line. Pause (button, Esc or Android back) offers resume, restart and quit.
 - **Garage upgrades matter**: Engine raises top speed and acceleration, Nitro extends boost time and power, Handling sharpens steering and drift control, Tires improve grip and launch.
@@ -102,7 +123,8 @@ Requirements: Node 22, JDK 21, Android SDK platform 36.
 src/
   main.js              boot, lifecycle, Android back button, ad/race flow
   config.js            studio constants, legal URLs, ad units, Play products
-  core/                save data (localStorage), Firebase cloud save, synthesized audio, Capacitor helpers
+  core/                save data (localStorage), Firebase cloud save, audio API, Capacitor helpers
+  audio/               synthesis: mixer, engine + gearbox, one-shot SFX, race soundtrack
   assets/              GLTF vehicle spawner with procedural fallback
   monetization/        AdMob service (+ browser simulator), Play Billing and entitlements
   data/catalog.js      paints, finishes, upgrades, prices
@@ -118,6 +140,7 @@ public/assets/models/  drop-in .glb car models (see README there)
 android/               Capacitor Android project (signing reads env vars / keystore.properties)
 docs/                  GitHub Pages: privacy-policy.html, terms.html
 tools/icon/            launcher icon + splash renderer (dev only, not in the game bundle)
+tools/audio/           offline audio preview renderer (dev only, not in the game bundle)
 .github/workflows/     build-aab.yml
 ```
 

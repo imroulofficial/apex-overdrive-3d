@@ -1,6 +1,6 @@
 import { NITRO } from '../race/vehicle.js';
 import { ordinal } from '../race/Race.js';
-import { raceSfx } from '../core/audio.js';
+import { raceSfx, sfx } from '../core/audio.js';
 
 // In-race HUD: standing, lap, timer, progress strip, speedometer, nitro gauge with the
 // double-tap sweet-spot ring, callouts, pause menu and the finish screen.
@@ -52,18 +52,20 @@ export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, 
   el.sweet.style.strokeDasharray = `${sweetLen} ${100 - sweetLen}`;
   el.sweet.style.strokeDashoffset = `${-sweetStart}`;
 
-  $('#rh-pause').addEventListener('click', () => onPause());
-  $('#pause-resume').addEventListener('click', () => onResume());
-  $('#pause-restart').addEventListener('click', () => onRestart());
-  $('#pause-quit').addEventListener('click', () => onQuit());
+  // Every HUD button gets the high-tech click.
+  const button = (sel, fn) => $(sel).addEventListener('click', () => (sfx.tap(), fn()));
+  button('#rh-pause', () => onPause());
+  button('#pause-resume', () => onResume());
+  button('#pause-restart', () => onRestart());
+  button('#pause-quit', () => onQuit());
   el.pause.addEventListener('cancel', (e) => {
     e.preventDefault();
     onResume();
   });
-  $('#res-garage').addEventListener('click', () => onGarage());
-  $('#res-again').addEventListener('click', () => onRaceAgain());
+  button('#res-garage', () => onGarage());
+  button('#res-again', () => onRaceAgain());
   const doubleBtn = $('#res-double');
-  doubleBtn.addEventListener('click', () => onDoubleCoins?.());
+  button('#res-double', () => onDoubleCoins?.());
 
   const set = (key, value, fn) => {
     if (last[key] === value) return;
@@ -209,6 +211,7 @@ export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, 
     // r.best / r.wallet are filled in by the app once the reward is saved.
     results(r) {
       const { best, wallet } = r;
+      sfx.tab(); // the results panel swipes in
       $('#res-track').textContent = `${r.trackName.toUpperCase()} · ${ordinal(r.position)} OF ${r.total}`;
       $('#res-title').textContent = r.position === 1 ? 'VICTORY!' : r.position <= 3 ? 'PODIUM FINISH' : 'RACE COMPLETE';
       $('#res-pos').textContent = r.position;

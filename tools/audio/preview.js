@@ -1,0 +1,235 @@
+// Offline renders of the game's audio, built from the same modules the game plays live.
+// Each clip is a little script on a timeline; render.mjs saves them as WAV files.
+import { createMixer, MUSIC_LEVEL } from '../../src/audio/mixer.js';
+import { EngineVoice, Gearbox, playEngineEvents, revEngine } from '../../src/audio/engine.js';
+import { ui, race, blowOff, nitroIgnite } from '../../src/audio/sfx.js';
+import { Music } from '../../src/audio/music.js';
+
+const SR = 44100;
+const FRAME = 1 / 60;
+
+function context(seconds) {
+  const ac = new OfflineAudioContext(2, Math.ceil(seconds * SR), SR);
+  const mix = createMixer(ac);
+  mix.music.gain.value = MUSIC_LEVEL;
+  return mix;
+}
+
+// Drives a player engine through a scripted run: drive(t) returns the controls at time t.
+function driveEngine(mix, seconds, drive, { from = 0 } = {}) {
+  const voice = new EngineVoice(mix).start(from);
+  const box = new Gearbox();
+  let v = 0;
+  // A clip that starts at speed settles the gearbox into the right gear first, silently.
+  const first = drive(0, 0);
+  if (first.speed) for (let t = 0; t < 4; t += FRAME) box.step(FRAME, { speedNorm: first.speed * Math.min(1, t / 3), throttle: 1 });
+  const log = [];
+  for (let t = 0; t < seconds; t += FRAME) {
+    const c = drive(t, v);
+    const thr = c.throttle ?? 1;
+    const tier = c.tier ?? 0;
+    const top = tier === 2 ? 1.36 : tier === 1 ? 1.18 : 1;
+    // Same shape as the game's arcade longitudinal model, in units of top speed.
+    let a = thr * 0.26 * (1 - Math.min(1, (v / top) ** 2)) * (v < 0.4 ? 1.25 : 1);
+    if (tier) a += tier === 2 ? 0.5 : 0.25;
+    if (v > top) a -= (v - top) * 1.4;
+    if (c.brake) a -= 0.6;
+    if (!thr && !c.brake) a -= 0.04;
+    v = Math.max(0, v + a * FRAME);
+    if (c.speed !== undefined) v = c.speed;
+    if (c.neutral) v = 0;
+    const ev = box.step(FRAME, { speedNorm: v, throttle: thr, neutral: c.neutral, airborne: c.airborne });
+    const at = from + t;
+    playEngineEvents(mix, ev, at);
+    voice.set({ rpm: box.rpm, load: thr, boost: box.boost, tier, speed: Math.min(1, v * 0.9), skid: c.skid ?? 0, slip: c.slip ?? 0, cut: box.cut }, at);
+    // Music ducking as in core/audio.js.
+    const r = Math.max(0, Math.min(1, (box.rpm - 1500) / 6000));
+    mix.duck.gain.setTargetAtTime(c.duck ?? 1 - 0.38 * Math.min(1, r * thr * 0.8 + tier * 0.25), at, c.duck ? 0.04 : 0.35);
+    for (const e of ev) if (e.type === 'upshift' || e.type === 'downshift') log.push(`${at.toFixed(2)}s ${e.type} → gear ${e.gear + 1}`);
+  }
+  voice.stop(from + seconds, 0.4);
+  return log;
+}
+
+const clips = {
+  // Standing start through all six gears, a lift (blow-off + crackle), then back on it.
+  'engine-6-gears': {
+    seconds: 22,
+    build(mix) {
+      return driveEngine(mix, 21.5, (t) => {
+        if (t < 1.2) return { neutral: true, throttle: t > 0.4 && t < 0.8 ? 0.6 : 0.1 };
+        if (t < 15) return { throttle: 1 };
+        if (t < 17.5) return { throttle: 0 };
+        return { throttle: 1 };
+      }, {});
+    },
+  },
+  'garage-headlight-rev': {
+    seconds: 5,
+    build(mix) {
+      ui.relay(mix, 0.3);
+      revEngine(mix, 'stab', 0.32);
+      ui.tap(mix, 2.6);
+      revEngine(mix, 'double', 2.7);
+    },
+  },
+  'turbo-blow-off': {
+    seconds: 4,
+    build(mix) {
+      blowOff(mix, 0.5, 0.2);
+      blowOff(mix, 0.85, 1.4);
+      blowOff(mix, 1.2, 2.6);
+    },
+  },
+  // Cruising in the upper gears: Blue Nitro, then Pulse Nitro.
+  'nitro-blue-and-pulse': {
+    seconds: 10,
+    build(mix) {
+      nitroIgnite(mix, 1, 1.5);
+      nitroIgnite(mix, 2, 5.5);
+      return driveEngine(mix, 9.6, (t) => ({ throttle: 1, speed: t < 1.5 ? 0.82 : undefined, tier: t > 1.5 && t < 3.4 ? 1 : t > 5.5 && t < 8 ? 2 : 0 }));
+    },
+  },
+  // A power-slide: slip angle swells and wobbles, then the car straightens and banks it.
+  'drift-screech': {
+    seconds: 8,
+    build(mix) {
+      race.chirp(mix, 1.0);
+      race.driftBank(mix, 6.2);
+      return driveEngine(mix, 7.6, (t) => {
+        const inDrift = t > 1 && t < 6;
+        const slip = inDrift ? 0.35 + 0.2 * Math.sin(t * 2.3) + 0.1 * Math.sin(t * 7.1) : 0;
+        return { throttle: 1, speed: 0.62, skid: inDrift ? Math.min(1, slip * 2) : 0, slip };
+      });
+    },
+  },
+  'race-soundtrack': {
+    seconds: 66,
+    build(mix) {
+      const music = new Music(mix);
+      music.start(0.05);
+      music.schedule(65.5);
+    },
+  },
+  // Countdown, launch, nitro, a drift and a smash with the soundtrack ducking underneath.
+  'race-mix': {
+    seconds: 28,
+    build(mix) {
+      const music = new Music(mix);
+      music.start(0.05);
+      race.beep(mix, 1.0);
+      race.beep(mix, 1.9);
+      race.beep(mix, 2.8);
+      race.go(mix, 3.7);
+      music.dropPending = false;
+      nitroIgnite(mix, 1, 9);
+      nitroIgnite(mix, 2, 9.35);
+      race.chirp(mix, 14);
+      race.smash(mix, false, 18.2);
+      race.smash(mix, true, 19.1);
+      race.wall(mix, 12, 21.5);
+      race.lap(mix, 24);
+      // Jump the soundtrack into the full track on the green light, as the game does.
+      music.schedule(3.8);
+      music.dropPending = true;
+      music.schedule(27.5);
+      const log = driveEngine(mix, 27.5, (t) => {
+        if (t < 3.7) return { neutral: true, throttle: t > 1 && Math.sin(t * 7.3) > 0.4 ? 0.62 : 0.16 };
+        if (t > 14 && t < 17) {
+          const slip = 0.4 + 0.15 * Math.sin(t * 3);
+          return { throttle: 1, skid: Math.min(1, slip * 2), slip };
+        }
+        if (t > 21.5 && t < 22.5) return { throttle: 0 };
+        return { throttle: 1, tier: t > 9 && t < 9.35 ? 1 : t >= 9.35 && t < 12 ? 2 : 0, duck: t > 9 && t < 10.6 ? 0.45 : undefined };
+      });
+      return log;
+    },
+  },
+  'ui-and-race-sfx': {
+    seconds: 12,
+    build(mix) {
+      let t = 0.2;
+      const at = (dt) => (t += dt);
+      ui.tap(mix, t);
+      ui.tap(mix, at(0.35));
+      ui.swipe(mix, at(0.5));
+      ui.swipe(mix, at(0.45));
+      ui.confirm(mix, at(0.6));
+      ui.deny(mix, at(0.8));
+      ui.relay(mix, at(0.7));
+      race.beep(mix, at(0.8));
+      race.go(mix, at(0.9));
+      race.empty(mix, at(1.0));
+      race.smash(mix, false, at(0.6));
+      race.smash(mix, true, at(0.7));
+      race.bump(mix, at(0.7));
+      race.wall(mix, 10, at(0.7));
+      race.land(mix, 9, at(0.8));
+      race.lap(mix, at(0.8));
+      race.finish(mix, at(1.0));
+    },
+  },
+};
+
+function toWav(buf) {
+  const ch = buf.numberOfChannels;
+  const n = buf.length;
+  const data = new DataView(new ArrayBuffer(44 + n * ch * 2));
+  const str = (o, s) => [...s].forEach((c, i) => data.setUint8(o + i, c.charCodeAt(0)));
+  str(0, 'RIFF');
+  data.setUint32(4, 36 + n * ch * 2, true);
+  str(8, 'WAVEfmt ');
+  data.setUint32(16, 16, true);
+  data.setUint16(20, 1, true);
+  data.setUint16(22, ch, true);
+  data.setUint32(24, buf.sampleRate, true);
+  data.setUint32(28, buf.sampleRate * ch * 2, true);
+  data.setUint16(32, ch * 2, true);
+  data.setUint16(34, 16, true);
+  str(36, 'data');
+  data.setUint32(40, n * ch * 2, true);
+  const chans = [...Array(ch)].map((_, c) => buf.getChannelData(c));
+  let o = 44;
+  for (let i = 0; i < n; i++) {
+    for (let c = 0; c < ch; c++) {
+      const s = Math.max(-1, Math.min(1, chans[c][i]));
+      data.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      o += 2;
+    }
+  }
+  return new Uint8Array(data.buffer);
+}
+
+function stats(buf) {
+  let peak = 0;
+  let sum = 0;
+  let bad = 0;
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < d.length; i++) {
+      const x = d[i];
+      if (!Number.isFinite(x)) bad++;
+      else {
+        peak = Math.max(peak, Math.abs(x));
+        sum += x * x;
+      }
+    }
+  }
+  const rms = Math.sqrt(sum / (buf.length * buf.numberOfChannels));
+  return { peakDb: +(20 * Math.log10(peak + 1e-9)).toFixed(1), rmsDb: +(20 * Math.log10(rms + 1e-9)).toFixed(1), nonFinite: bad };
+}
+
+async function render(name) {
+  const clip = clips[name];
+  const mix = context(clip.seconds);
+  const log = clip.build(mix) ?? [];
+  const t0 = performance.now();
+  const buf = await mix.ac.startRendering();
+  const ms = Math.round(performance.now() - t0);
+  const bytes = toWav(buf);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { name, wav: btoa(bin), stats: stats(buf), ms, log };
+}
+
+window.__audio = { names: Object.keys(clips), render };

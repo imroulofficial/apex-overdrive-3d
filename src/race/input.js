@@ -1,13 +1,14 @@
 // Touch + keyboard driving input. Steering is a single pad split into left/right halves, so a
 // thumb can slide across without lifting. The drift button doubles as the brake; nitro taps
-// are timestamped so the vehicle can judge the double-tap sweet spot.
+// are timestamped so the vehicle can judge the double-tap sweet spot. With Auto-accelerate off
+// (Settings), a GAS pedal appears and W / Up become the throttle instead of nitro.
 
 const now = () => performance.now() / 1000;
 
-export function createRaceInput({ steerPad, drift, nitro }) {
+export function createRaceInput({ steerPad, drift, nitro, gas, hud }) {
   const pointers = new Map();
   const keys = new Set();
-  const st = { touchLeft: false, touchRight: false, touchBrake: false, brakePressed: false, taps: [], steer: 0, enabled: false };
+  const st = { touchLeft: false, touchRight: false, touchBrake: false, touchGas: false, brakePressed: false, taps: [], steer: 0, throttle: 0, enabled: false, auto: true };
   const out = { steer: 0, throttle: 1, brake: false, brakePressed: false, nitroTaps: [] };
 
   const sideOf = (e) => {
@@ -56,6 +57,18 @@ export function createRaceInput({ steerPad, drift, nitro }) {
   });
   ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((t) => drift.addEventListener(t, brakeUp));
 
+  const gasUp = () => {
+    st.touchGas = false;
+    gas.classList.remove('is-pressed');
+  };
+  gas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    gas.setPointerCapture(e.pointerId);
+    st.touchGas = true;
+    gas.classList.add('is-pressed');
+  });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((t) => gas.addEventListener(t, gasUp));
+
   const tap = () => {
     if (!st.enabled) return;
     st.taps.push(now());
@@ -71,14 +84,16 @@ export function createRaceInput({ steerPad, drift, nitro }) {
   const KEY_LEFT = ['ArrowLeft', 'KeyA'];
   const KEY_RIGHT = ['ArrowRight', 'KeyD'];
   const KEY_BRAKE = ['Space', 'ArrowDown', 'KeyS'];
-  const KEY_NITRO = ['ArrowUp', 'KeyW', 'KeyN', 'ShiftLeft', 'ShiftRight'];
+  const KEY_GAS = ['ArrowUp', 'KeyW'];
+  const KEY_NITRO = ['KeyN', 'ShiftLeft', 'ShiftRight'];
+  const isNitroKey = (code) => KEY_NITRO.includes(code) || (st.auto && KEY_GAS.includes(code));
   window.addEventListener('keydown', (e) => {
     if (!st.enabled) return;
-    if ([...KEY_LEFT, ...KEY_RIGHT, ...KEY_BRAKE, ...KEY_NITRO].includes(e.code)) e.preventDefault();
+    if ([...KEY_LEFT, ...KEY_RIGHT, ...KEY_BRAKE, ...KEY_GAS, ...KEY_NITRO].includes(e.code)) e.preventDefault();
     if (e.repeat) return;
     keys.add(e.code);
     if (KEY_BRAKE.includes(e.code)) st.brakePressed = true;
-    if (KEY_NITRO.includes(e.code)) tap();
+    if (isNitroKey(e.code)) tap();
   });
   window.addEventListener('keyup', (e) => keys.delete(e.code));
   window.addEventListener('blur', () => keys.clear());
@@ -93,11 +108,18 @@ export function createRaceInput({ steerPad, drift, nitro }) {
       st.enabled = on;
       if (!on) this.reset();
     },
+    // Auto-accelerate on (default) or off: off shows the GAS pedal.
+    setAutoAccelerate(on) {
+      st.auto = on;
+      hud.classList.toggle('manual-throttle', !on);
+    },
     reset() {
       pointers.clear();
       keys.clear();
       refresh();
       brakeUp();
+      gasUp();
+      st.throttle = 0;
       st.taps.length = 0;
       st.brakePressed = false;
       st.steer = 0;
@@ -113,6 +135,10 @@ export function createRaceInput({ steerPad, drift, nitro }) {
       st.steer += Math.sign(d) * Math.min(Math.abs(d), rate * dt);
       out.steer = st.enabled ? st.steer : 0;
       out.brake = st.enabled && (st.touchBrake || anyKey(KEY_BRAKE));
+      // The pedal eases in and snaps off, like a throttle body.
+      const pedal = st.auto || st.touchGas || anyKey(KEY_GAS) ? 1 : 0;
+      st.throttle = pedal ? Math.min(1, st.throttle + dt * 6) : 0;
+      out.throttle = st.enabled ? st.throttle : 0;
       out.brakePressed = st.enabled && st.brakePressed;
       st.brakePressed = false;
       out.nitroTaps.length = 0;

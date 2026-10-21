@@ -68,7 +68,7 @@
       </aside>
 
       <section class="car-card glass angled" aria-label="Vehicle">
-        <div class="car-title"><small id="car-class">STARTER COUPE</small><strong id="car-name">RP-1 VANTA</strong></div>
+        <div class="car-title"><small id="car-class">TIER D STARTER COUPE</small><strong id="car-name">RP-1 VANTA</strong></div>
         <ul class="stats" id="stats"></ul>
       </section>
 
@@ -122,7 +122,7 @@
           <div class="rh-speed"><b id="rh-speed">0</b><small>KM/H</small></div>
           <div class="rh-nitro" aria-label="Nitro">
             <i id="rh-nitro-fill"></i>
-            <span class="mark" style="--at: 30%"></span><span class="mark" style="--at: 55%"></span>
+            <span class="mark" style="--at: 25%"></span><span class="mark" style="--at: 50%"></span>
           </div>
         </div>
 
@@ -137,6 +137,7 @@
             </svg>
             <span>NITRO</span>
           </button>
+          <button id="rc-gas" class="rc-btn gas" aria-label="Accelerate"><span>GAS</span></button>
         </div>
       </div>
       <div id="race-fx" class="race-fx"></div>
@@ -218,6 +219,14 @@
         <label class="setting">
           <span>Sound effects</span>
           <input type="checkbox" class="switch" id="opt-sound" />
+        </label>
+        <label class="setting">
+          <span>Music</span>
+          <input type="checkbox" class="switch" id="opt-music" />
+        </label>
+        <label class="setting">
+          <span>Auto-accelerate <small>Off: hold GAS (or W / Up) to drive</small></span>
+          <input type="checkbox" class="switch" id="opt-auto" />
         </label>
         <label class="setting">
           <span>Show FPS</span>

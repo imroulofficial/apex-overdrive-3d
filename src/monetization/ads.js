@@ -14,9 +14,11 @@ import { state, save } from '../core/store.js';
 import { suspendAudio, resumeAudio } from '../core/audio.js';
 import { createAdSimulator } from './adSimulator.js';
 
-// Google AdMob: a bottom banner in the garage, an interstitial every 2-3 finished races on
-// the way back to the garage, and opt-in rewarded videos. Banner and interstitial respect
-// the No Ads entitlement; rewarded ads stay available because the player asks for them.
+// Google AdMob, placed by the blueprint's rules: a bottom banner only while Settings is open
+// (never in the 3D garage or a race), an interstitial on the way back to the garage after
+// every 2-3 finished races once the first 3 races are done and never within 3 minutes of
+// another full-screen ad, and opt-in rewarded videos. Banner and interstitial respect the
+// No Ads entitlement; rewarded ads stay available because the player asks for them.
 //
 // In a desktop browser (vite dev) the same calls drive an on-page simulator, so every ad
 // flow can be exercised without a device.
@@ -127,8 +129,8 @@ function createAdService() {
     document.documentElement.style.setProperty('--banner-h', `${Math.round(px)}px`);
   }
 
-  // The banner floats above the WebView, so lift it clear of the gesture bar and pad the
-  // garage HUD by its height.
+  // The banner floats above the WebView, so lift it clear of the gesture bar and tell the
+  // layout its height (Settings moves up to stay clear of it).
   function safeBottomInset() {
     const probe = document.createElement('div');
     probe.style.cssText = 'position:fixed;bottom:0;height:var(--sab);visibility:hidden;pointer-events:none';
@@ -217,7 +219,7 @@ function createAdService() {
       await backend.showPrivacyOptions();
     },
 
-    // Garage/menu: true. Racing: false.
+    // Settings open: true. Garage and racing: false.
     async setBanner(visible) {
       bannerWanted = visible;
       await ready;
@@ -231,8 +233,9 @@ function createAdService() {
       if (!noAds()) preload('interstitial');
     },
 
-    // Counts a finished race toward the next interstitial.
+    // Counts a finished race toward the grace period and the next interstitial.
     noteRaceFinished() {
+      state.ads.racesFinished += 1;
       state.ads.racesSinceInterstitial += 1;
       save();
     },
@@ -242,8 +245,10 @@ function createAdService() {
       await ready;
       const a = state.ads;
       if (noAds() || !enabled('interstitial')) return false;
+      if (a.racesFinished <= ADS.interstitialGraceRaces) return false;
       if (a.racesSinceInterstitial < a.nextInterstitialAt) return false;
-      if (Date.now() - lastFullscreenAt < ADS.interstitialMinGapMs) return false;
+      // The cooldown survives restarts: the last interstitial's time is saved.
+      if (Date.now() - Math.max(lastFullscreenAt, a.lastInterstitialAt) < ADS.interstitialMinGapMs) return false;
       const ok = await Promise.race([preload('interstitial'), wait(1200).then(() => false)]);
       if (!ok) return false; // not ready; try again after the next race
       loaded.interstitial = null;

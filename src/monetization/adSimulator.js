@@ -37,6 +37,15 @@ function overlay(kind, seconds, closableAfter) {
   });
 }
 
+// The banner lives in the top layer (a popover) so, like the native one, it floats above
+// the modal Settings dialog it is shown with.
+function setVisible(el, on) {
+  if (el.showPopover) {
+    if (on && !el.matches(':popover-open')) el.showPopover();
+    if (!on && el.matches(':popover-open')) el.hidePopover();
+  } else el.hidden = !on;
+}
+
 export function createAdSimulator() {
   let sizeListener = () => {};
   let banner = null;
@@ -54,15 +63,17 @@ export function createAdSimulator() {
       banner.className = 'ad-sim-banner';
       banner.style.bottom = `${margin}px`;
       banner.textContent = 'Test banner · Google AdMob';
+      banner.popover = 'manual';
       document.body.appendChild(banner);
+      setVisible(banner, true);
       sizeListener(BANNER_HEIGHT);
     },
     async hideBanner() {
-      if (banner) banner.hidden = true;
+      if (banner) setVisible(banner, false);
       sizeListener(0);
     },
     async resumeBanner() {
-      if (banner) banner.hidden = false;
+      if (banner) setVisible(banner, true);
       sizeListener(BANNER_HEIGHT);
     },
     async removeBanner() {

@@ -9,7 +9,7 @@ import * as THREE from 'three';
 export const GRAVITY = 24;
 export const NITRO = {
   max: 100,
-  blueCost: 30,
+  blueCost: 25, // Blue Nitro fires from a quarter-full bar (blueprint §Nitro)
   pulseExtra: 25,
   sweetMin: 0.16, // seconds after the first tap
   sweetMax: 0.42,
