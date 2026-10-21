@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createCarPaint } from './carPaint.js';
 
 // Procedural cars, built so the garage ships with zero downloaded assets: the starter
@@ -173,22 +174,80 @@ function surfaceFrame(section, x, theta, deform) {
   return { position: p, normal };
 }
 
+// Merges sibling meshes that share a material and a name (the name drives tap picking) into
+// one mesh per parent: the showroom car drops from ~100 draw calls to ~30 while wheels,
+// lights and paint keep working exactly as before.
+function mergeSiblings(root) {
+  const parents = [];
+  root.traverse((o) => {
+    if (o.children.some((c) => c.isMesh)) parents.push(o);
+  });
+  for (const parent of parents) {
+    const buckets = new Map();
+    for (const child of parent.children) {
+      if (!child.isMesh || child.children.length || Array.isArray(child.material) || child.name === 'beam') continue;
+      const key = `${child.material.uuid}|${child.name}`;
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(child);
+    }
+    for (const meshes of buckets.values()) {
+      if (meshes.length < 2) continue;
+      const mat = meshes[0].material;
+      const needsUv = ['map', 'normalMap', 'roughnessMap', 'alphaMap', 'emissiveMap'].some((k) => mat[k]);
+      const geos = meshes.map((mesh) => {
+        mesh.updateMatrix();
+        const g = (mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry.clone()).applyMatrix4(mesh.matrix);
+        for (const name of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(name)) g.deleteAttribute(name);
+        if (!g.attributes.normal) g.computeVertexNormals();
+        if (!needsUv) g.deleteAttribute('uv');
+        else if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+        return g;
+      });
+      const merged = new THREE.Mesh(mergeGeometries(geos), mat);
+      merged.name = meshes[0].name;
+      merged.userData = { ...meshes[0].userData };
+      merged.castShadow = meshes.some((m) => m.castShadow);
+      merged.receiveShadow = meshes.some((m) => m.receiveShadow);
+      for (const mesh of meshes) parent.remove(mesh);
+      parent.add(merged);
+    }
+  }
+}
+
+// Soft elliptical falloff for the fake headlight / tail-light spill on the floor.
+function lightPoolTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, '#fff');
+  grad.addColorStop(0.45, '#777');
+  grad.addColorStop(1, '#000');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+}
+
 function createMaterials(paintColor, finish, kit) {
   const m = {
     paint: createCarPaint(paintColor, finish),
+    // Smoked, slightly blue-tinted glass: dark enough to hide the cabin, glossy enough to
+    // carry crisp env reflections across the canopy.
     glass: new THREE.MeshPhysicalMaterial({
-      color: 0x0a0e14,
-      metalness: 0.1,
-      roughness: 0.04,
+      color: 0x0b1420,
+      metalness: 0.2,
+      roughness: 0.02,
       clearcoat: 1,
+      clearcoatRoughness: 0.02,
       transparent: true,
-      opacity: 0.82,
-      envMapIntensity: 1.6,
+      opacity: 0.88,
+      envMapIntensity: 2.2,
     }),
     trim: new THREE.MeshStandardMaterial({ color: 0x0b0c0f, roughness: 0.55, metalness: 0.3 }),
     carbon: new THREE.MeshStandardMaterial({ color: 0x15171c, roughness: 0.3, metalness: 0.6 }),
     chrome: new THREE.MeshStandardMaterial({ color: 0xdfe3e8, roughness: 0.08, metalness: 1 }),
-    rim: new THREE.MeshStandardMaterial({ color: 0x2a2d33, roughness: 0.22, metalness: 0.95 }),
+    // Machined, polished alloy rims.
+    rim: new THREE.MeshStandardMaterial({ color: 0xc3c8cf, roughness: 0.16, metalness: 1, envMapIntensity: 1.4 }),
     tire: new THREE.MeshStandardMaterial({ color: 0x111112, roughness: 0.92, metalness: 0 }),
     disc: new THREE.MeshStandardMaterial({ color: 0x6d7076, roughness: 0.4, metalness: 0.9 }),
     caliper: new THREE.MeshStandardMaterial({ color: kit === 'hyper' ? 0xffc21a : 0xe2231a, roughness: 0.35, metalness: 0.2 }),
@@ -363,8 +422,10 @@ export function createCar({ paintColor, finish, detail = 1, kit = 'coupe' }) {
   }
   if (kit === 'hyper') addHyperKit(m, add);
 
-  // Lights. Slim LED headlights, wraparound tail lights, real light sources and soft beams.
-  const lights = { head: [], tail: [], beams: [] };
+  // Lights. Slim LED headlights, wraparound tail lights, soft beams and light pools on the
+  // floor. No real light sources: every dynamic light adds a loop to every shader in the
+  // scene, so the pools fake the spill with one additive decal each.
+  const lights = { pools: [], beams: [] };
   for (const z of [-1, 1]) {
     const side = (theta) => (z > 0 ? theta : Math.PI - theta);
     const lens = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.05, 0.02), m.headLens);
@@ -374,12 +435,6 @@ export function createCar({ paintColor, finish, detail = 1, kit = 'coupe' }) {
     const drl = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.012, 0.02), m.headLens);
     drl.name = 'headlight';
     seat(drl, 2.24, side(0.3), 0.004);
-
-    const spot = new THREE.SpotLight(0xe6efff, 0, 14, 0.5, 0.65, 1.4);
-    spot.position.set(2.25, 0.58, z * 0.5);
-    spot.target.position.set(7, 0, z * 1.1);
-    car.add(spot, spot.target);
-    lights.head.push(spot);
 
     const beamGeo = new THREE.ConeGeometry(0.9, 4.2, 24, 1, true);
     beamGeo.translate(0, -2.1, 0);
@@ -393,10 +448,21 @@ export function createCar({ paintColor, finish, detail = 1, kit = 'coupe' }) {
     seat(tail, -2.295, side(0.6), 0.004);
   }
   add(new THREE.BoxGeometry(0.02, 0.028, 1.0), m.tailLens, -2.302, 0.74, 0, 'taillight');
-  const tailGlow = new THREE.PointLight(0xff2020, 0, 3.5, 2);
-  tailGlow.position.set(-2.6, 0.75, 0);
-  car.add(tailGlow);
-  lights.tail.push(tailGlow);
+  const poolTex = lightPoolTexture();
+  for (const [x, len, width, color] of [[5.2, 6.4, 3.6, 0xdfe9ff], [-3.0, 1.8, 2.2, 0xff2a2a]]) {
+    const mat = new THREE.MeshBasicMaterial({
+      color,
+      alphaMap: poolTex,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    const pool = add(new THREE.PlaneGeometry(len, width).rotateX(-Math.PI / 2), mat, x, 0.012, 0, 'beam');
+    pool.visible = false;
+    lights.pools.push(pool);
+  }
 
   // Wheels.
   const tireGeo = tireGeometry(res(40));
@@ -420,6 +486,7 @@ export function createCar({ paintColor, finish, detail = 1, kit = 'coupe' }) {
   car.traverse((o) => {
     if (o.isMesh && o.name !== 'beam') o.castShadow = true;
   });
+  mergeSiblings(car);
 
   let lightsOn = false;
   let lightLevel = 0;
@@ -449,8 +516,10 @@ export function createCar({ paintColor, finish, detail = 1, kit = 'coupe' }) {
       m.headLens.emissiveIntensity = lightLevel * 3.2;
       m.tailLens.emissiveIntensity = 0.15 + lightLevel * 3.5;
       m.beam.opacity = lightLevel * 0.07;
-      lights.head.forEach((l) => (l.intensity = lightLevel * 40));
-      lights.tail.forEach((l) => (l.intensity = lightLevel * 4));
+      lights.pools.forEach((p, i) => {
+        p.visible = lightLevel > 0.01;
+        p.material.opacity = lightLevel * (i === 0 ? 0.55 : 0.35);
+      });
       lights.beams.forEach((b) => (b.visible = lightLevel > 0.01));
 
       wheelSpeed *= Math.pow(0.35, dt);

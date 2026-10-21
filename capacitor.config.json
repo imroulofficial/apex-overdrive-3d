@@ -4,7 +4,7 @@
   "webDir": "dist",
   "loggingBehavior": "debug",
   "android": {
-    "backgroundColor": "#05070d",
+    "backgroundColor": "#000000",
     "allowMixedContent": false,
     "captureInput": true,
     "webContentsDebuggingEnabled": false
@@ -14,7 +14,7 @@
       "insetsHandling": "css",
       "initialViewportFitValueHint": "cover",
       "style": "DARK",
-      "hidden": false
+      "hidden": true
     },
     "FirebaseAuthentication": {
       "skipNativeAuth": false,

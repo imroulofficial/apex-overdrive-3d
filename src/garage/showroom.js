@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-// The garage showroom: mirror floor, turntable, LED-lit walls and animated spotlights.
+// The garage showroom: mirror floor, turntable, LED-lit walls and a lit stage. Lighting is one
+// shadow-casting directional key light (512² map) plus a hemisphere fill; the spotlight pools
+// and sweeping coloured rims are additive floor decals, not real lights.
 
 function canvasTexture(size, draw) {
   const canvas = document.createElement('canvas');
@@ -140,41 +143,68 @@ export function createShowroom(scene) {
   ledMat.color.multiplyScalar(1.6);
   const accentMat = new THREE.MeshBasicMaterial({ color: 0xff2a3a });
   accentMat.color.multiplyScalar(1.8);
+  // LED strips: one merged mesh per colour.
   const strips = 18;
+  const stripGeos = [[], []];
   for (let i = 0; i < strips; i++) {
     const a = (i / strips) * Math.PI * 2;
-    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 5.5, 0.08), i % 3 === 0 ? accentMat : ledMat);
-    strip.position.set(Math.cos(a) * 17.8, 3.4, Math.sin(a) * 17.8);
-    root.add(strip);
+    stripGeos[i % 3 === 0 ? 1 : 0].push(new THREE.BoxGeometry(0.08, 5.5, 0.08).translate(Math.cos(a) * 17.8, 3.4, Math.sin(a) * 17.8));
   }
+  root.add(new THREE.Mesh(mergeGeometries(stripGeos[0]), ledMat), new THREE.Mesh(mergeGeometries(stripGeos[1]), accentMat));
   const halo = new THREE.Mesh(new THREE.TorusGeometry(5.5, 0.05, 8, 120), ledMat);
   halo.rotation.x = Math.PI / 2;
   halo.position.y = 6.5;
   root.add(halo);
 
-  // Lighting: soft fill, one shadow-casting key spot and two coloured rim spots that sweep.
+  // Lighting: soft hemisphere fill and a single shadow-casting directional key light.
   const hemi = new THREE.HemisphereLight(0x9fb4ff, 0x120a0a, 0.35);
   root.add(hemi);
 
-  const key = new THREE.SpotLight(0xffffff, 0, 30, 0.42, 0.55, 1.2);
+  const key = new THREE.DirectionalLight(0xffffff, 0);
   key.position.set(1.5, 9, 3);
   key.target.position.set(0, 0, 0);
   key.castShadow = true;
-  key.shadow.mapSize.set(1024, 1024);
-  key.shadow.bias = -0.0004;
+  key.shadow.mapSize.set(512, 512);
+  key.shadow.bias = -0.0005;
   key.shadow.normalBias = 0.02;
+  key.shadow.camera.left = -3.4;
+  key.shadow.camera.right = 3.4;
+  key.shadow.camera.top = 3.4;
+  key.shadow.camera.bottom = -3.4;
   key.shadow.camera.near = 4;
   key.shadow.camera.far = 16;
   root.add(key, key.target);
 
-  const rims = [
-    { light: new THREE.SpotLight(0xff3b4a, 0, 26, 0.32, 0.7, 1.3), phase: 0 },
-    { light: new THREE.SpotLight(0x4aa8ff, 0, 26, 0.32, 0.7, 1.3), phase: Math.PI },
-  ];
-  rims.forEach(({ light }) => {
-    light.target.position.set(0, 0.5, 0);
-    root.add(light, light.target);
+  // Stage pools: the white key pool under the car and two coloured pools that orbit it.
+  const poolTex = canvasTexture(128, (g, s) => {
+    const grad = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+    grad.addColorStop(0, '#fff');
+    grad.addColorStop(0.5, '#6a6a6a');
+    grad.addColorStop(1, '#000');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, s, s);
   });
+  const pool = (color, size) => {
+    const mat = new THREE.MeshBasicMaterial({
+      color,
+      alphaMap: poolTex,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size).rotateX(-Math.PI / 2), mat);
+    mesh.position.y = 0.004;
+    mesh.renderOrder = 2;
+    root.add(mesh);
+    return mesh;
+  };
+  const keyPool = pool(0xffffff, 10);
+  const rims = [
+    { mesh: pool(0xff3b4a, 7), phase: 0 },
+    { mesh: pool(0x4aa8ff, 7), phase: Math.PI },
+  ];
 
   // Visible light shafts for the key light.
   const beamMat = new THREE.MeshBasicMaterial({
@@ -219,13 +249,15 @@ export function createShowroom(scene) {
       powerUp = Math.min(1, powerUp + dt * 0.6);
       const step = (start) => THREE.MathUtils.smoothstep(powerUp, start, start + 0.25);
 
-      key.intensity = 260 * step(0.0) * (0.96 + 0.04 * Math.sin(time * 1.7));
+      key.intensity = 3.2 * step(0.0) * (0.96 + 0.04 * Math.sin(time * 1.7));
+      keyPool.material.opacity = 0.16 * step(0.0);
       beamMat.opacity = 0.05 * step(0.0);
       lamp.material.emissiveIntensity = 2 * step(0.0);
-      rims.forEach(({ light, phase }, i) => {
+      rims.forEach(({ mesh, phase }, i) => {
         const a = time * 0.25 + phase;
-        light.position.set(Math.cos(a) * 7, 5.5, Math.sin(a) * 7);
-        light.intensity = 180 * step(0.35 + i * 0.15);
+        mesh.position.x = Math.cos(a) * 3.6;
+        mesh.position.z = Math.sin(a) * 3.6;
+        mesh.material.opacity = 0.22 * step(0.35 + i * 0.15);
       });
       hemi.intensity = 0.35 * step(0.2);
       ringMat.color.setRGB(1, 0.16, 0.23).multiplyScalar(2.2 * step(0.5) * (0.85 + 0.15 * Math.sin(time * 2.2)));

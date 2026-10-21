@@ -4,12 +4,18 @@ import { createCar } from './carModel.js';
 import { loadCar } from '../assets/modelLoader.js';
 import { createCameraRig, SHOTS } from './cameraRig.js';
 import { PaintTransition } from './carPaint.js';
+import { isNative } from '../core/platform.js';
 
+// Mobile budget: the pixel ratio never exceeds 1.5 (a 3x phone would otherwise shade 4x the
+// pixels for no visible gain), and the garage's planar mirror (a second full scene render
+// every frame) is the only extra pass, kept for High.
 export const QUALITY = {
   low: { maxPixelRatio: 1, shadows: false, reflections: false, reflectionScale: 0 },
-  medium: { maxPixelRatio: 1.5, shadows: true, reflections: true, reflectionScale: 0.35 },
-  high: { maxPixelRatio: 2, shadows: true, reflections: true, reflectionScale: 0.5 },
+  medium: { maxPixelRatio: 1.25, shadows: true, reflections: false, reflectionScale: 0 },
+  high: { maxPixelRatio: 1.5, shadows: true, reflections: true, reflectionScale: 0.35 },
 };
+// Auto starts at Medium on phones and tablets, High on desktop; it steps down if FPS sags.
+const AUTO_START = isNative || matchMedia('(pointer: coarse)').matches ? 'medium' : 'high';
 const AUTO_ORDER = ['high', 'medium', 'low'];
 const TAP_SLOP_PX = 8;
 
@@ -25,6 +31,7 @@ export class Garage {
       powerPreference: 'high-performance',
       stencil: false,
     });
+    this.renderer.setClearColor(0x000000, 1);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
@@ -51,7 +58,7 @@ export class Garage {
     this.raycaster = new THREE.Raycaster();
 
     this.qualityMode = quality;
-    this.qualityLevel = quality === 'auto' ? 'high' : quality;
+    this.qualityLevel = quality === 'auto' ? AUTO_START : quality;
     this.fpsSamples = [];
     this.fpsTimer = 0;
     this.autoSettle = quality === 'auto' ? 0 : Infinity;
@@ -102,7 +109,7 @@ export class Garage {
   setQuality(mode) {
     this.qualityMode = mode;
     this.autoSettle = mode === 'auto' ? 0 : Infinity;
-    this.qualityLevel = mode === 'auto' ? 'high' : mode;
+    this.qualityLevel = mode === 'auto' ? AUTO_START : mode;
     this.applyQuality();
   }
 

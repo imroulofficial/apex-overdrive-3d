@@ -192,3 +192,104 @@ export class SpeedLines {
     this.geo.attributes.color.needsUpdate = true;
   }
 }
+
+// Tyre skid marks: dark rubber strips laid on the road behind sliding or braking wheels.
+// One ring buffer of quads in a single mesh (one draw call for every car); each segment
+// stores its birth time and fades out in the shader, so old marks never need CPU work.
+export class SkidMarks {
+  constructor(scene, { segments = 900, width = 0.26, life = 14 } = {}) {
+    this.segments = segments;
+    this.width = width;
+    this.cursor = 0;
+    this.pos = new Float32Array(segments * 4 * 3);
+    this.born = new Float32Array(segments * 4).fill(-1e6);
+    this.alpha = new Float32Array(segments * 4);
+    const index = new Uint32Array(segments * 6);
+    for (let i = 0; i < segments; i++) {
+      const a = i * 4;
+      index.set([a, a + 2, a + 1, a + 1, a + 2, a + 3], i * 6);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('born', new THREE.BufferAttribute(this.born, 1).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('alpha', new THREE.BufferAttribute(this.alpha, 1).setUsage(THREE.DynamicDrawUsage));
+    geo.setIndex(new THREE.BufferAttribute(index, 1));
+    this.geo = geo;
+    this.material = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      fog: true,
+      polygonOffset: true,
+      polygonOffsetFactor: -3,
+      polygonOffsetUnits: -3,
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { time: { value: 0 }, life: { value: life } }]),
+      vertexShader: /* glsl */ `
+        #include <fog_pars_vertex>
+        attribute float born;
+        attribute float alpha;
+        uniform float time, life;
+        varying float vAlpha;
+        void main() {
+          float age = time - born;
+          vAlpha = alpha * (1.0 - smoothstep(life * 0.6, life, age));
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * mvPosition;
+          #include <fog_vertex>
+        }`,
+      fragmentShader: /* glsl */ `
+        varying float vAlpha;
+        #include <fog_pars_fragment>
+        void main() {
+          if (vAlpha < 0.005) discard;
+          gl_FragColor = vec4(0.018, 0.018, 0.02, vAlpha);
+          #include <fog_fragment>
+        }`,
+    });
+    this.mesh = new THREE.Mesh(geo, this.material);
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 2;
+    this.mesh.name = 'skid-marks';
+    scene.add(this.mesh);
+    this.time = 0;
+    this.dirty = false;
+  }
+
+  // Extends the mark of one wheel. `trail` is per-wheel state ({ x, y, z, rx, rz } or null).
+  // Returns the new trail state; pass null to lift the wheel (breaks the strip).
+  add(trail, x, y, z, rx, rz, strength) {
+    const hw = this.width / 2;
+    if (trail && Math.hypot(x - trail.x, z - trail.z) < 0.5) return trail;
+    if (trail && Math.hypot(x - trail.x, z - trail.z) < 4) {
+      const i = this.cursor;
+      this.cursor = (this.cursor + 1) % this.segments;
+      const o = i * 12;
+      const p = this.pos;
+      p[o] = trail.x - trail.rx * hw; p[o + 1] = trail.y; p[o + 2] = trail.z - trail.rz * hw;
+      p[o + 3] = trail.x + trail.rx * hw; p[o + 4] = trail.y; p[o + 5] = trail.z + trail.rz * hw;
+      p[o + 6] = x - rx * hw; p[o + 7] = y; p[o + 8] = z - rz * hw;
+      p[o + 9] = x + rx * hw; p[o + 10] = y; p[o + 11] = z + rz * hw;
+      for (let k = 0; k < 4; k++) {
+        this.born[i * 4 + k] = this.time;
+        this.alpha[i * 4 + k] = (k < 2 ? trail.a : strength) * 0.75;
+      }
+      this.dirty = true;
+    }
+    return { x, y, z, rx, rz, a: strength };
+  }
+
+  clear() {
+    this.born.fill(-1e6);
+    this.geo.attributes.born.needsUpdate = true;
+  }
+
+  update(dt) {
+    this.time += dt;
+    this.material.uniforms.time.value = this.time;
+    if (!this.dirty) return;
+    this.dirty = false;
+    const a = this.geo.attributes;
+    a.position.needsUpdate = true;
+    a.born.needsUpdate = true;
+    a.alpha.needsUpdate = true;
+  }
+}

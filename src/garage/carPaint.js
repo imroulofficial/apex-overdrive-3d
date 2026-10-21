@@ -29,7 +29,7 @@ export function createCarPaint(color = '#c8102e', finish = 'metallic') {
   const material = new THREE.MeshPhysicalMaterial({
     color,
     normalMap: createFlakeNormalMap(),
-    envMapIntensity: 1.25,
+    envMapIntensity: 1.5,
     iridescenceIOR: 1.6,
     iridescenceThicknessRange: [180, 620],
   });
