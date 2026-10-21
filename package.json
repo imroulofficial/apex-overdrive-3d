@@ -1,7 +1,7 @@
 {
   "name": "apex-overdrive-3d",
   "private": true,
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Apex Overdrive: 3D Racing - offline-first 3D arcade racer by Red Pen Studio",
   "type": "module",
   "scripts": {

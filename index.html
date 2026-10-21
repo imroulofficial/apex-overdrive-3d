@@ -84,7 +84,13 @@
         </button>
       </nav>
 
-      <button id="btn-race" class="race-btn"><span>RACE START</span></button>
+      <div class="race-launch">
+        <button id="btn-stage" class="stage-chip glass angled" aria-label="Choose stage">
+          <span class="stage-chip-text"><small id="stage-kicker">STAGE EC-01 · CLASSIC EXPEDITION</small><b id="stage-name">Coastal Loop</b></span>
+          <span class="stage-chip-stars" id="stage-stars"></span>
+        </button>
+        <button id="btn-race" class="race-btn"><span>RACE START</span></button>
+      </div>
     </div>
 
     <div id="race-hud" class="race-hud" hidden>
@@ -92,7 +98,7 @@
         <div class="rh-standing glass angled">
           <div class="rh-pos"><b id="rh-pos">6</b><sup id="rh-pos-suf">TH</sup><span>/<i id="rh-total">6</i></span></div>
           <div class="rh-meta">
-            <span>LAP <b id="rh-lap">1</b>/<i id="rh-laps">2</i></span>
+            <span id="rh-lap">LAP 1/2</span>
             <span id="rh-time">0:00.00</span>
           </div>
         </div>
@@ -103,6 +109,14 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14" /></svg>
         </button>
       </div>
+      <div id="rh-mode" class="rh-mode glass angled" hidden aria-live="off">
+        <small id="rh-mode-label">TIME LEFT</small>
+        <b id="rh-mode-value">0:00.00</b>
+        <span class="rh-mode-meter" id="rh-mode-meter" hidden><i id="rh-mode-fill"></i></span>
+        <span id="rh-mode-sub"></span>
+        <em id="rh-mode-tag" hidden></em>
+      </div>
+      <div id="rh-draft" class="rh-draft" hidden>SLIPSTREAM</div>
 
       <div id="rh-callouts" class="rh-callouts" aria-live="polite"></div>
       <div id="rh-drift" class="rh-drift-score" hidden>
@@ -165,6 +179,7 @@
       <small id="ri-biome">BIOME 1</small>
       <strong id="ri-name">EMERALD COAST</strong>
       <span id="ri-laps">2 LAPS · 6 RACERS</span>
+      <ol id="ri-objectives" class="ri-objectives"></ol>
     </div>
 
     <dialog id="pause" class="dialog glass angled" aria-labelledby="pause-title">
@@ -188,14 +203,10 @@
           <svg viewBox="0 0 24 24"><path d="m12 2.5 2.9 6 6.6.8-4.9 4.5 1.3 6.5L12 17l-5.9 3.3 1.3-6.5-4.9-4.5 6.6-.8z" /></svg>
           <svg viewBox="0 0 24 24"><path d="m12 2.5 2.9 6 6.6.8-4.9 4.5 1.3 6.5L12 17l-5.9 3.3 1.3-6.5-4.9-4.5 6.6-.8z" /></svg>
         </div>
+        <ol class="res-objectives" id="res-objectives"></ol>
         <div class="res-grid">
-          <div class="res-place"><b id="res-pos">1</b><sup id="res-pos-suf">ST</sup><span>of 6</span></div>
-          <ul class="res-stats">
-            <li><span>Race time</span><b id="res-time">0:00.00</b></li>
-            <li><span>Best lap</span><b id="res-lap">0:00.00</b></li>
-            <li><span>Drift score</span><b id="res-drift">0</b></li>
-            <li><span>Props smashed</span><b id="res-smash">0</b></li>
-          </ul>
+          <div class="res-place"><b id="res-pos">1</b><sup id="res-pos-suf">ST</sup><span id="res-pos-cap">of 6</span></div>
+          <ul class="res-stats" id="res-stats"></ul>
           <ul class="res-coins">
             <li><span>Finish reward</span><b id="res-c-pos">0</b></li>
             <li><span>Drift, air &amp; smash bonus</span><b id="res-c-skill">0</b></li>
@@ -204,6 +215,7 @@
           </ul>
         </div>
         <p class="res-best" id="res-best" hidden>NEW BEST TIME</p>
+        <p class="res-practice" id="res-practice" hidden>PRACTICE RUN · STAGE LOCKED · NOTHING SAVED</p>
         <div class="res-actions">
           <button class="pill-btn gold" id="res-double" hidden>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg>
@@ -287,6 +299,21 @@
           </div>
         </div>
         <p class="about" id="about"></p>
+      </div>
+    </dialog>
+
+    <dialog id="stage-picker" class="dialog stage-picker glass angled" aria-labelledby="stage-picker-title">
+      <header class="dialog-head">
+        <h2 id="stage-picker-title">Stages</h2>
+        <span class="sandbox-badge" id="stage-dev" hidden>DEV · ALL UNLOCKED</span>
+        <button class="icon-btn close" data-close aria-label="Close stages">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+        </button>
+      </header>
+      <div class="dialog-body">
+        <div class="segmented stage-modes" id="stage-modes" role="radiogroup" aria-label="Game mode"></div>
+        <div id="stage-list" class="stage-list"></div>
+        <div class="stage-detail" id="stage-detail"></div>
       </div>
     </dialog>
 

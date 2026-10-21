@@ -1,6 +1,6 @@
 // Career rules over a v2 save (core/saveSchema.js): which stages are open, which stars a
 // race earned, what it pays, and milestone chests. Pure functions; callers save afterwards.
-import { STAGES, CHAPTERS, MILESTONES, GAME_MODES, chapterById } from '../data/career.js';
+import { STAGES, CHAPTERS, MILESTONES, GAME_MODES, chapterById, describeObjective, fmtTime } from '../data/career.js';
 import { STAR_BONUS, finishCoins, skillBonus } from '../data/economy.js';
 
 export const starCount = (mask) => (mask & 1) + ((mask >> 1) & 1) + ((mask >> 2) & 1);
@@ -48,6 +48,46 @@ export function meetsObjective(o, r) {
     default:
       return false;
   }
+}
+
+// What a run achieved against one objective, for the results screen:
+// { label: 'Drift 350 m', value: '412 m', met }.
+export function objectiveProgress(o, r) {
+  const met = r.finished !== false && meetsObjective(o, r);
+  const num = (n) => Math.round(n ?? 0).toLocaleString('en-US');
+  let value;
+  switch (o.type) {
+    case 'position': {
+      const p = r.position;
+      const suf = ['th', 'st', 'nd', 'rd'][(p % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][p % 100] || 'th';
+      value = r.total > 1 && Number.isFinite(p) ? `${p}${suf}` : '—';
+      break;
+    }
+    case 'time':
+      value = r.finished === false || !Number.isFinite(r.time) ? 'DNF' : fmtTime(r.time);
+      break;
+    case 'lap':
+      value = Number.isFinite(r.bestLap) ? fmtTime(r.bestLap) : '—';
+      break;
+    case 'driftDistance':
+      value = `${num(r.driftDistance)} m`;
+      break;
+    case 'driftScore':
+      value = num(r.driftScore);
+      break;
+    case 'smash':
+      value = `${num(r.smashes)}`;
+      break;
+    case 'airTime':
+      value = `${(r.airTime ?? 0).toFixed(1)} s`;
+      break;
+    case 'pulseNitro':
+      value = `${num(r.pulses)}`;
+      break;
+    default:
+      value = '';
+  }
+  return { label: describeObjective(o), value, met };
 }
 
 // Stars earned by one run, as a bitmask (bit 0 = star 1). A run that did not finish earns none.

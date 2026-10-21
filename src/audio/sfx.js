@@ -306,6 +306,44 @@ export const race = {
     for (const m of [81, 85, 88]) tone(mix, mix.sfx, { t: t + 0.45, type: 'sawtooth', freq: midiHz(m), peak: 0.06, hold: 0.4, decay: 0.8 });
     burst(mix, mix.space, { t: t + 0.45, buffer: mix.pink, type: 'highpass', freq: 4000, attack: 0.3, peak: 0.2, decay: 1.2 });
   },
+  // Time Trial pylon: a glassy two-note ping over a short swish (time back on the clock).
+  pylon(mix, at) {
+    const t = now(mix, at);
+    tone(mix, mix.sfx, { t, type: 'triangle', freq: midiHz(88), peak: 0.16, decay: 0.12 });
+    tone(mix, mix.sfx, { t: t + 0.06, type: 'triangle', freq: midiHz(95), peak: 0.16, decay: 0.22 });
+    tone(mix, mix.space, { t: t + 0.06, type: 'sine', freq: midiHz(107), peak: 0.05, decay: 0.3 });
+    burst(mix, mix.sfx, { t, type: 'bandpass', freq: 3000, to: 7000, q: 1.5, peak: 0.25, decay: 0.12 });
+  },
+  // Checkpoint gate / target reached: a rising major arpeggio.
+  checkpoint(mix, at) {
+    const t = now(mix, at);
+    [72, 76, 79, 84].forEach((m, i) => {
+      tone(mix, mix.sfx, { t: t + i * 0.055, type: 'square', freq: midiHz(m), peak: 0.07, decay: 0.16 });
+      tone(mix, mix.space, { t: t + i * 0.055, type: 'triangle', freq: midiHz(m + 12), peak: 0.08, decay: 0.25 });
+    });
+  },
+  // Countdown tick for the last seconds of a clock (Time Trial, Elimination).
+  tick(mix, at) {
+    const t = now(mix, at);
+    tone(mix, mix.sfx, { t, type: 'square', freq: midiHz(81), peak: 0.1, decay: 0.07 });
+    burst(mix, mix.sfx, { t, type: 'highpass', freq: 6000, peak: 0.12, decay: 0.02 });
+  },
+  // Elimination: a low blast with crackling debris, then a falling "exit" siren.
+  eliminated(mix, big = false, at) {
+    const t = now(mix, at);
+    const ac = mix.ac;
+    const drive = ac.createWaveShaper();
+    drive.curve = saturation(3);
+    drive.connect(mix.sfx);
+    tone(mix, drive, { t, type: 'sine', freq: 90, to: 28, glide: 0.6, peak: big ? 1 : 0.85, decay: 0.7 });
+    burst(mix, mix.sfx, { t, type: 'lowpass', freq: 1800, to: 160, q: 0.7, peak: big ? 1 : 0.8, decay: 0.9, glide: 0.8 });
+    burst(mix, mix.space, { t, buffer: mix.pink, type: 'lowpass', freq: 900, to: 200, peak: 0.5, decay: 1.4 });
+    for (let i = 0; i < 9; i++) {
+      burst(mix, mix.sfx, { t: t + 0.08 + Math.random() * 0.6, type: 'bandpass', freq: 1200 + Math.random() * 3000, q: 4, peak: 0.35, decay: 0.03 });
+    }
+    tone(mix, mix.sfx, { t: t + 0.25, type: 'sawtooth', freq: midiHz(76), to: midiHz(52), glide: 0.9, peak: 0.06, hold: 0.2, decay: 0.7 });
+    tone(mix, mix.space, { t: t + 0.25, type: 'square', freq: midiHz(64), to: midiHz(40), glide: 0.9, peak: 0.04, hold: 0.2, decay: 0.7 });
+  },
   coin(mix, i = 0, at) {
     const t = now(mix, at);
     tone(mix, mix.ui, { t, type: 'triangle', freq: 1500 + i * 40, to: 2400, glide: 0.05, peak: 0.12, decay: 0.08 });
