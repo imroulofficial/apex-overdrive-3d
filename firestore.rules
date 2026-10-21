@@ -1,24 +1,89 @@
 rules_version = '2';
 
-// Apex Overdrive cloud save. One document per anonymous player at players/{uid}:
-//   v          schema version (int)
-//   save       the progress JSON written by src/core/cloud.js (string, capped at 16 KB)
-//   updatedAt  when that progress last changed on the device, ms since epoch (int)
-//   appVersion game version that wrote it (string)
+// Apex Overdrive cloud save. One document per anonymous player at players/{uid}.
+//
+// Schema v2 (Phase 7+, written by core/saveSchema.js toCloudDoc):
+//   v            2
+//   updatedAt    when that progress last changed on the device, ms since epoch (int)
+//   appVersion   game version that wrote it (string)
+//   economy      { coins, noAdsPurchased, supercarBundlePurchased, purchases[], granted[], crateClaimedAt }
+//   progression  { unlockedStage, stageStars[] (one 0-7 star bitmask per stage), best{}, milestones[] }
+//   garage       { car, ownedPaints[], cars{ carId: { unlockedBy, upgrades{}, paint, rim, rims[] } } }
+//
+// Schema v1 (Phases 4-6): { v: 1, save: JSON string <= 16 KB, updatedAt, appVersion }.
+// Old apps may still create v1 documents, but a document can never go back to a lower
+// schema, so an old install cannot overwrite a migrated v2 save.
+//
 // Players can only read and write their own document; everything else is closed.
 service cloud.firestore {
   match /databases/{database}/documents {
+    function common(d) {
+      return d.v is int
+        && d.updatedAt is int
+        && d.appVersion is string
+        && d.appVersion.size() <= 32;
+    }
+
+    function validV1(d) {
+      return d.keys().hasOnly(['v', 'save', 'updatedAt', 'appVersion'])
+        && d.v == 1
+        && d.save is string
+        && d.save.size() <= 16384;
+    }
+
+    function idList(l, max) {
+      return l is list && l.size() <= max;
+    }
+
+    function validEconomy(e) {
+      return e is map
+        && e.keys().hasOnly(['coins', 'noAdsPurchased', 'supercarBundlePurchased', 'purchases', 'granted', 'crateClaimedAt'])
+        && e.coins is int && e.coins >= 0
+        && e.noAdsPurchased is bool
+        && e.supercarBundlePurchased is bool
+        && idList(e.purchases, 8)
+        && idList(e.granted, 8)
+        && e.crateClaimedAt is int;
+    }
+
+    function validProgression(p) {
+      return p is map
+        && p.keys().hasOnly(['unlockedStage', 'stageStars', 'best', 'milestones'])
+        && p.unlockedStage is int && p.unlockedStage >= 1 && p.unlockedStage <= 120
+        && idList(p.stageStars, 120)
+        && p.best is map && p.best.size() <= 120
+        && idList(p.milestones, 32);
+    }
+
+    function validGarage(g) {
+      return g is map
+        && g.keys().hasOnly(['car', 'ownedPaints', 'cars'])
+        && g.car is string && g.car.size() <= 32
+        && idList(g.ownedPaints, 64)
+        && g.cars is map && g.cars.size() <= 24;
+    }
+
+    function validV2(d) {
+      return d.keys().hasOnly(['v', 'updatedAt', 'appVersion', 'economy', 'progression', 'garage'])
+        && d.v == 2
+        && validEconomy(d.economy)
+        && validProgression(d.progression)
+        && validGarage(d.garage);
+    }
+
+    function valid(d) {
+      return common(d) && (validV1(d) || validV2(d));
+    }
+
     match /players/{uid} {
       allow get: if request.auth != null && request.auth.uid == uid;
-      allow create, update: if request.auth != null
+      allow create: if request.auth != null
         && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['v', 'save', 'updatedAt', 'appVersion'])
-        && request.resource.data.v is int
-        && request.resource.data.save is string
-        && request.resource.data.save.size() <= 16384
-        && request.resource.data.updatedAt is int
-        && request.resource.data.appVersion is string
-        && request.resource.data.appVersion.size() <= 32;
+        && valid(request.resource.data);
+      allow update: if request.auth != null
+        && request.auth.uid == uid
+        && valid(request.resource.data)
+        && request.resource.data.v >= resource.data.v;
       allow list, delete: if false;
     }
 

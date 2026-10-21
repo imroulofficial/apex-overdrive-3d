@@ -1,0 +1,14 @@
+{
+  "name": "apex-overdrive-rules-test",
+  "private": true,
+  "description": "Runs firestore.rules against real save documents in the Firestore emulator (needs Java 11+).",
+  "type": "module",
+  "scripts": {
+    "test": "cd ../.. && tools/rules-test/node_modules/.bin/firebase emulators:exec --only firestore --project demo-apex \"node tools/rules-test/rules.test.mjs\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^11.10.0",
+    "firebase-tools": "^14.0.0"
+  }
+}

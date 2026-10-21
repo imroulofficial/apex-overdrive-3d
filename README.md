@@ -9,7 +9,20 @@ Offline-first 3D arcade racer for Android by **Red Pen Studio**.
 | Stack | Three.js (WebGL2) + Vite, wrapped with Capacitor 8 |
 | Audience | 13+, no sign-up, no analytics; gameplay is offline, cloud save, ads and Play Billing use the network when available |
 
-## Phase 6: audio engine and blueprint compliance (this release)
+## Phase 7: career data model and save schema v2 (this release)
+
+The data that the stage map, game modes and the full car roster will be built on. Gameplay is unchanged for now: every race is career stage 1 until the stage map arrives, and the garage still shows the two cars that have art.
+
+- **Career** (`src/data/career.js`): 3 chapters (Emerald Coast, Alpine Summit, Neon City) x 20 stages = 60 stages. Each stage has `stageId` (`ec-01`..`nc-20`), `chapterId`, `trackSegment` (a circuit or sprint stretch of the chapter's track), `gameMode` (Classic, TimeTrial, DriftTouge, Elimination, BossDuel), `weatherPreset` (GoldenHour, Fog, Rain, Midday, Dusk), `rivalSet` and `coinReward`, plus three objectives: star 1 finish (Top 3, beat the par time, reach the score), star 2 skill (drift distance, props smashed, airtime, Pulse Nitros), star 3 mastery (target lap / run time, gold score, or the win). Each chapter ends in a Boss Duel against its regional boss. Chapters 2 and 3 also need 30 and 75 career stars. Eight milestone chests pay out at 10 to 180 stars. Alpine and Neon targets are provisional until those tracks exist.
+- **Stars** are earned independently and kept forever, stored as a bitmask per stage (bit 0 = star 1). Star 1 unlocks the next stage. Stages are stored by position, so new stages may only be appended.
+- **Cars** (`src/data/cars.js`): 12 cars, 3 per tier (D Street Tuners, C Offroad & Muscle, B Grand Tourers, A Hyper & Supercars), with four stats matching the garage bars (top speed, acceleration, handling, nitro). Unlocks: starter (RP-1 Vanta), coins (3,000 to 75,000), career stars plus coins, or a Play product (Supercar Bundle). Only cars with `released: true` appear in the garage.
+- **Per-car progression** (`src/core/inventory.js`): every car keeps its own Top Speed / Acceleration / Handling / Nitro levels (0 stock, 1 to 5 bought for 250 / 500 / 1,000 / 2,000 / 4,000 coins), equipped paint and rim, and owned rims (6 designs, 500 to 1,500 coins). Paints bought with coins are shared by every car.
+- **Economy** (`src/data/economy.js`): stage finish reward 500 to 1,500 coins (rising across the career, bosses pay 1,500, lower places get a share but never less than 500), +250 coins per star the first time it is earned, and a drift + airtime + smash bonus capped at 300 coins per race. The rewarded 2x pays finish + skill coins again, not the star bonus. Coin paints now cost 500 to 1,500.
+- **Save schema v2** (`src/core/saveSchema.js`): local key `apex-overdrive.save.v2`. On first launch a v1 save is migrated: coins, Play purchases and coin bonuses paid, settings and ad pacing carry over unchanged; the old global upgrades and paint are copied onto every car the player owned; an Emerald Coast top-3 finish becomes stage 1's first star. The v1 key is left in place as a fallback copy.
+- **Cloud document v2** (`players/{uid}`): `{ v: 2, updatedAt, appVersion, economy { coins, noAdsPurchased, supercarBundlePurchased, purchases, granted, crateClaimedAt }, progression { unlockedStage, stageStars, best, milestones }, garage { car, ownedPaints, cars } }`. A v1 document is migrated when read and replaced on the next upload. `firestore.rules` accepts both shapes but never lets a document drop to a lower version, so an old install cannot overwrite a migrated save. A newer-schema document is never overwritten by this version. **Deploy the updated rules before releasing 0.7.0** (see Firebase console setup).
+- **Tests**: `npm test` (Node's built-in runner, also run in CI) covers the stage and car data, economy, star and reward rules, per-car inventory, v1 to v2 migration and the cloud document. `tools/rules-test` runs `firestore.rules` in the Firestore emulator against real v1 and v2 documents (`cd tools/rules-test && npm install && npm test`, needs Java).
+
+## Phase 6: audio engine and blueprint compliance
 
 All audio is still generated on the device (Web Audio synthesis plus loops rendered at startup); the game ships no audio files and downloads nothing. Code in `src/audio/`, game-facing API in `src/core/audio.js`.
 
@@ -44,7 +57,7 @@ Fixes from the first device test (22 FPS, white bars, cartoon look, stock icon).
 ## Phase 4: zero-cost Firebase cloud save
 
 - **Anonymous player profiles** (`@capacitor-firebase/authentication`): the first time the game is online it signs in anonymously, so every install gets a Firebase player ID with no sign-up. The native Firebase SDK keeps the session across launches.
-- **Cloud Firestore save** (`@capacitor-firebase/firestore`, `src/core/cloud.js`): one document per player at `players/{uid}` holding `{ v, save, updatedAt, appVersion }`, where `save` is the progress JSON (coins, paints, upgrades, selected car, race records, Play products owned and bonuses paid, crate timer). Settings, sandbox purchases and ad pacing stay on the device.
+- **Cloud Firestore save** (`@capacitor-firebase/firestore`, `src/core/cloud.js`): one document per player at `players/{uid}` holding (in v1; see Phase 7 for v2) `{ v, save, updatedAt, appVersion }`, where `save` is the progress JSON (coins, paints, upgrades, selected car, race records, Play products owned and bonuses paid, crate timer). Settings, sandbox purchases and ad pacing stay on the device.
 - **Local first**: every change is saved to the device instantly as before (`src/core/store.js`); the cloud only mirrors it. `savedAt` moves only when progress changes, so launching or changing settings never makes a device look newer than its cloud copy.
 - **Batched sync at milestones only**:
   - **Launch**: one read of the player document; if its `updatedAt` is newer than the device's save it replaces local progress (coin bonuses already paid and the crate timer are merged so neither can be gamed), otherwise the device's save is uploaded if it differs.
@@ -111,6 +124,7 @@ Fixes from the first device test (22 FPS, white bars, cartoon look, stock icon).
 npm install
 npm run dev            # http://localhost:5173 (desktop browser preview)
 npm run build          # production web bundle in dist/
+npm test               # unit tests (career, economy, inventory, save migration)
 npm run cap:sync       # build + copy into the Android project
 npm run android:open   # open in Android Studio
 ```
@@ -123,14 +137,17 @@ Requirements: Node 22, JDK 21, Android SDK platform 36.
 src/
   main.js              boot, lifecycle, Android back button, ad/race flow
   config.js            studio constants, legal URLs, ad units, Play products
-  core/                save data (localStorage), Firebase cloud save, audio API, Capacitor helpers
+  core/                save data (localStorage) and save schema v2 + migration, career and
+                       per-car inventory rules, Firebase cloud save, audio API, Capacitor helpers
   audio/               synthesis: mixer, engine + gearbox, one-shot SFX, race soundtrack
   assets/              GLTF vehicle spawner with procedural fallback
   monetization/        AdMob service (+ browser simulator), Play Billing and entitlements
-  data/catalog.js      paints, finishes, upgrades, prices
-  data/cars.js         garage cars: stats, procedural kit, .glb path, unlock product
+  data/catalog.js      paints, finishes, rims, upgrades, prices
+  data/cars.js         12-car roster: tier, stats, procedural kit, .glb path, unlock rule
+  data/career.js       chapters, track segments, 60 stages, star objectives, milestones
+  data/economy.js      coin rewards and costs
   data/tracks.js       Emerald Coast definition (waypoints, ramps, props, coastline)
-  data/rivals.js       AI rivals, race rewards and star rating
+  data/rivals.js       AI rivals per chapter, bosses and rival sets
   garage/              renderer + quality, showroom, procedural car, paint shader, camera rig
   render/              batching material (vertex PBR) and procedural surface textures
   race/                track spline + meshes, scenery, props, vehicle physics, AI, race cars,
@@ -141,6 +158,8 @@ android/               Capacitor Android project (signing reads env vars / keyst
 docs/                  GitHub Pages: privacy-policy.html, terms.html
 tools/icon/            launcher icon + splash renderer (dev only, not in the game bundle)
 tools/audio/           offline audio preview renderer (dev only, not in the game bundle)
+tools/rules-test/      Firestore emulator check of firestore.rules (dev only)
+test/                  unit tests (npm test)
 .github/workflows/     build-aab.yml
 ```
 

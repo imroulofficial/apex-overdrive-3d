@@ -7,10 +7,13 @@ import { Race } from './race/Race.js';
 import { createRaceInput } from './race/input.js';
 import { createStore } from './ui/store.js';
 import { createCloudBadge } from './ui/cloudBadge.js';
-import { PAINTS, UPGRADES, STAT_PER_LEVEL } from './data/catalog.js';
+import { PAINTS } from './data/catalog.js';
 import { carById } from './data/cars.js';
 import { EMERALD_COAST } from './data/tracks.js';
-import { state, save, addCoins } from './core/store.js';
+import { STAGES } from './data/career.js';
+import { state, save, addCoins, activeCar } from './core/store.js';
+import { settleStage } from './core/career.js';
+import { carStats } from './core/inventory.js';
 import { ads } from './monetization/ads.js';
 import { billing } from './monetization/billing.js';
 import { cloud } from './core/cloud.js';
@@ -20,7 +23,9 @@ import { onAppStateChange, onBackButton } from './core/platform.js';
 const $ = (sel) => document.querySelector(sel);
 const canvas = $('#scene');
 const fpsEl = $('#fps');
-const currentPaint = () => PAINTS.find((p) => p.id === state.paint) ?? PAINTS[0];
+const currentPaint = () => PAINTS.find((p) => p.id === activeCar().paint) ?? PAINTS[0];
+// Until the stage map lands, every race is career stage 1 (Classic, Coastal Loop, 2 laps).
+const CURRENT_STAGE = STAGES[0];
 const showFps = (fps) => {
   if (!fpsEl.hidden) fpsEl.textContent = `${Math.round(fps)} FPS`;
 };
@@ -101,12 +106,7 @@ const wipe = {
   },
 };
 
-function playerStats() {
-  const values = { ...carById(state.car).stats };
-  UPGRADES.forEach((u) => (values[u.stat] += state.upgrades[u.id] * STAT_PER_LEVEL));
-  for (const k of Object.keys(values)) values[k] = Math.min(100, values[k]);
-  return values;
-}
+const playerStats = () => carStats(state, state.car);
 
 function beginRace() {
   raceInput.setAutoAccelerate(state.settings.autoAccelerate);
@@ -149,22 +149,18 @@ async function startRace() {
   await wipe.reveal();
 }
 
-// Coins and records are saved the moment the player crosses the line.
+// Coins, stars and bests are saved the moment the player crosses the line.
 function bankResult(result) {
-  const rec = state.records[result.trackId] ?? { bestTime: null, stars: 0, races: 0, wins: 0 };
-  const best = rec.bestTime === null || result.time < rec.bestTime;
-  state.records[result.trackId] = {
-    bestTime: best ? result.time : rec.bestTime,
-    stars: Math.max(rec.stars, result.stars),
-    races: rec.races + 1,
-    wins: rec.wins + (result.position === 1 ? 1 : 0),
-  };
-  addCoins(result.coins.total);
-  lastWinnings += result.coins.total;
-  lastResult = { coins: result.coins.total, doubled: false };
+  const settled = settleStage(state, CURRENT_STAGE, result);
+  lastWinnings += settled.coins.total;
+  // The rewarded 2x pays the race coins again (finish + skill), not the one-time star bonus.
+  lastResult = { coins: settled.coins.race, doubled: false };
   ads.noteRaceFinished();
   save();
-  result.best = best && rec.bestTime !== null;
+  result.coins = settled.coins;
+  result.stars = settled.stars;
+  result.objectives = CURRENT_STAGE.objectives;
+  result.best = settled.newBest;
   result.wallet = state.coins;
 }
 

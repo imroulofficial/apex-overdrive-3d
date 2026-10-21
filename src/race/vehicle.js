@@ -21,12 +21,13 @@ export const NITRO = {
   pulseTime: 2.3,
 };
 
-export function statsToParams({ speed, nitro, handling, grip }) {
+// Car stats (0-100, the four garage bars) -> physics. Lateral grip follows handling.
+export function statsToParams({ speed, accel, handling, nitro }) {
   return {
     topSpeed: 46 + speed * 0.2,
-    accel: 11 + speed * 0.06,
-    launch: 1.1 + grip * 0.006,
-    grip: 6 + grip * 0.06,
+    accel: 11 + accel * 0.06,
+    launch: 1.1 + accel * 0.006,
+    grip: 6 + handling * 0.06,
     steerRate: 1.25 + handling * 0.006,
     driftRate: 1.1 + handling * 0.0065,
     driftGrip: 3.0 + handling * 0.012,
@@ -64,6 +65,7 @@ export class Vehicle {
     this.driftTime = 0;
     this.driftScore = 0; // current combo
     this.driftExitTimer = 0;
+    this.driftDistance = 0; // metres travelled while drifting, whole race
     this.slip = 0;
     this.nitro = 35;
     this.tier = 0;
@@ -240,6 +242,7 @@ export class Vehicle {
 
       if (this.drifting) {
         this.driftTime += dt;
+        this.driftDistance += mag * dt;
         const q = clamp((Math.abs(this.slip) - 0.12) / 0.4, 0, 1) * clamp(mag / 35, 0, 1.4);
         this.addNitro(q * 13 * dt);
         this.driftScore += q * mag * dt * 12;

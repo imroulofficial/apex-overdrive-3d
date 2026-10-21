@@ -1,7 +1,8 @@
-import { PAINTS, FINISHES, UPGRADES, upgradeCost, STAT_PER_LEVEL } from '../data/catalog.js';
+import { PAINTS, FINISHES, UPGRADES, upgradeCost } from '../data/catalog.js';
 import { PRODUCTS } from '../config.js';
-import { CARS, carById } from '../data/cars.js';
-import { state, save, subscribe, spendCoins } from '../core/store.js';
+import { RELEASED_CARS, carById } from '../data/cars.js';
+import { state, save, subscribe, spendCoins, activeCar } from '../core/store.js';
+import { buyUpgrade, carStats, equipPaint, unlockStatus, unlockCar, activeProducts } from '../core/inventory.js';
 import { sfx } from '../core/audio.js';
 import { billing } from '../monetization/billing.js';
 import { cloud } from '../core/cloud.js';
@@ -26,8 +27,10 @@ export function toast(message, ms = 2400) {
 
 export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
   const hud = $('#hud');
-  let previewPaint = state.paint;
-  let shownEquipped = state.paint;
+  // Paint, upgrades and rims belong to the selected car.
+  const equipped = () => activeCar().paint;
+  let previewPaint = equipped();
+  let shownEquipped = equipped();
 
   // ---- Coins ----
   const coinEl = $('#coin-count');
@@ -78,7 +81,7 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
     $$('.swatch', grid).forEach((el) => {
       const id = el.dataset.paint;
       el.classList.toggle('is-selected', id === previewPaint);
-      el.classList.toggle('is-equipped', id === state.paint);
+      el.classList.toggle('is-equipped', id === equipped());
       const lock = el.querySelector('.lock');
       if (ownsPaint(paintById(id))) lock?.remove();
       else if (!lock) el.insertAdjacentHTML('beforeend', `<span class="lock">${LOCK_ICON}</span>`);
@@ -88,7 +91,7 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
     $('#paint-finish').textContent = p.product ? `${FINISHES[p.finish].label} · ${PRODUCTS[p.product].title} exclusive` : FINISHES[p.finish].label;
     const action = $('#paint-action');
     action.classList.toggle('gold', Boolean(p.product) && !ownsPaint(p));
-    if (state.paint === p.id) {
+    if (equipped() === p.id) {
       action.textContent = 'Equipped';
       action.disabled = true;
     } else if (ownsPaint(p)) {
@@ -104,8 +107,8 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
   }
 
   function revertPreview() {
-    if (previewPaint === state.paint) return;
-    previewPaint = state.paint;
+    if (previewPaint === equipped()) return;
+    previewPaint = equipped();
     const p = paintById(previewPaint);
     garage.setPaint(p.color, p.finish);
     renderPaint();
@@ -139,7 +142,7 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
     } else {
       sfx.tap();
     }
-    state.paint = p.id;
+    equipPaint(state, state.car, p.id);
     save();
     cloud.syncSoon();
   });
@@ -148,7 +151,7 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
   const list = $('#upgrade-list');
   function renderUpgrades() {
     list.innerHTML = UPGRADES.map((u) => {
-      const level = state.upgrades[u.id];
+      const level = activeCar().upgrades[u.id];
       const maxed = level >= u.maxLevel;
       const cost = upgradeCost(u, level);
       const pips = Array.from({ length: u.maxLevel }, (_, i) => `<i class="${i < level ? 'on' : ''}"></i>`).join('');
@@ -163,16 +166,14 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
   list.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-upgrade]');
     if (!btn) return;
-    const u = UPGRADES.find((x) => x.id === btn.dataset.upgrade);
-    const level = state.upgrades[u.id];
-    if (level >= u.maxLevel) return;
-    const cost = upgradeCost(u, level);
-    if (!spendCoins(cost)) {
-      sfx.deny();
-      toast(`You need ${fmt(cost - state.coins)} more coins`);
+    const res = buyUpgrade(state, state.car, btn.dataset.upgrade);
+    if (!res.ok) {
+      if (res.reason === 'coins') {
+        sfx.deny();
+        toast(`You need ${fmt(res.cost - state.coins)} more coins`);
+      }
       return;
     }
-    state.upgrades[u.id] = level + 1;
     sfx.buy();
     garage.rev();
     save();
@@ -182,17 +183,24 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
   // ---- Cars ----
   const carList = $('#car-list');
   function renderCars() {
-    carList.innerHTML = CARS.map((c) => {
+    carList.innerHTML = RELEASED_CARS.map((c) => {
       const owned = state.ownedCars.includes(c.id);
       const selected = state.car === c.id;
-      const action = selected
-        ? '<button class="pill-btn" disabled>Selected</button>'
-        : owned
-          ? `<button class="pill-btn" data-car="${c.id}">Select</button>`
-          : `<button class="pill-btn gold" data-unlock="${c.unlockProduct}">${LOCK_ICON}${billing.price(c.unlockProduct)}</button>`;
+      const lock = owned ? null : unlockStatus(state, c.id, activeProducts(state, { sandbox: billing.sandbox }));
+      let action;
+      let note = c.class;
+      if (selected) action = '<button class="pill-btn" disabled>Selected</button>';
+      else if (owned) action = `<button class="pill-btn" data-car="${c.id}">Select</button>`;
+      else if (c.unlock.type === 'iap') {
+        action = `<button class="pill-btn gold" data-unlock="${c.unlock.product}">${LOCK_ICON}${billing.price(c.unlock.product)}</button>`;
+        note = `${PRODUCTS[c.unlock.product].title} exclusive`;
+      } else if (lock.reason === 'stars') {
+        action = `<button class="pill-btn" disabled>${LOCK_ICON}${c.unlock.stars} ★</button>`;
+        note = `Earn ${lock.starsNeeded} more career stars`;
+      } else action = `<button class="pill-btn" data-buy-car="${c.id}">${LOCK_ICON}${fmt(lock.price)}</button>`;
       return `<li class="car-item${selected ? ' is-selected' : ''}">
         <span class="tier tier-${c.tier.toLowerCase()}">${c.tier}</span>
-        <div><strong>${c.name}</strong><small>${owned ? c.class : 'Supercar Bundle exclusive'}</small></div>
+        <div><strong>${c.name}</strong><small>${note}</small></div>
         ${action}
       </li>`;
     }).join('');
@@ -201,6 +209,20 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
     const unlock = e.target.closest('[data-unlock]');
     if (unlock) {
       onOpenStore?.(unlock.dataset.unlock);
+      return;
+    }
+    const buy = e.target.closest('[data-buy-car]');
+    if (buy) {
+      const res = unlockCar(state, buy.dataset.buyCar, activeProducts(state, { sandbox: billing.sandbox }));
+      if (!res.ok) {
+        sfx.deny();
+        if (res.reason === 'coins') toast(`You need ${fmt(res.price - state.coins)} more coins`);
+        return;
+      }
+      sfx.buy();
+      toast(`${carById(buy.dataset.buyCar).name} unlocked`);
+      save();
+      cloud.syncSoon();
       return;
     }
     const btn = e.target.closest('[data-car]');
@@ -215,19 +237,19 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
   // Keeps the turntable in step with the selected car (selection, purchase or revoke).
   function syncCar() {
     if (garage.wantedCarId === state.car) return;
-    const p = paintById(state.paint);
+    const p = paintById(equipped());
+    previewPaint = shownEquipped = p.id;
     garage.setCar(carById(state.car), { color: p.color, finish: p.finish });
   }
 
   // ---- Stats ----
   const statsEl = $('#stats');
-  const STAT_LABELS = { speed: 'Speed', nitro: 'Nitro', handling: 'Handling', grip: 'Grip' };
+  const STAT_LABELS = { speed: 'Top Speed', accel: 'Accel', handling: 'Handling', nitro: 'Nitro' };
   function renderStats() {
     const car = carById(state.car);
     $('#car-class').textContent = car.class.toUpperCase();
     $('#car-name').textContent = car.name.toUpperCase();
-    const values = { ...car.stats };
-    UPGRADES.forEach((u) => (values[u.stat] += state.upgrades[u.id] * STAT_PER_LEVEL));
+    const values = carStats(state, car.id);
     statsEl.innerHTML = Object.entries(STAT_LABELS)
       .map(([key, label]) => {
         const v = Math.min(100, values[key]);
@@ -291,8 +313,8 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
   function renderAll() {
     // The equipped paint changed underneath us (a refunded exclusive paint falls back to the
     // default in billing.applyEntitlements): show it if the player was not previewing another.
-    if (state.paint !== shownEquipped && previewPaint === shownEquipped) revertPreview();
-    shownEquipped = state.paint;
+    if (equipped() !== shownEquipped && previewPaint === shownEquipped) revertPreview();
+    shownEquipped = equipped();
     renderCoins();
     renderPaint();
     renderUpgrades();
@@ -325,8 +347,8 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
     revertPreview,
     // A newer cloud save replaced the device's progress: show its paint and wallet.
     reloadSave() {
-      previewPaint = state.paint;
-      const p = paintById(state.paint);
+      previewPaint = shownEquipped = equipped();
+      const p = paintById(previewPaint);
       garage.setPaint(p.color, p.finish);
       renderAll();
     },

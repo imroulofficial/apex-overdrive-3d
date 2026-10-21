@@ -1,6 +1,7 @@
 import { NITRO } from '../race/vehicle.js';
 import { ordinal } from '../race/Race.js';
 import { raceSfx, sfx } from '../core/audio.js';
+import { describeObjective } from '../data/career.js';
 
 // In-race HUD: standing, lap, timer, progress strip, speedometer, nitro gauge with the
 // double-tap sweet-spot ring, callouts, pause menu and the finish screen.
@@ -221,21 +222,26 @@ export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, 
       $('#res-lap').textContent = formatTime(r.bestLap);
       $('#res-drift').textContent = fmt(r.driftScore);
       $('#res-smash').textContent = r.smashes;
-      $('#res-c-pos').textContent = `+${fmt(r.coins.position)}`;
-      $('#res-c-drift').textContent = `+${fmt(r.coins.drift)}`;
-      $('#res-c-smash').textContent = `+${fmt(r.coins.smash)}`;
+      $('#res-c-pos').textContent = `+${fmt(r.coins.finish)}`;
+      $('#res-c-skill').textContent = `+${fmt(r.coins.skill)}`;
+      $('#res-c-star').textContent = `+${fmt(r.coins.star)}`;
       $('#res-best').hidden = !best;
       doubleBtn.hidden = !(r.coins.total > 0);
       this.setDoubleState('ready');
       const total = $('#res-c-total');
       total.textContent = '+0';
       const stars = [...document.querySelectorAll('#res-stars svg')];
-      stars.forEach((st) => st.classList.remove('on'));
+      stars.forEach((st, i) => {
+        st.classList.remove('on');
+        const o = r.objectives?.[i];
+        if (o) st.setAttribute('aria-label', `${(r.stars >> i) & 1 ? 'Earned' : 'Not earned'}: ${describeObjective(o)}`);
+      });
       el.results.hidden = false;
       el.results.dataset.place = r.position;
       root.classList.add('is-done');
       stars.forEach((st, i) => {
-        if (i < r.stars) setTimeout(() => {
+        // r.stars is a bitmask: each star is its own objective (finish, skill, mastery).
+        if ((r.stars >> i) & 1) setTimeout(() => {
           st.classList.add('on');
           raceSfx.coin(i * 6);
         }, 450 + i * 260);

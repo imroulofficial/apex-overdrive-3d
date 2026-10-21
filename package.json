@@ -1,7 +1,7 @@
 {
   "name": "apex-overdrive-3d",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Apex Overdrive: 3D Racing - offline-first 3D arcade racer by Red Pen Studio",
   "type": "module",
   "scripts": {
@@ -9,7 +9,8 @@
     "build": "vite build",
     "preview": "vite preview --host",
     "cap:sync": "npm run build && cap sync android",
-    "android:open": "cap open android"
+    "android:open": "cap open android",
+    "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.2.1",

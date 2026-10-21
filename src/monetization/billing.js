@@ -2,8 +2,8 @@ import { NativePurchases, PURCHASE_TYPE } from '@capgo/native-purchases';
 import { PRODUCTS, RELEASE } from '../config.js';
 import { isNative } from '../core/platform.js';
 import { state, save, addCoins } from '../core/store.js';
-import { CARS } from '../data/cars.js';
 import { PAINTS } from '../data/catalog.js';
+import { syncOwnedCars } from '../core/inventory.js';
 
 // Google Play Billing for the two one-time products (see PRODUCTS in config.js).
 //
@@ -19,7 +19,6 @@ import { PAINTS } from '../data/catalog.js';
 const PURCHASED = '1'; // Play Billing PurchaseState.PURCHASED
 const PENDING = '2'; // Play Billing PurchaseState.PENDING
 const IDS = Object.keys(PRODUCTS);
-const STARTER_CARS = CARS.filter((c) => !c.unlockProduct).map((c) => c.id);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export const sandboxAvailable = !isNative || !RELEASE;
@@ -38,12 +37,12 @@ function createBilling() {
     const p = state.purchases;
     const active = new Set([...p.owned, ...(sandbox() ? p.sandboxOwned : [])]);
     p.noAds = [...active].some((id) => PRODUCTS[id]?.grants.noAds);
-    const cars = new Set(STARTER_CARS);
-    active.forEach((id) => PRODUCTS[id]?.grants.cars.forEach((c) => cars.add(c)));
-    state.ownedCars = [...cars];
-    if (!state.ownedCars.includes(state.car)) state.car = STARTER_CARS[0];
+    syncOwnedCars(state, active);
     p.paints = [...new Set([...active].flatMap((id) => PRODUCTS[id]?.grants.paints ?? []))];
-    if (PAINTS.find((x) => x.id === state.paint)?.product && !p.paints.includes(state.paint)) state.paint = PAINTS[0].id;
+    // A refunded exclusive paint falls back to the default on every car wearing it.
+    for (const entry of Object.values(state.cars)) {
+      if (PAINTS.find((x) => x.id === entry.paint)?.product && !p.paints.includes(entry.paint)) entry.paint = PAINTS[0].id;
+    }
   }
 
   // Pays a product's one-time coin bonus if this device has not paid it yet.
