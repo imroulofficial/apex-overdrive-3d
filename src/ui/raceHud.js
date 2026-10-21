@@ -16,7 +16,7 @@ export function formatTime(t) {
   return `${m}:${s.toFixed(2).padStart(5, '0')}`;
 }
 
-export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, onRaceAgain }) {
+export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, onRaceAgain, onDoubleCoins }) {
   const root = $('#race-hud');
   const el = {
     pos: $('#rh-pos'),
@@ -62,6 +62,8 @@ export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, 
   });
   $('#res-garage').addEventListener('click', () => onGarage());
   $('#res-again').addEventListener('click', () => onRaceAgain());
+  const doubleBtn = $('#res-double');
+  doubleBtn.addEventListener('click', () => onDoubleCoins?.());
 
   const set = (key, value, fn) => {
     if (last[key] === value) return;
@@ -220,6 +222,8 @@ export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, 
       $('#res-c-drift').textContent = `+${fmt(r.coins.drift)}`;
       $('#res-c-smash').textContent = `+${fmt(r.coins.smash)}`;
       $('#res-best').hidden = !best;
+      doubleBtn.hidden = !(r.coins.total > 0);
+      this.setDoubleState('ready');
       const total = $('#res-c-total');
       total.textContent = '+0';
       const stars = [...document.querySelectorAll('#res-stars svg')];
@@ -245,6 +249,20 @@ export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, 
       total.parentElement.dataset.wallet = '';
       requestAnimationFrame(tick);
       setTimeout(() => $('#res-garage').focus({ preventScroll: true }), 50);
+    },
+
+    // Rewarded "2× coins" button: 'ready' | 'loading' | 'done'.
+    setDoubleState(mode, { bonus = 0, wallet = 0 } = {}) {
+      doubleBtn.disabled = mode !== 'ready';
+      doubleBtn.classList.toggle('is-done', mode === 'done');
+      doubleBtn.querySelector('span').textContent =
+        mode === 'loading' ? 'Loading ad…' : mode === 'done' ? `Coins doubled · +${fmt(bonus)}` : 'Watch ad · 2× coins';
+      if (mode === 'done') {
+        const total = $('#res-c-total');
+        total.textContent = `+${fmt(bonus * 2)}`;
+        total.parentElement.dataset.wallet = `Wallet ${fmt(wallet)}`;
+        raceSfx.coin(12);
+      }
     },
 
     hideResults() {

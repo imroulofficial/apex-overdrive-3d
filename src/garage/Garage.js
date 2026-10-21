@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createShowroom, createStudioEnvironment } from './showroom.js';
 import { createCar } from './carModel.js';
+import { loadCar } from '../assets/modelLoader.js';
 import { createCameraRig, SHOTS } from './cameraRig.js';
 import { PaintTransition } from './carPaint.js';
 
@@ -13,7 +14,7 @@ const AUTO_ORDER = ['high', 'medium', 'low'];
 const TAP_SLOP_PX = 8;
 
 export class Garage {
-  constructor(canvas, { paintColor, finish, quality, onTap, onFps }) {
+  constructor(canvas, { car, paintColor, finish, quality, onTap, onFps }) {
     this.canvas = canvas;
     this.onTap = onTap;
     this.onFps = onFps;
@@ -37,7 +38,11 @@ export class Garage {
 
     this.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 80);
     this.showroom = createShowroom(this.scene);
-    this.car = createCar({ paintColor, finish });
+    // The procedural car shows instantly; setCar() then swaps in an external model if one exists.
+    this.car = createCar({ paintColor, finish, kit: car.procedural?.kit });
+    this.carId = null; // car on the turntable once setCar() resolves
+    this.wantedCarId = null; // latest requested car
+    this.carToken = 0;
     this.car.group.position.y = 0.06; // on the turntable deck
     this.showroom.turntable.add(this.car.group);
     this.paint = new PaintTransition(this.car.paintMaterial);
@@ -113,6 +118,24 @@ export class Garage {
     this.resize();
   }
 
+  // Spawns `def` on the turntable (external .glb when present, procedural otherwise).
+  async setCar(def, { color, finish }) {
+    const token = ++this.carToken;
+    this.wantedCarId = def.id;
+    const rig = await loadCar(def, { paintColor: color, finish });
+    if (token !== this.carToken) return; // a newer selection won
+    const old = this.car;
+    this.showroom.turntable.remove(old.group);
+    // glTF clones share geometry with the loader cache, so only procedural meshes are freed.
+    if (old.source === 'procedural') old.group.traverse((o) => o.isMesh && o.geometry.dispose());
+    rig.group.position.y = 0.06;
+    rig.setLights(old.lightsOn);
+    this.showroom.turntable.add(rig.group);
+    this.car = rig;
+    this.carId = def.id;
+    this.paint = new PaintTransition(rig.paintMaterial);
+  }
+
   setPaint(color, finish) {
     this.paint.start(color, finish);
   }
@@ -123,7 +146,7 @@ export class Garage {
   }
 
   snap(name) {
-    const shot = typeof name === 'number' ? SHOTS.wheel(name) : SHOTS[name];
+    const shot = typeof name === 'number' ? SHOTS.wheel(name, this.car.wheels[name]?.wheel.position, this.car.wheelRadius) : SHOTS[name];
     if (shot) this.rig.snapTo(shot);
   }
 

@@ -1,9 +1,12 @@
 import { state, save } from '../core/store.js';
 import { sfx } from '../core/audio.js';
 import { openExternal } from '../core/platform.js';
-import { GAME, LEGAL } from '../config.js';
+import { GAME, LEGAL, PRODUCTS } from '../config.js';
+import { billing } from '../monetization/billing.js';
+import { ads } from '../monetization/ads.js';
+import { toast } from './hud.js';
 
-export function createSettings(garage, { onFpsToggle }) {
+export function createSettings(garage, { onFpsToggle, onEntitlementsChanged, onCrateReset }) {
   const dialog = document.getElementById('settings');
   const qualityButtons = [...dialog.querySelectorAll('[data-quality]')];
   const sound = dialog.querySelector('#opt-sound');
@@ -11,12 +14,59 @@ export function createSettings(garage, { onFpsToggle }) {
 
   dialog.querySelector('#about').textContent =
     `${GAME.title}: ${GAME.subtitle} v${GAME.version} · © ${new Date().getFullYear()} ${GAME.studio}. ` +
-    'Plays fully offline. This version collects no personal information.';
+    'Plays fully offline. Ads are served by Google AdMob and purchases are processed by Google Play; ' +
+    'see the Privacy Policy for what they collect.';
+
+  // ---- Purchases ----
+  const restoreBtn = dialog.querySelector('#btn-restore');
+  restoreBtn.addEventListener('click', async () => {
+    sfx.tap();
+    restoreBtn.disabled = true;
+    restoreBtn.textContent = 'Restoring…';
+    const result = await billing.restore();
+    restoreBtn.disabled = false;
+    restoreBtn.textContent = 'Restore purchases';
+    if (!result.ok) {
+      toast('Could not reach Google Play. Check your connection and try again.');
+      return;
+    }
+    const owned = Object.keys(PRODUCTS).filter((id) => billing.owns(id));
+    toast(owned.length ? `Restored: ${owned.map((id) => PRODUCTS[id].title).join(', ')}` : 'No purchases to restore on this account.', 3200);
+    onEntitlementsChanged?.();
+  });
+
+  const privacyRow = dialog.querySelector('#row-ad-privacy');
+  dialog.querySelector('#btn-ad-privacy').addEventListener('click', () => ads.showPrivacyOptions());
+
+  // ---- Developer tools (pre-release builds only) ----
+  const devTools = dialog.querySelector('#dev-tools');
+  const sandbox = dialog.querySelector('#opt-sandbox');
+  devTools.hidden = !billing.sandboxAvailable;
+  sandbox.addEventListener('change', async () => {
+    state.settings.sandboxStore = sandbox.checked;
+    save();
+    await billing.modeChanged();
+    onEntitlementsChanged?.();
+    toast(sandbox.checked ? 'Sandbox store on: purchases are simulated' : 'Sandbox store off: purchases go through Google Play');
+  });
+  dialog.querySelector('#btn-sandbox-reset').addEventListener('click', () => {
+    billing.resetSandbox();
+    onEntitlementsChanged?.();
+    toast('Sandbox purchases cleared');
+  });
+  dialog.querySelector('#btn-crate-reset').addEventListener('click', () => {
+    onCrateReset?.();
+    toast('Reward crate is ready again');
+  });
 
   function render() {
     qualityButtons.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.quality === state.settings.quality)));
     sound.checked = state.settings.sound;
     fps.checked = state.settings.showFps;
+    // In the browser the store is always simulated, so the toggle shows on and locked.
+    sandbox.checked = billing.sandbox;
+    sandbox.disabled = billing.sandbox && !state.settings.sandboxStore;
+    privacyRow.hidden = !ads.privacyOptionsRequired;
   }
 
   qualityButtons.forEach((btn) =>
