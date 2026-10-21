@@ -63,7 +63,7 @@ cloud.subscribe((_, { restored } = {}) => {
   toast('Cloud save restored');
 });
 
-const raceInput = createRaceInput({ steerPad: $('#rc-steer'), drift: $('#rc-drift'), nitro: $('#rc-nitro') });
+const raceInput = createRaceInput({ steerPad: $('#rc-steer'), drift: $('#rc-drift'), nitro: $('#rc-nitro'), gas: $('#rc-gas'), hud: $('#race-hud') });
 const raceHud = createRaceHud({
   onPause: () => pauseRace(),
   onResume: () => resumeRace(),
@@ -109,6 +109,7 @@ function playerStats() {
 }
 
 function beginRace() {
+  raceInput.setAutoAccelerate(state.settings.autoAccelerate);
   race.begin({
     stats: playerStats(),
     paint: currentPaint(),
@@ -219,13 +220,13 @@ async function exitToGarage() {
   raceHud.hide();
   raceHud.hideResults();
   lastResult = null;
-  // Every 2-3 finished races an interstitial plays here, behind the wipe.
+  // After the first 3 races, every 2-3 finished races an interstitial plays here, behind the
+  // wipe (never within 3 minutes of another full-screen ad).
   await ads.maybeShowInterstitial();
   garage.resize();
   garage.start();
   hud.snapBody();
   hud.show();
-  ads.setBanner(true);
   mode = 'garage';
   await wipe.reveal();
   if (lastWinnings > 0) {
@@ -246,7 +247,8 @@ requestAnimationFrame(() =>
     garage.intro();
     // Monetization starts after the first frame so it never delays the garage reveal.
     billing.init().then(() => ads.refreshEntitlements());
-    ads.init().then(() => ads.setBanner(mode === 'garage'));
+    // The banner only shows while Settings is open (blueprint: never in the garage or a race).
+    ads.init();
     // Fetches the cloud save (adopted if newer than this device's), then uploads if needed.
     cloud.init();
   })

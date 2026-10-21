@@ -3,12 +3,13 @@ import { PRODUCTS, RELEASE } from '../config.js';
 import { isNative } from '../core/platform.js';
 import { state, save, addCoins } from '../core/store.js';
 import { CARS } from '../data/cars.js';
+import { PAINTS } from '../data/catalog.js';
 
 // Google Play Billing for the two one-time products (see PRODUCTS in config.js).
 //
 // Entitlements are derived, never stored loose: `state.purchases.owned` mirrors what Play
 // reports (persisted, so the game works offline), sandbox purchases live in their own list,
-// and No Ads / unlocked cars are recomputed from both. A purchase's coin bonus is paid once
+// and No Ads / unlocked cars / exclusive paints are recomputed from both. A purchase's coin bonus is paid once
 // per device, tracked in `state.purchases.granted`, so Restore never pays twice.
 //
 // Sandbox mode simulates the store entirely on-device. It is always on in a desktop
@@ -32,7 +33,7 @@ function createBilling() {
   const sandbox = () => !isNative || (!RELEASE && state.settings.sandboxStore);
   const notify = (event) => listeners.forEach((fn) => fn(event));
 
-  // Recomputes No Ads and unlocked cars from the active purchase lists.
+  // Recomputes No Ads, unlocked cars and purchase-exclusive paints from the active purchase lists.
   function applyEntitlements() {
     const p = state.purchases;
     const active = new Set([...p.owned, ...(sandbox() ? p.sandboxOwned : [])]);
@@ -41,6 +42,8 @@ function createBilling() {
     active.forEach((id) => PRODUCTS[id]?.grants.cars.forEach((c) => cars.add(c)));
     state.ownedCars = [...cars];
     if (!state.ownedCars.includes(state.car)) state.car = STARTER_CARS[0];
+    p.paints = [...new Set([...active].flatMap((id) => PRODUCTS[id]?.grants.paints ?? []))];
+    if (PAINTS.find((x) => x.id === state.paint)?.product && !p.paints.includes(state.paint)) state.paint = PAINTS[0].id;
   }
 
   // Pays a product's one-time coin bonus if this device has not paid it yet.

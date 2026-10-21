@@ -7,8 +7,8 @@ export const CARS = [
   {
     id: 'rp1-vanta',
     name: 'RP-1 Vanta',
-    class: 'Starter coupe',
-    tier: 'C',
+    class: 'Tier D Starter Coupe',
+    tier: 'D',
     stats: BASE_STATS,
     procedural: { kit: 'coupe' },
     model: {

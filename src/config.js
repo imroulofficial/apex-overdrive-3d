@@ -3,7 +3,7 @@ export const GAME = {
   title: 'Apex Overdrive',
   subtitle: '3D Racing',
   studio: 'Red Pen Studio',
-  version: '0.4.0',
+  version: '0.6.0',
   appId: 'com.redpenstudio.apexoverdrive',
 };
 
@@ -39,10 +39,12 @@ const PRODUCTION_AD_UNITS = {
 export const ADS = {
   units: RELEASE ? PRODUCTION_AD_UNITS : TEST_AD_UNITS,
   testing: !RELEASE,
-  // An interstitial plays after every 2nd or 3rd finished race (picked at random each time).
+  // Blueprint ad rules: the first 3 finished races are protected, then an interstitial plays
+  // after every 2nd or 3rd finished race (picked at random each time).
+  interstitialGraceRaces: 3,
   interstitialEvery: [2, 3],
-  // Never two interstitials closer together than this, whatever the race count.
-  interstitialMinGapMs: 90_000,
+  // Never two full-screen ads closer together than this (3 minutes), whatever the race count.
+  interstitialMinGapMs: 180_000,
   rewardCrateCoins: 500,
   rewardCrateCooldownMs: 24 * 60 * 60 * 1000,
 };
@@ -52,16 +54,16 @@ export const ADS = {
 export const PRODUCTS = {
   remove_ads: {
     id: 'remove_ads',
-    title: 'Remove Ads',
-    blurb: 'No more banners or between-race ads, forever. Plus 5,000 bonus coins.',
+    title: 'No Ads Pack',
+    blurb: 'No more banners or between-race ads, forever. Plus 5,000 coins and the exclusive Red Pen Studio Founder iridescent paint.',
     price: '$2.99',
-    grants: { noAds: true, coins: 5000, cars: [] },
+    grants: { noAds: true, coins: 5000, cars: [], paints: ['founder'] },
   },
   supercar_bundle: {
     id: 'supercar_bundle',
     title: 'Supercar Bundle',
     blurb: 'Unlock the Tier A RP-X Hyperion, 25,000 coins and No Ads.',
     price: '$6.99',
-    grants: { noAds: true, coins: 25000, cars: ['rpx-hyperion'] },
+    grants: { noAds: true, coins: 25000, cars: ['rpx-hyperion'], paints: [] },
   },
 };

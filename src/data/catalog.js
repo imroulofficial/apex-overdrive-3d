@@ -7,6 +7,8 @@ export const FINISHES = {
   pearl: { label: 'Pearl', metalness: 0.45, roughness: 0.28, clearcoat: 1.0, clearcoatRoughness: 0.04, flake: 0.25, iridescence: 0.85 },
   matte: { label: 'Matte', metalness: 0.2, roughness: 0.62, clearcoat: 0.0, clearcoatRoughness: 1.0, flake: 0.0, iridescence: 0 },
   chrome: { label: 'Chrome', metalness: 1.0, roughness: 0.08, clearcoat: 0.6, clearcoatRoughness: 0.05, flake: 0.0, iridescence: 0 },
+  // Thin-film colour shift over a heavy metallic flake: crimson head-on, violet and gold at grazing angles.
+  founder: { label: 'Iridescent Metallic', metalness: 0.8, roughness: 0.2, clearcoat: 1.0, clearcoatRoughness: 0.02, flake: 0.5, iridescence: 1.0 },
 };
 
 export const PAINTS = [
@@ -20,6 +22,8 @@ export const PAINTS = [
   { id: 'ultraviolet', name: 'Ultraviolet', color: '#5b2bd1', finish: 'pearl', price: 900 },
   { id: 'aqua-pearl', name: 'Aqua Pearl', color: '#19b5c4', finish: 'pearl', price: 900 },
   { id: 'liquid-gold', name: 'Liquid Gold', color: '#d4a537', finish: 'chrome', price: 1500 },
+  // Never sold for coins: granted by the No Ads Pack (see PRODUCTS in config.js).
+  { id: 'founder', name: 'Red Pen Studio Founder', color: '#b3122f', finish: 'founder', price: 0, product: 'remove_ads' },
 ];
 
 export const UPGRADES = [

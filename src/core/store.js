@@ -12,12 +12,14 @@ const defaults = () => ({
   upgrades: { engine: 0, nitro: 0, handling: 0, tires: 0 },
   car: 'rp1-vanta',
   ownedCars: ['rp1-vanta'],
-  settings: { quality: 'auto', sound: true, showFps: false, sandboxStore: false },
+  settings: { quality: 'auto', sound: true, music: true, autoAccelerate: true, showFps: false, sandboxStore: false },
   records: {}, // per track: { bestTime, stars, races, wins }
   // Play purchases. `owned` mirrors what the store reports; `granted` records which
   // products already paid out their one-time coin bonus so a restore never pays twice.
-  purchases: { owned: [], sandboxOwned: [], granted: [], noAds: false },
-  ads: { crateClaimedAt: 0, racesSinceInterstitial: 0, nextInterstitialAt: 2, lastInterstitialAt: 0 },
+  purchases: { owned: [], sandboxOwned: [], granted: [], noAds: false, paints: [] },
+  // racesFinished counts every finished race on this device; the first few never see an
+  // interstitial (ADS.interstitialGraceRaces).
+  ads: { crateClaimedAt: 0, racesSinceInterstitial: 0, nextInterstitialAt: 2, lastInterstitialAt: 0, racesFinished: 0 },
   // When the progress last changed on this device (ms). Settings and ad pacing do not count,
   // so launching or toggling sound never makes this device look newer than the cloud.
   savedAt: 0,
@@ -62,6 +64,10 @@ function load() {
     if (!raw) return defaults();
     const data = JSON.parse(raw);
     const base = defaults();
+    // Saves from before the interstitial grace period: count the races already recorded.
+    if (data.ads && data.ads.racesFinished === undefined) {
+      data.ads.racesFinished = Object.values(data.records ?? {}).reduce((n, r) => n + (r.races ?? 0), 0);
+    }
     return {
       ...base,
       ...data,

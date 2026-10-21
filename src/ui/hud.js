@@ -1,4 +1,5 @@
 import { PAINTS, FINISHES, UPGRADES, upgradeCost, STAT_PER_LEVEL } from '../data/catalog.js';
+import { PRODUCTS } from '../config.js';
 import { CARS, carById } from '../data/cars.js';
 import { state, save, subscribe, spendCoins } from '../core/store.js';
 import { sfx } from '../core/audio.js';
@@ -26,6 +27,7 @@ export function toast(message, ms = 2400) {
 export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
   const hud = $('#hud');
   let previewPaint = state.paint;
+  let shownEquipped = state.paint;
 
   // ---- Coins ----
   const coinEl = $('#coin-count');
@@ -65,28 +67,35 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
 
   // ---- Paint ----
   const grid = $('#paint-grid');
-  grid.innerHTML = PAINTS.map(
-    (p) => `<button class="swatch" data-paint="${p.id}" style="--swatch:${p.color}" aria-label="${p.name}">
-      ${state.ownedPaints.includes(p.id) ? '' : `<span class="lock">${LOCK_ICON}</span>`}</button>`
-  ).join('');
   const paintById = (id) => PAINTS.find((p) => p.id === id) ?? PAINTS[0];
+  // Coin paints are bought once; purchase-exclusive paints follow the Play entitlement.
+  const ownsPaint = (p) => (p.product ? state.purchases.paints.includes(p.id) : state.ownedPaints.includes(p.id));
+  grid.innerHTML = PAINTS.map(
+    (p) => `<button class="swatch${p.product ? ' exclusive' : ''}" data-paint="${p.id}" style="--swatch:${p.color}" aria-label="${p.name}"></button>`
+  ).join('');
 
   function renderPaint() {
     $$('.swatch', grid).forEach((el) => {
       const id = el.dataset.paint;
       el.classList.toggle('is-selected', id === previewPaint);
       el.classList.toggle('is-equipped', id === state.paint);
-      if (state.ownedPaints.includes(id)) el.querySelector('.lock')?.remove();
+      const lock = el.querySelector('.lock');
+      if (ownsPaint(paintById(id))) lock?.remove();
+      else if (!lock) el.insertAdjacentHTML('beforeend', `<span class="lock">${LOCK_ICON}</span>`);
     });
     const p = paintById(previewPaint);
     $('#paint-name').textContent = p.name;
-    $('#paint-finish').textContent = FINISHES[p.finish].label;
+    $('#paint-finish').textContent = p.product ? `${FINISHES[p.finish].label} · ${PRODUCTS[p.product].title} exclusive` : FINISHES[p.finish].label;
     const action = $('#paint-action');
+    action.classList.toggle('gold', Boolean(p.product) && !ownsPaint(p));
     if (state.paint === p.id) {
       action.textContent = 'Equipped';
       action.disabled = true;
-    } else if (state.ownedPaints.includes(p.id)) {
+    } else if (ownsPaint(p)) {
       action.textContent = 'Equip';
+      action.disabled = false;
+    } else if (p.product) {
+      action.textContent = `Get · ${billing.price(p.product)}`;
       action.disabled = false;
     } else {
       action.textContent = `Buy · ${fmt(p.price)}`;
@@ -114,7 +123,11 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
 
   $('#paint-action').addEventListener('click', () => {
     const p = paintById(previewPaint);
-    if (!state.ownedPaints.includes(p.id)) {
+    if (p.product && !ownsPaint(p)) {
+      onOpenStore?.(p.product);
+      return;
+    }
+    if (!ownsPaint(p)) {
       if (!spendCoins(p.price)) {
         sfx.deny();
         toast(`You need ${fmt(p.price - state.coins)} more coins`);
@@ -244,7 +257,7 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
 
   const lightsBtn = $('#btn-lights');
   function toggleLights() {
-    sfx.lights();
+    sfx.lights(); // relay click and an engine throttle stab
     const on = garage.toggleLights();
     lightsBtn.setAttribute('aria-pressed', String(on));
   }
@@ -276,6 +289,10 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
   });
 
   function renderAll() {
+    // The equipped paint changed underneath us (a refunded exclusive paint falls back to the
+    // default in billing.applyEntitlements): show it if the player was not previewing another.
+    if (state.paint !== shownEquipped && previewPaint === shownEquipped) revertPreview();
+    shownEquipped = state.paint;
     renderCoins();
     renderPaint();
     renderUpgrades();

@@ -11,3 +11,4 @@ dist/
 keystore.properties
 # Icon renderer masters (regenerate with node tools/icon/render.mjs)
 tools/icon/out/*-1024.png
+tools/audio/out/

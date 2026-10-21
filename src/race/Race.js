@@ -12,7 +12,7 @@ import { ChaseCamera } from './chaseCamera.js';
 import { Particles, SkidMarks, SpeedLines, softDotTexture } from './effects.js';
 import { mulberry32 } from './noise.js';
 import { RIVALS, POSITION_REWARD, DRIFT_POINTS_PER_COIN, SMASH_COINS, starsFor } from '../data/rivals.js';
-import { raceSfx, createEngineSound } from '../core/audio.js';
+import { raceSfx, raceMusic, createEngineSound } from '../core/audio.js';
 import { BASE_STATS as BASE } from '../data/catalog.js';
 
 // One race on a track: owns the 3D scene, the six cars, the race state machine
@@ -192,6 +192,7 @@ export class Race {
     this.chase.intro(this.player.vehicle, 3.2);
     this.engine?.stop();
     this.engine = createEngineSound();
+    raceMusic.start();
     this.hud.intro(this.def);
     this.start();
   }
@@ -216,12 +217,14 @@ export class Race {
     this.resumePhase = this.phase;
     this.phase = 'paused';
     this.input.setEnabled(false);
-    this.engine?.update({ rpm: 0, gear: 0, speed: 0, load: 0, skid: 0, boost: 0, volume: 0 });
+    this.engine?.update({ dt: 0, throttle: 0, volume: 0 });
+    raceMusic.setPaused(true);
   }
 
   resume() {
     if (this.phase !== 'paused') return;
     this.phase = this.resumePhase;
+    raceMusic.setPaused(false);
     this.last = performance.now();
     this.input.setEnabled(this.phase === 'racing');
   }
@@ -235,6 +238,7 @@ export class Race {
     this.input?.setEnabled(false);
     this.engine?.stop();
     this.engine = null;
+    raceMusic.stop();
   }
 
   frame(nowMs) {
@@ -320,7 +324,7 @@ export class Race {
     this.speedLines.update(dt, simulate ? lineLevel : 0, Math.max(20, player.speed), player.tier);
 
     this.processEvents();
-    this.updateEngine(playerInput);
+    this.updateEngine(playerInput, dt);
     this.updateHud();
 
     if (this.phase === 'finished' && !this.resultShown && this.stateTime > 1.6) {
@@ -359,6 +363,7 @@ export class Race {
           // Edge events only once per frame.
           input = this._sub || (this._sub = { steer: 0, throttle: 1, brake: false, brakePressed: false, nitroTaps: [] });
           input.steer = playerInput.steer;
+          input.throttle = playerInput.throttle;
           input.brake = playerInput.brake;
         }
       }
@@ -367,12 +372,11 @@ export class Race {
     // Car-to-car contact.
     const n = this.racers.length;
     for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) this.collideCars(this.racers[i].vehicle, this.racers[j].vehicle);
-    // Props.
+    // Props scatter without slowing anyone down; the player earns a little nitro for each.
     for (const r of this.racers) {
       const hits = this.props.collide(r.vehicle, this.hits);
       for (const p of hits) {
         const big = p.type === 'panel';
-        r.vehicle.vel.multiplyScalar(big ? 0.94 : 0.985);
         if (r.isPlayer) {
           raceSfx.smash(big);
           this.chase.bump(big ? 0.35 : 0.1);
@@ -504,6 +508,7 @@ export class Race {
           this.hud.callout('NITRO LOW', 'warn');
           break;
         case 'driftStart':
+          raceSfx.chirp();
           this.hud.flash('drift');
           break;
         case 'driftEnd':
@@ -619,28 +624,28 @@ export class Race {
     }
   }
 
-  updateEngine(input) {
+  updateEngine(input, dt) {
     if (!this.engine) return;
     const v = this.player.vehicle;
-    const P = v.params;
-    const norm = Math.max(0, Math.min(1.35, Math.abs(v.forward) / P.topSpeed));
-    const gears = 6;
-    const g = Math.min(gears - 1, Math.floor(norm * gears * 0.999));
-    let rpm = norm * gears - g;
-    let load = this.phase === 'racing' || this.phase === 'finished' ? (input.brake && !v.drifting ? 0.2 : 1) : 0.15;
-    if (this.phase === 'countdown' || this.phase === 'intro') {
-      // Revving on the grid.
-      rpm = 0.25 + 0.2 * Math.max(0, Math.sin(this.time * 3.1)) + (this.phase === 'countdown' ? 0.25 : 0);
-      load = 0.4;
+    const grid = this.phase === 'intro' || this.phase === 'countdown';
+    let throttle;
+    if (grid) {
+      // Blipping the throttle on the grid during the countdown.
+      throttle = this.phase === 'countdown' && Math.sin(this.time * 7.3) > 0.4 ? 0.62 : this.phase === 'countdown' ? 0.16 : 0;
+    } else {
+      const drv = this.player.ai ? this.player.ai.input : input;
+      throttle = drv.brake && !v.drifting ? 0 : drv.throttle ?? 1;
     }
-    if (v.airborne) rpm = Math.min(1.2, rpm + 0.35);
     this.engine.update({
-      rpm: Math.min(1.2, rpm),
-      gear: g,
+      dt,
+      speedNorm: Math.max(0, v.forward) / v.params.topSpeed,
+      throttle,
+      neutral: grid,
+      airborne: v.airborne,
       speed: Math.min(1, v.speed / 70),
-      load,
-      skid: v.drifting ? Math.min(1, Math.abs(v.slip) * 2) : v.braking && v.speed > 12 ? 0.5 : 0,
       boost: v.tier,
+      skid: v.drifting ? Math.min(1, Math.abs(v.slip) * 2) : v.braking && v.speed > 12 ? 0.5 : 0,
+      slip: v.slip ?? 0,
     });
   }
 
