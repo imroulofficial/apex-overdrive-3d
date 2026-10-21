@@ -10,17 +10,24 @@ import { createCloudBadge } from './ui/cloudBadge.js';
 import { PAINTS } from './data/catalog.js';
 import { carById } from './data/cars.js';
 import { EMERALD_COAST, TRACKS } from './data/tracks.js';
-import { STAGES, TRACK_SEGMENTS, stageById } from './data/career.js';
+import { STAGES, TRACK_SEGMENTS, stageById, chapterById } from './data/career.js';
 import { STAR_BONUS } from './data/economy.js';
 import { state, save, addCoins, activeCar } from './core/store.js';
-import { settleStage, isStageUnlocked } from './core/career.js';
-import { createStagePicker, defaultStage, isPlayable, stageLabel, starIcons, trackBuilt } from './ui/stagePicker.js';
+import { settleStage, nextStage, chapterStars, claimMilestone } from './core/career.js';
+import { duePrologue, dueBefore, dueAfter, markSeen } from './core/story.js';
+import { sceneForStage } from './data/story.js';
+import { defaultStage, isPlayable, isPractice, stageLabel, stageTag, starIcons } from './ui/stageInfo.js';
+import { WorldMap } from './map/WorldMap.js';
+import { createMapHud } from './ui/mapHud.js';
+import { createBriefing } from './ui/briefing.js';
+import { createDialogue } from './ui/dialogue.js';
 import { RELEASE } from './config.js';
 import { carStats } from './core/inventory.js';
 import { ads } from './monetization/ads.js';
 import { billing } from './monetization/billing.js';
 import { cloud } from './core/cloud.js';
 import { suspendAudio, resumeAudio } from './core/audio.js';
+import { chestDialog } from './ui/chest.js';
 import { onAppStateChange, onBackButton } from './core/platform.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -32,9 +39,9 @@ const DEBUG = params.has('debug');
 // Dev builds (pre-release, or ?debug) can pick any stage; locked ones run as practice.
 const DEV = !RELEASE || DEBUG;
 
-// Until the Phase 10 world map lands, the garage's stage chip picks what RACE START runs: by
-// default the furthest unlocked stage. Dev shortcuts: ?stage=ec-05, or ?mode=TimeTrial for the
-// first stage of that mode.
+// The garage's stage chip offers the furthest unlocked stage ("continue"); it and the world
+// map's Continue button open that stage's briefing. Dev shortcuts: ?stage=ec-05, or
+// ?mode=TimeTrial for the first stage of that mode (what __app.startRace() races).
 function initialStage() {
   const byId = params.get('stage') && stageById(params.get('stage'));
   const byMode = params.get('mode') && STAGES.find((s) => s.gameMode === params.get('mode'));
@@ -56,34 +63,134 @@ const garage = new Garage(canvas, {
   onFps: showFps,
 });
 
-// 'garage' | 'busy' (transitioning) | 'race'
+// 'garage' | 'map' (world map, briefing on top) | 'busy' (transitioning) | 'race'
 let mode = 'garage';
 let race = null;
 let raceStage = null; // the stage the current race was set up for
+let raceOpts = {}; // { startNitro } for the current attempt
 let lastWinnings = 0;
 let lastResult = null; // the finished race whose coins the rewarded ad can double
+let pendingScene = null; // a boss victory scene to play back on the map
+let celebrate = null; // { stage, newStars, unlocked } to animate on the map
 
 const store = createStore({ onPurchased: () => ads.refreshEntitlements() });
-const hud = createHud(garage, { onRaceStart: () => startRace(), onOpenStore: (id) => store.open(id) });
+const hud = createHud(garage, { onRaceStart: () => openMap(), onOpenStore: (id) => store.open(id) });
 if (DEBUG) window.__garage = garage;
 
-const stagePicker = createStagePicker({
-  dev: DEV,
-  onPick: (s) => {
-    stage = s;
-    renderStageChip();
-  },
-});
-$('#btn-stage').addEventListener('click', () => stagePicker.open(stage));
+$('#btn-stage').addEventListener('click', () => openMap({ brief: stage }));
 function renderStageChip() {
   if (!isPlayable(state, stage, DEV)) stage = defaultStage(state);
-  const practice = !isStageUnlocked(state, stage) || !trackBuilt(stage);
-  $('#stage-kicker').textContent = `${stageLabel(stage).replace('STAGE ', '')}${practice ? ' · PRACTICE' : ''}`;
+  $('#stage-kicker').textContent = `${stageLabel(stage).replace('STAGE ', '')}${isPractice(state, stage) ? ' · PRACTICE' : ''}`;
   $('#stage-name').textContent = TRACK_SEGMENTS[stage.trackSegment].name;
   $('#stage-stars').innerHTML = starIcons(state.career.stageStars[stage.index]);
   $('#btn-stage').dataset.mode = stage.gameMode;
 }
 renderStageChip();
+
+// ---- Campaign shell: world map, briefing, story ----
+const map = new WorldMap(garage.renderer, { onFps: showFps });
+const dialogue = createDialogue();
+const chest = chestDialog();
+const mapHud = createMapHud(map, {
+  dev: DEV,
+  onSelect: (s) => openBriefing(s),
+  onBack: () => backToGarage(),
+  onContinue: (s) => {
+    map.focusStage(s);
+    openBriefing(s);
+  },
+  onLocked: (s) => {
+    const prev = STAGES[s.index - 1];
+    if (prev && s.number > state.career.unlockedStage) toast(`Earn star 1 on Stage ${stageTag(prev)} to unlock`);
+    else toast(`${chapterById(s.chapterId).name} opens in a coming update`);
+  },
+  onChest: (m, { ready, opened }) => {
+    if (opened) return toast('Chest already opened');
+    if (!ready) {
+      const have = chapterStars(state, m.chapterId);
+      return toast(`Earn ${m.stars - have} more ★ in ${chapterById(m.chapterId).name} to open`);
+    }
+    chest.open(m, () => {
+      const got = claimMilestone(state, m.id);
+      if (!got) return null;
+      save();
+      cloud.syncSoon();
+      return got;
+    });
+  },
+});
+const briefing = createBriefing({
+  dev: DEV,
+  onStart: (s, opts) => startRace(s, opts),
+  onClose: () => closeBriefing(),
+  onStory: (s) => playScene(sceneForStage(s.stageId, 'before')),
+  onNitroAd: async () => {
+    const outcome = await ads.showRewarded();
+    if (outcome === 'unavailable') toast('No ad available right now. Try again in a moment.');
+    return outcome;
+  },
+});
+
+// Plays a story scene (and remembers it on this device). The map banner hides meanwhile and
+// comes back afterwards unless `thenBrief` (a briefing opens next).
+async function playScene(scene, { thenBrief = false } = {}) {
+  if (!scene) return;
+  ads.setBanner(false);
+  await dialogue.play(scene);
+  markSeen(state, scene.id);
+  save();
+  if (mode === 'map' && !briefing.isOpen && !thenBrief) ads.setBanner(true);
+}
+
+async function openBriefing(s) {
+  if (mode !== 'map' || briefing.isOpen || dialogue.isOpen) return;
+  ads.setBanner(false);
+  await playScene(dueBefore(state, s), { thenBrief: true });
+  if (mode !== 'map') return ads.setBanner(false);
+  briefing.open(s);
+}
+
+function closeBriefing() {
+  briefing.close();
+  if (mode === 'map') ads.setBanner(true);
+}
+
+// Garage -> world map. `brief`: open that stage's briefing once the map is up.
+async function openMap({ brief = null } = {}) {
+  if (mode !== 'garage') return;
+  mode = 'busy';
+  hud.revertPreview();
+  await wipe.cover('WORLD MAP');
+  hud.hide();
+  garage.stop();
+  map.start();
+  map.focusStage(brief ?? defaultStage(state), true);
+  mapHud.show();
+  mode = 'map';
+  await wipe.reveal();
+  ads.setBanner(true);
+  await playScene(duePrologue(state));
+  if (brief) openBriefing(brief);
+}
+
+async function backToGarage() {
+  if (mode !== 'map') return;
+  mode = 'busy';
+  ads.setBanner(false);
+  await wipe.cover('GARAGE');
+  briefing.close();
+  mapHud.hide();
+  map.stop();
+  garage.resize();
+  garage.start();
+  hud.snapBody();
+  hud.show();
+  stage = defaultStage(state);
+  renderStageChip();
+  mode = 'garage';
+  await wipe.reveal();
+}
+
 const settings = createSettings(garage, {
   onFpsToggle: (on) => (fpsEl.hidden = !on),
   onEntitlementsChanged: () => ads.refreshEntitlements(),
@@ -117,9 +224,10 @@ const raceHud = createRaceHud({
   onPause: () => pauseRace(),
   onResume: () => resumeRace(),
   onRestart: () => restartRace(),
-  onQuit: () => exitToGarage(),
-  onGarage: () => exitToGarage(),
+  onQuit: () => exitToMap(),
+  onGarage: () => exitToMap(),
   onRaceAgain: () => restartRace(),
+  onNext: () => exitToMap({ next: true }),
   onDoubleCoins: () => doubleCoins(),
 });
 
@@ -163,37 +271,50 @@ function beginRace() {
     hud: raceHud,
     autoQuality: state.settings.quality === 'auto',
     onFinish: bankResult,
+    startNitro: Boolean(raceOpts.startNitro),
   });
+  raceHud.setNext(null);
 }
 
-async function startRace() {
-  if (mode !== 'garage') return;
+// From the briefing (or, in debug, straight from the garage). `startNitro` is the rewarded
+// Fill Nitrous Tank perk, spent on this attempt (a pause-menu restart keeps it).
+async function startRace(s = stage, { startNitro = false } = {}) {
+  if (mode !== 'garage' && mode !== 'map') return;
+  const from = mode;
   mode = 'busy';
-  await wait(600); // let the rev and the rear-camera swing play
-  const track = trackFor(stage);
-  await wipe.cover(`LOADING ${TRACK_SEGMENTS[stage.trackSegment].name.toUpperCase()}`);
+  stage = s;
+  if (from === 'garage') await wait(600); // let the rev and the rear-camera swing play
+  ads.setBanner(false);
+  const track = trackFor(s);
+  await wipe.cover(`LOADING ${TRACK_SEGMENTS[s.trackSegment].name.toUpperCase()}`);
   try {
     // One track exists today; when a second lands, switching tracks builds a new Race.
     if (!race || race.def !== track) {
       race = new Race(garage.renderer, track, { onFps: showFps });
-      await race.prepare({ quality: garage.qualityLevel, paint: currentPaint(), car: carById(state.car), stage });
+      await race.prepare({ quality: garage.qualityLevel, paint: currentPaint(), car: carById(state.car), stage: s });
     } else {
       await race.setPlayerCar(carById(state.car), currentPaint());
-      if (race.stage !== stage) await race.setStage(stage);
+      if (race.stage !== s) await race.setStage(s);
     }
-    raceStage = stage;
+    raceStage = s;
   } catch (err) {
     console.error(err);
     race = null;
     await wipe.reveal();
     toast('Could not load the track on this device.');
-    mode = 'garage';
+    mode = from;
+    if (from === 'map' && !briefing.isOpen) ads.setBanner(true);
     return;
   }
+  raceOpts = { startNitro };
+  briefing.consumePerk();
   hud.hide();
-  ads.setBanner(false);
+  briefing.close();
+  mapHud.hide();
+  map.stop();
   garage.stop();
   lastWinnings = 0;
+  pendingScene = null;
   beginRace();
   mode = 'race';
   await wipe.reveal();
@@ -203,7 +324,7 @@ async function startRace() {
 // opened from the dev picker) is judged on a throwaway copy of the save and pays nothing.
 function bankResult(result) {
   const s = raceStage;
-  const practice = !isStageUnlocked(state, s) || !trackBuilt(s);
+  const practice = isPractice(state, s);
   const target = practice ? structuredClone(state) : state;
   const settled = settleStage(target, s, result);
   result.coins = settled.coins;
@@ -215,18 +336,23 @@ function bankResult(result) {
   result.best = settled.newBest;
   result.practice = practice;
   result.stageLabel = `${stageLabel(s)} · `;
+  const next = nextStage(s);
   if (practice) {
     lastResult = null;
     result.wallet = state.coins;
+    if (DEV && next) raceHud.setNext(`Next · ${stageTag(next)}`);
     return;
   }
+  pendingScene = dueAfter(state, s, settled.newStars) ?? pendingScene;
+  celebrate = { stage: s, newStars: settled.newStars, unlocked: settled.unlocked };
   lastWinnings += settled.coins.total;
   // The rewarded 2x pays the race coins again (finish + skill), not the one-time star bonus.
   lastResult = { coins: settled.coins.race, doubled: false };
   ads.noteRaceFinished();
   save();
   result.wallet = state.coins;
-  if (settled.unlocked) toast(`Stage ${settled.unlocked.chapterStage} unlocked`);
+  if (settled.unlocked) toast(`Stage ${stageTag(settled.unlocked)} unlocked`);
+  if (next && isPlayable(state, next, DEV)) raceHud.setNext(`Next · ${stageTag(next)}`);
 }
 
 // Results screen: a rewarded video pays the race's coins a second time.
@@ -263,6 +389,8 @@ function resumeRace() {
 async function restartRace() {
   if (mode !== 'race') return;
   mode = 'busy';
+  // The nitro perk covers a restart from the pause menu, not another run after the finish.
+  if (raceHud.resultsOpen || race.phase === 'finished') raceOpts = {};
   raceHud.closePause();
   await wipe.cover('RESTARTING');
   raceHud.hideResults();
@@ -272,31 +400,44 @@ async function restartRace() {
   await wipe.reveal();
 }
 
-async function exitToGarage() {
+// Race -> world map, with the stage's new stars (and any unlock) animated on its node.
+// `next`: open the following stage's briefing straight away.
+async function exitToMap({ next = false } = {}) {
   if (mode !== 'race') return;
   mode = 'busy';
   raceHud.closePause();
-  await wipe.cover('GARAGE');
+  await wipe.cover('WORLD MAP');
   race.exit();
   raceHud.hide();
   raceHud.hideResults();
   lastResult = null;
+  raceOpts = {};
   // After the first 3 races, every 2-3 finished races an interstitial plays here, behind the
   // wipe (never within 3 minutes of another full-screen ad).
   await ads.maybeShowInterstitial();
-  garage.resize();
-  garage.start();
-  hud.snapBody();
-  hud.show();
-  mode = 'garage';
-  renderStageChip();
+  const played = raceStage;
+  const following = next ? nextStage(played) : null;
+  map.start();
+  map.focusStage(following ?? played, true);
+  mapHud.show();
+  mode = 'map';
   await wipe.reveal();
+  if (celebrate) {
+    mapHud.celebrate(celebrate.stage, celebrate.newStars, celebrate.unlocked);
+    celebrate = null;
+  }
   if (lastWinnings > 0) {
-    hud.animateCoinsFrom(state.coins - lastWinnings);
     toast(`+${lastWinnings.toLocaleString('en-US')} coins banked`);
     lastWinnings = 0;
   }
   cloud.syncNow();
+  if (pendingScene) {
+    const scene = pendingScene;
+    pendingScene = null;
+    await playScene(scene);
+  }
+  if (following && isPlayable(state, following, DEV)) openBriefing(following);
+  else ads.setBanner(true);
 }
 
 garage.start();
@@ -336,6 +477,14 @@ onAppStateChange((active) => {
 });
 
 onBackButton(() => {
+  if (dialogue.isOpen) {
+    dialogue.skip();
+    return true;
+  }
+  if (chest.isOpen) {
+    chest.close();
+    return true;
+  }
   if (settings.isOpen) {
     settings.close();
     return true;
@@ -344,21 +493,23 @@ onBackButton(() => {
     store.close();
     return true;
   }
-  if (stagePicker.isOpen) {
-    stagePicker.close();
-    return true;
-  }
   if (mode === 'busy') return true;
   if (mode === 'race') {
-    if (raceHud.resultsOpen || race.phase === 'finished') exitToGarage();
+    if (raceHud.resultsOpen || race.phase === 'finished') exitToMap();
     else if (race.isPaused) resumeRace();
     else pauseRace();
+    return true;
+  }
+  if (mode === 'map') {
+    if (briefing.isOpen) closeBriefing();
+    else backToGarage();
     return true;
   }
   return false;
 });
 
 window.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && mode === 'map' && briefing.isOpen && !dialogue.isOpen) closeBriefing();
   if (e.code !== 'Escape' || mode !== 'race' || !race) return;
   if (race.isPaused) resumeRace();
   else pauseRace();
@@ -368,11 +519,15 @@ if (DEBUG) {
   window.__app = {
     get race() { return race; },
     get stage() { return stage; },
+    get mode() { return mode; },
     pickStage(id) {
       stage = typeof id === 'string' ? stageById(id) : STAGES[id];
       renderStageChip();
       return stage;
     },
-    startRace, exitToGarage, state, ads, billing, store, cloud,
+    startRace: (s, opts) => startRace(typeof s === 'string' ? stageById(s) : s ?? stage, opts),
+    openMap, backToGarage, exitToMap,
+    openBriefing: (id) => openBriefing(typeof id === 'string' ? stageById(id) : id),
+    map, mapHud, briefing, dialogue, chest, state, ads, billing, store, cloud,
   };
 }

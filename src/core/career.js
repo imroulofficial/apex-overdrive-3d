@@ -139,16 +139,39 @@ export function settleStage(save, stage, result) {
   };
 }
 
-export const claimableMilestones = (save) => {
-  const stars = totalStars(save);
-  return MILESTONES.filter((m) => stars >= m.stars && !save.career.milestones.includes(m.id));
-};
+// Chests whose chapter star threshold is met and that have not been opened yet.
+export const claimableMilestones = (save) =>
+  MILESTONES.filter((m) => chapterStars(save, m.chapterId) >= m.stars && !save.career.milestones.includes(m.id));
 
-// Opens a milestone chest once. Returns the milestone, or null if it is not claimable.
+// Opens a milestone chest once: pays its coins and adds its paint to the owned paints.
+// Returns the milestone, or null if it is not claimable.
 export function claimMilestone(save, id) {
   const m = claimableMilestones(save).find((x) => x.id === id);
   if (!m) return null;
   save.career.milestones.push(m.id);
   save.coins += m.coins;
+  if (m.paint && !save.ownedPaints.includes(m.paint)) save.ownedPaints.push(m.paint);
   return m;
+}
+
+// The stage after `stage` in career order, or null after the last one.
+export const nextStage = (stage) => STAGES[stage.number] ?? null;
+
+// The furthest stage the player can race (the map's "you are here" node).
+export function currentStage(save) {
+  let pick = STAGES[0];
+  for (const s of STAGES) if (isStageUnlocked(save, s)) pick = s;
+  return pick;
+}
+
+// Why a chapter is still closed, for the map's lock card:
+// { stage: the stage to clear first or null, stars: stars still needed (0 when met) }.
+export function chapterLock(save, chapterId) {
+  const chapter = chapterById(chapterId);
+  const first = STAGES.find((s) => s.chapterId === chapterId);
+  const prev = STAGES[first.index - 1] ?? null;
+  return {
+    stage: prev && first.number > save.career.unlockedStage ? prev : null,
+    stars: Math.max(0, chapter.starGate - totalStars(save)),
+  };
 }

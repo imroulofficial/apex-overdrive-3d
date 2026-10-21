@@ -107,15 +107,18 @@ test('the last stage never unlocks past 60', () => {
   assert.equal(save.career.unlockedStage, 60);
 });
 
-test('milestone chests are claimed once', () => {
+test('milestone chests are claimed once, per chapter', () => {
   const save = defaults();
   assert.equal(claimableMilestones(save).length, 0);
-  save.career.stageStars.fill(7, 0, 4); // 12 stars
-  assert.deepEqual(claimableMilestones(save).map((m) => m.id), ['stars-10']);
+  save.career.stageStars.fill(7, 0, 5); // 15 Emerald Coast stars
+  assert.deepEqual(claimableMilestones(save).map((m) => m.id), ['ec-15']);
   const coins = save.coins;
-  assert.equal(claimMilestone(save, 'stars-10').coins, 1000);
+  assert.equal(claimMilestone(save, 'ec-15').coins, 1000);
   assert.equal(save.coins, coins + 1000);
-  assert.equal(claimMilestone(save, 'stars-10'), null);
-  assert.equal(claimMilestone(save, 'stars-25'), null);
-  assert.deepEqual(save.career.milestones, ['stars-10']);
+  assert.equal(claimMilestone(save, 'ec-15'), null);
+  assert.equal(claimMilestone(save, 'ec-30'), null);
+  // Stars in another chapter do not count toward Emerald Coast chests.
+  save.career.stageStars.fill(7, 20, 25);
+  assert.deepEqual(claimableMilestones(save).map((m) => m.id), ['as-15']);
+  assert.deepEqual(save.career.milestones, ['ec-15']);
 });

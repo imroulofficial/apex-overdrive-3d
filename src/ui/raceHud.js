@@ -20,7 +20,7 @@ export function formatTime(t) {
   return `${m}:${s.toFixed(2).padStart(5, '0')}`;
 }
 
-export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, onRaceAgain, onDoubleCoins }) {
+export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, onRaceAgain, onNext, onDoubleCoins }) {
   const root = $('#race-hud');
   const el = {
     pos: $('#rh-pos'),
@@ -79,6 +79,7 @@ export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, 
   });
   button('#res-garage', () => onGarage());
   button('#res-again', () => onRaceAgain());
+  button('#res-next', () => onNext?.());
   const doubleBtn = $('#res-double');
   button('#res-double', () => onDoubleCoins?.());
 
@@ -399,6 +400,13 @@ export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, 
         total.parentElement.dataset.wallet = `Wallet ${fmt(wallet)}`;
         raceSfx.coin(12);
       }
+    },
+
+    // "Next stage" on the results card: shown when the stage after this one is open.
+    setNext(label) {
+      const b = $('#res-next');
+      b.hidden = !label;
+      if (label) b.textContent = label;
     },
 
     hideResults() {

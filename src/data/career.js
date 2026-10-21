@@ -274,17 +274,28 @@ export const chapterById = (id) => CHAPTERS.find((c) => c.id === id);
 export const stagesOfChapter = (id) => STAGES.filter((s) => s.chapterId === id);
 export const MAX_STARS = STAGES.length * 3;
 
-// Milestone reward chests, claimed once each when the career star total reaches `stars`.
-export const MILESTONES = [
-  { id: 'stars-10', stars: 10, coins: 1000 },
-  { id: 'stars-25', stars: 25, coins: 2000 },
-  { id: 'stars-45', stars: 45, coins: 3000 },
-  { id: 'stars-60', stars: 60, coins: 4000 },
-  { id: 'stars-90', stars: 90, coins: 6000 },
-  { id: 'stars-120', stars: 120, coins: 8000 },
-  { id: 'stars-150', stars: 150, coins: 10000 },
-  { id: 'stars-180', stars: 180, coins: 25000, title: 'Grand Horizon Champion' },
-];
+// Milestone reward chests on the world map: four per chapter, opened once each when that
+// chapter's stars reach `stars` (of 60). Every chest pays coins; the 30 and 60 star chests
+// also hold a paint that is never sold (see PAINTS in data/catalog.js).
+// Ids are stored in career.milestones (saved and synced): never rename one.
+const CHEST_COINS = { 15: 1000, 30: 1500, 45: 2500, 60: 4000 };
+const CHEST_PAINTS = {
+  'ec-30': 'tidal-teal',
+  'ec-60': 'riptide-wave',
+  'as-30': 'glacier-frost',
+  'as-60': 'avalanche-white',
+  'nc-30': 'neon-magenta',
+  'nc-60': 'kage-shadow',
+};
+export const MILESTONES = CHAPTERS.flatMap((c, ci) =>
+  [15, 30, 45, 60].map((stars) => {
+    const id = `${c.id.split('-').map((w) => w[0]).join('')}-${stars}`;
+    // Later chapters pay a little more: x1, x1.5, x2.
+    return { id, chapterId: c.id, stars, coins: CHEST_COINS[stars] * (1 + ci * 0.5), paint: CHEST_PAINTS[id] ?? null };
+  })
+);
+MILESTONES.at(-1).title = 'Apex Expedition Champion';
+export const milestonesOfChapter = (id) => MILESTONES.filter((m) => m.chapterId === id);
 
 // Sanity checks that would otherwise only show up as a broken save.
 for (const s of STAGES) {

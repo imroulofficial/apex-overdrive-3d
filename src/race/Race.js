@@ -239,7 +239,8 @@ export class Race {
   }
 
   // earnedStars: the stage's stars already held, for the intro card's objective list.
-  begin({ stats, paint, input, hud, onFinish, autoQuality = false, earnedStars = 0 }) {
+  // `startNitro`: the briefing's rewarded "Fill Nitrous Tank" perk (100% nitro on the grid).
+  begin({ stats, paint, input, hud, onFinish, autoQuality = false, earnedStars = 0, startNitro = false }) {
     this.autoQuality = autoQuality;
     this.input = input;
     this.hud = hud;
@@ -252,6 +253,7 @@ export class Race {
     }
     this.scenery.sun.castShadow = this.renderer.shadowMap.enabled;
     this.reset({ stats });
+    if (startNitro) this.player.vehicle.nitro = NITRO.max;
     input.setEnabled(false);
     this.chase.intro(this.player.vehicle, 3.2);
     this.engine?.stop();

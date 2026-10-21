@@ -109,8 +109,14 @@ test('chapter star gates are reachable from earlier chapters', () => {
   }
 });
 
-test('milestones are ordered, unique and reachable', () => {
+test('milestone chests: four per chapter, ordered, unique and reachable', () => {
   assert.equal(new Set(MILESTONES.map((m) => m.id)).size, MILESTONES.length);
-  for (let i = 1; i < MILESTONES.length; i++) assert.ok(MILESTONES[i].stars > MILESTONES[i - 1].stars);
-  assert.ok(MILESTONES.at(-1).stars <= MAX_STARS);
+  for (const c of CHAPTERS) {
+    const chests = MILESTONES.filter((m) => m.chapterId === c.id);
+    const max = STAGES.filter((s) => s.chapterId === c.id).length * 3;
+    assert.deepEqual(chests.map((m) => m.stars), [15, 30, 45, 60]);
+    for (let i = 1; i < chests.length; i++) assert.ok(chests[i].coins > chests[i - 1].coins);
+    assert.ok(chests.at(-1).stars <= max);
+  }
+  assert.ok(MAX_STARS >= 180);
 });

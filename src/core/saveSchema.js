@@ -15,6 +15,8 @@
 //                  best: { [stageId]: { time, score, plays } }, milestones: [claimed ids] }
 //   purchases    Play purchases (owned, sandboxOwned, granted bonuses, derived noAds/paints)
 //   settings, ads  per device, never synced
+//   story        { seen: [scene ids] } story scenes already played; per device, never synced
+//                (a new device replays them once, and every scene can be skipped)
 //   savedAt      when progress last changed on this device (ms)
 //   ownedCars    derived at runtime by monetization/billing.js, not part of progress
 //
@@ -25,10 +27,12 @@ import { CARS, STARTER_CAR } from '../data/cars.js';
 import { PAINTS, RIMS, UPGRADES } from '../data/catalog.js';
 import { STAGES, MILESTONES } from '../data/career.js';
 import { CONTROL_SCHEMES, DEFAULT_CONTROLS } from '../data/controls.js';
+import { SCENES } from '../data/story.js';
 
 export const SAVE_VERSION = 2;
 
-const DEFAULT_PAINTS = PAINTS.filter((p) => p.price === 0 && !p.product).map((p) => p.id);
+// Free paints everyone owns (not the Play-exclusive or milestone-chest ones).
+const DEFAULT_PAINTS = PAINTS.filter((p) => p.price === 0 && !p.product && !p.milestone).map((p) => p.id);
 const DEFAULT_PAINT = DEFAULT_PAINTS[0];
 const DEFAULT_RIM = RIMS[0].id;
 const UNLOCKED_BY = ['starter', 'coins', 'stars', 'iap'];
@@ -49,6 +53,7 @@ const paintIds = new Set(PAINTS.map((p) => p.id));
 const rimIds = new Set(RIMS.map((r) => r.id));
 const stageIds = new Set(STAGES.map((s) => s.stageId));
 const milestoneIds = new Set(MILESTONES.map((m) => m.id));
+const sceneIds = new Set(Object.keys(SCENES));
 
 export const emptyUpgrades = () => Object.fromEntries(UPGRADES.map((u) => [u.id, 0]));
 
@@ -71,6 +76,7 @@ export function defaults() {
     // racesFinished counts every finished race on this device; the first few never see an
     // interstitial (ADS.interstitialGraceRaces).
     ads: { crateClaimedAt: 0, racesSinceInterstitial: 0, nextInterstitialAt: 2, lastInterstitialAt: 0, racesFinished: 0 },
+    story: { seen: [] },
     // When the progress last changed on this device (ms). Settings and ad pacing do not count,
     // so launching or toggling sound never makes this device look newer than the cloud.
     savedAt: 0,
@@ -144,6 +150,7 @@ export function normalize(data) {
       granted: uniq(d.purchases?.granted),
     },
     ads: { ...base.ads, ...d.ads },
+    story: { seen: uniq(d.story?.seen, (id) => sceneIds.has(id)) },
     savedAt: Number.isFinite(d.savedAt) ? d.savedAt : 0,
     ownedCars: uniq(d.ownedCars, (id) => carIds.has(id)).length ? uniq(d.ownedCars, (id) => carIds.has(id)) : [STARTER_CAR],
   };
