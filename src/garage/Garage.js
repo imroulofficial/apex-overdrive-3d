@@ -65,12 +65,14 @@ export class Garage {
   start() {
     if (this.running) return;
     this.running = true;
+    this.rig.controls.enabled = true;
     this.last = performance.now();
     this.renderer.setAnimationLoop(this.frame);
   }
 
   stop() {
     this.running = false;
+    this.rig.controls.enabled = false;
     this.renderer.setAnimationLoop(null);
   }
 
@@ -135,7 +137,7 @@ export class Garage {
       down = { x: e.clientX, y: e.clientY, id: e.pointerId };
     });
     this.canvas.addEventListener('pointerup', (e) => {
-      if (!down || down.id !== e.pointerId) return;
+      if (!this.running || !down || down.id !== e.pointerId) return;
       const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
       down = null;
       if (moved > TAP_SLOP_PX) return;

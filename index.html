@@ -10,7 +10,7 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   </head>
   <body>
-    <canvas id="scene" aria-label="3D garage"></canvas>
+    <canvas id="scene" aria-label="3D view"></canvas>
 
     <div id="hud" class="hud" hidden>
       <header class="topbar">
@@ -65,6 +65,113 @@
 
       <button id="btn-race" class="race-btn"><span>RACE START</span></button>
     </div>
+
+    <div id="race-hud" class="race-hud" hidden>
+      <div class="rh-top">
+        <div class="rh-standing glass angled">
+          <div class="rh-pos"><b id="rh-pos">6</b><sup id="rh-pos-suf">TH</sup><span>/<i id="rh-total">6</i></span></div>
+          <div class="rh-meta">
+            <span>LAP <b id="rh-lap">1</b>/<i id="rh-laps">2</i></span>
+            <span id="rh-time">0:00.00</span>
+          </div>
+        </div>
+        <div class="rh-progress glass angled" aria-label="Race progress">
+          <div class="rh-track"><div class="rh-lapmarks" id="rh-lapmarks"></div><div id="rh-dots"></div></div>
+        </div>
+        <button id="rh-pause" class="icon-btn glass angled" aria-label="Pause">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14" /></svg>
+        </button>
+      </div>
+
+      <div id="rh-callouts" class="rh-callouts" aria-live="polite"></div>
+      <div id="rh-drift" class="rh-drift-score" hidden><small>DRIFT</small><b>0</b></div>
+      <div id="rh-wrong" class="rh-wrong" hidden>WRONG WAY</div>
+
+      <div class="rh-bottom">
+        <div id="rc-steer" class="rc-steer" aria-label="Steering">
+          <span class="rc-half left"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 8 12l7 7" /></svg></span>
+          <span class="rc-half right"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg></span>
+        </div>
+
+        <div class="rh-speedo glass angled">
+          <svg class="rh-dial" viewBox="0 0 120 70" aria-hidden="true">
+            <path class="rh-dial-bg" d="M10 62 A50 50 0 0 1 110 62" />
+            <path id="rh-dial-fill" class="rh-dial-fill" d="M10 62 A50 50 0 0 1 110 62" pathLength="100" />
+          </svg>
+          <div class="rh-speed"><b id="rh-speed">0</b><small>KM/H</small></div>
+          <div class="rh-nitro" aria-label="Nitro">
+            <i id="rh-nitro-fill"></i>
+            <span class="mark" style="--at: 30%"></span><span class="mark" style="--at: 55%"></span>
+          </div>
+        </div>
+
+        <div class="rc-actions">
+          <button id="rc-drift" class="rc-btn drift" aria-label="Drift and brake"><span>DRIFT</span></button>
+          <button id="rc-nitro" class="rc-btn nitro" aria-label="Nitro, double tap for pulse">
+            <svg class="rc-ring" viewBox="0 0 100 100" aria-hidden="true">
+              <circle class="ring-bg" cx="50" cy="50" r="44" />
+              <circle id="rc-nitro-ring" class="ring-fill" cx="50" cy="50" r="44" pathLength="100" />
+              <circle id="rc-sweet" class="ring-sweet" cx="50" cy="50" r="49" pathLength="100" />
+              <circle id="rc-needle" class="ring-needle" cx="50" cy="50" r="49" pathLength="100" />
+            </svg>
+            <span>NITRO</span>
+          </button>
+        </div>
+      </div>
+      <div id="race-fx" class="race-fx"></div>
+    </div>
+
+    <div id="race-intro" class="race-intro" hidden>
+      <small id="ri-biome">BIOME 1</small>
+      <strong id="ri-name">EMERALD COAST</strong>
+      <span id="ri-laps">2 LAPS · 6 RACERS</span>
+    </div>
+
+    <dialog id="pause" class="dialog glass angled" aria-labelledby="pause-title">
+      <header class="dialog-head">
+        <h2 id="pause-title">Paused</h2>
+      </header>
+      <div class="dialog-body pause-body">
+        <button class="pill-btn" id="pause-resume">Resume</button>
+        <button class="pill-btn ghost" id="pause-restart">Restart race</button>
+        <button class="pill-btn ghost" id="pause-quit">Quit to garage</button>
+        <p class="about">Quitting forfeits this race's rewards.</p>
+      </div>
+    </dialog>
+
+    <div id="results" class="results" hidden>
+      <div class="results-card glass angled">
+        <small id="res-track">EMERALD COAST</small>
+        <h2 id="res-title">VICTORY!</h2>
+        <div class="res-stars" id="res-stars">
+          <svg viewBox="0 0 24 24"><path d="m12 2.5 2.9 6 6.6.8-4.9 4.5 1.3 6.5L12 17l-5.9 3.3 1.3-6.5-4.9-4.5 6.6-.8z" /></svg>
+          <svg viewBox="0 0 24 24"><path d="m12 2.5 2.9 6 6.6.8-4.9 4.5 1.3 6.5L12 17l-5.9 3.3 1.3-6.5-4.9-4.5 6.6-.8z" /></svg>
+          <svg viewBox="0 0 24 24"><path d="m12 2.5 2.9 6 6.6.8-4.9 4.5 1.3 6.5L12 17l-5.9 3.3 1.3-6.5-4.9-4.5 6.6-.8z" /></svg>
+        </div>
+        <div class="res-grid">
+          <div class="res-place"><b id="res-pos">1</b><sup id="res-pos-suf">ST</sup><span>of 6</span></div>
+          <ul class="res-stats">
+            <li><span>Race time</span><b id="res-time">0:00.00</b></li>
+            <li><span>Best lap</span><b id="res-lap">0:00.00</b></li>
+            <li><span>Drift score</span><b id="res-drift">0</b></li>
+            <li><span>Props smashed</span><b id="res-smash">0</b></li>
+          </ul>
+          <ul class="res-coins">
+            <li><span>Finish reward</span><b id="res-c-pos">0</b></li>
+            <li><span>Drift bonus</span><b id="res-c-drift">0</b></li>
+            <li><span>Smash bonus</span><b id="res-c-smash">0</b></li>
+            <li class="total"><span>Coins earned</span><b id="res-c-total">0</b></li>
+          </ul>
+        </div>
+        <p class="res-best" id="res-best" hidden>NEW BEST TIME</p>
+        <div class="res-actions">
+          <button class="pill-btn ghost" id="res-again">Race again</button>
+          <button class="pill-btn" id="res-garage">Back to garage</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="transition" class="transition" hidden><span id="transition-label">LOADING</span></div>
 
     <dialog id="settings" class="dialog glass angled" aria-labelledby="settings-title">
       <header class="dialog-head">
