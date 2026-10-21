@@ -7,9 +7,27 @@ Offline-first 3D arcade racer for Android by **Red Pen Studio**.
 | Package | `com.redpenstudio.apexoverdrive` |
 | Android | minSdk 24 · targetSdk 36 · compileSdk 36 · edge-to-edge |
 | Stack | Three.js (WebGL2) + Vite, wrapped with Capacitor 8 |
-| Audience | 13+, no accounts, no analytics, no network calls during play |
+| Audience | 13+, no accounts, no analytics; gameplay is offline, ads and Play Billing use the network when available |
 
-## Phase 2 (this release): Emerald Coast, arcade physics and the race loop
+## Phase 3 (this release): monetization and the 3D model pipeline
+
+- **Google AdMob** (`src/monetization/ads.js`, `@capacitor-community/admob`), on Google's test ad units until a release build:
+  - **Rewarded video**: "Watch ad · 2× coins" on the race results screen pays the race's coins a second time (once per race); the garage's **Free 500** reward crate pays 500 coins once every 24 hours and shows a live countdown.
+  - **Interstitial**: every 2nd or 3rd finished race (re-rolled each time, never within 90 s of another full-screen ad), played behind the wipe on the way back to the garage.
+  - **Banner**: adaptive banner at the bottom of the garage, lifted above the gesture bar; the garage HUD pads itself by the banner's height. Hidden for the whole race.
+  - Google UMP consent form where required (EEA/UK/US states), with an **Ad privacy** button in Settings when Google requires one; ad content capped at Teen; not child-directed.
+  - Desktop browser: the same calls drive an on-page simulator (striped test banner, skippable interstitial, 3 s rewarded countdown).
+- **Google Play Billing** (`src/monetization/billing.js`, `@capgo/native-purchases`, Play Billing 9):
+  - `remove_ads` ($2.99): removes banner and interstitial ads permanently, +5,000 coins.
+  - `supercar_bundle` ($6.99): unlocks the Tier A **RP-X Hyperion**, +25,000 coins and No Ads.
+  - Store dialog (cart button in the top bar, or tapping the locked Hyperion in the **Cars** tab) with localized Play prices; purchases are acknowledged, pending payments unlock when they clear, refunds revoke the entitlement on next launch.
+  - Purchase state is saved on device and re-synced with Play on every launch, so it survives restarts and works offline. Coin bonuses are paid once per install, so Restore never pays twice.
+  - **Settings → Restore purchases** (Play compliance).
+  - **Sandbox store**: Settings toggle in pre-release builds that simulates both purchases on device with no charge (always on in the desktop browser), plus "Reset purchases" and "Reset crate" for testing. Not present in a `VITE_RELEASE=1` build.
+- **Cars tab and Tier A hypercar**: RP-1 Vanta (starter) and RP-X Hyperion (wing, canards, roof scoop, side blades, yellow calipers; Speed 74 / Nitro 66 / Handling 70 / Grip 68). The selected car is used in the garage and on track; upgrades apply to both.
+- **3D model pipeline** (`src/assets/modelLoader.js`): a vehicle spawner that loads `public/assets/models/<car>.glb` with `GLTFLoader` (Draco and Meshopt decoders bundled for offline use) and adapts it to the same car rig as the procedural builder: scaled to length, centred and grounded, wheel nodes re-pivoted to spin and steer, paint materials swapped for the clear-coat paint so the paint shop works, light lenses wired to the light toggle and brake glow, and exhaust anchors for nitro flames. The race bakes whichever rig it gets, and physics never reads meshes, so dropping in a model changes nothing else. A missing or malformed file falls back to the procedural car. Export conventions: [`public/assets/models/README.md`](public/assets/models/README.md).
+
+## Phase 2: Emerald Coast, arcade physics and the race loop
 
 - **Track "Emerald Coast" (Biome 1)**: a 2.8 km closed-loop coastal highway generated from a spline: cliff-top straights above the ocean, an inland climb to a hilltop hairpin, a downhill S and sweeping bends back to the sea (18 m to 54 m elevation). Wooden barrier fences line both sides, kerbs and chevron boards mark the corners, and a start/finish gantry spans the grid.
 - **Scenery**: procedural terrain carved around the road (grass, rock faces and sand by slope and height), an animated ocean with emerald shallows, sea stacks and rocks, palms, umbrella pines and cypress, a lighthouse headland, sailboats, a sky with sun glow and image-based lighting rendered from it, and a distant ridge on the horizon.
@@ -46,22 +64,26 @@ Requirements: Node 22, JDK 21, Android SDK platform 36.
 
 ```
 src/
-  main.js              boot, lifecycle, Android back button
-  config.js            studio constants and legal URLs
+  main.js              boot, lifecycle, Android back button, ad/race flow
+  config.js            studio constants, legal URLs, ad units, Play products
   core/                save data (localStorage), synthesized UI/engine audio, Capacitor helpers
+  assets/              GLTF vehicle spawner with procedural fallback
+  monetization/        AdMob service (+ browser simulator), Play Billing and entitlements
   data/catalog.js      paints, finishes, upgrades, prices
+  data/cars.js         garage cars: stats, procedural kit, .glb path, unlock product
   data/tracks.js       Emerald Coast definition (waypoints, ramps, props, coastline)
   data/rivals.js       AI rivals, race rewards and star rating
   garage/              renderer + quality, showroom, procedural car, paint shader, camera rig
   race/                track spline + meshes, scenery, props, vehicle physics, AI, race cars,
                        effects, chase camera, input and the Race state machine
-  ui/                  garage HUD, race HUD + finish screen, settings dialog, styles
+  ui/                  garage HUD, store + reward crate, race HUD + finish screen, settings, styles
+public/assets/models/  drop-in .glb car models (see README there)
 android/               Capacitor Android project (signing reads env vars / keystore.properties)
 docs/                  GitHub Pages: privacy-policy.html, terms.html
 .github/workflows/     build-aab.yml
 ```
 
-All assets are generated at runtime or bundled into the APK/AAB; nothing is fetched from the network. The only links that leave the app are the Privacy Policy and Terms pages, which open in the system browser.
+All game assets are generated at runtime or bundled into the APK/AAB. The network is used only by the AdMob SDK, Play Billing and the Privacy Policy / Terms links (system browser); the game is fully playable without it.
 
 ## Release builds (CI)
 
@@ -85,6 +107,16 @@ base64 -w0 upload.jks > upload.jks.b64   # paste into ANDROID_KEYSTORE_BASE64
 
 For a local signed build, create `android/keystore.properties` (git-ignored) with `storeFile`, `storePassword`, `keyAlias` and `keyPassword`.
 
+### Going live with ads and purchases
+
+Pre-release builds (every build until you change this) use Google's test ad units and test AdMob app id, and offer the sandbox store toggle. For the store release:
+
+1. In AdMob, create the app and three ad units (adaptive banner, interstitial, rewarded).
+2. In Play Console, create two **one-time products**, `remove_ads` ($2.99) and `supercar_bundle` ($6.99), and activate them. Real purchases can be tested from an internal testing track with license testers.
+3. Add repository **variables** (Settings → Secrets and variables → Actions → Variables): `VITE_RELEASE` = `1`, `ADMOB_APP_ID` (`ca-app-pub-…~…`), `VITE_ADMOB_BANNER`, `VITE_ADMOB_INTERSTITIAL`, `VITE_ADMOB_REWARDED` (`ca-app-pub-…/…`). The workflow passes them to Vite and Gradle. Locally: `VITE_RELEASE=1 VITE_ADMOB_…=… npm run build` and `./gradlew bundleRelease -PadmobAppId=…`.
+
+With `VITE_RELEASE=1` and a unit id missing, that ad type is simply not shown.
+
 ## Legal pages (GitHub Pages)
 
 Enable **Settings → Pages → Deploy from a branch → `main` / `/docs`**. The app links to:
@@ -95,4 +127,5 @@ Enable **Settings → Pages → Deploy from a branch → `main` / `/docs`**. The
 ## Compliance notes
 
 - Edge-to-edge: `viewport-fit=cover` plus Capacitor's SystemBars `insetsHandling: "css"`; every HUD edge is padded with the safe-area insets so nothing sits under the status bar, navigation bar or display cutout.
-- 13+ / COPPA: no accounts, no personal data, no ad or analytics SDKs, and no `AD_ID` permission. Update the privacy policy and the Play Data safety form before adding AdMob or IAP.
+- 13+ / COPPA: no accounts and no analytics. The app is not child-directed: AdMob requests are tagged not child-directed, ad content is capped at Teen, and the game is not in the Designed for Families program. The privacy policy (updated for Phase 3) discloses AdMob and Play Billing.
+- The AdMob SDK merges the `com.google.android.gms.permission.AD_ID` permission. In Play Console: answer **Contains ads: Yes**, declare advertising ID use, and in **Data safety** declare *Device or other IDs*, *App interactions* and *Diagnostics* collected and shared by the AdMob SDK for advertising, fraud prevention and analytics, plus *Purchase history* processed by Google Play.

@@ -6,6 +6,8 @@ import { SmashProps } from './props.js';
 import { Vehicle, statsToParams, NITRO } from './vehicle.js';
 import { AIDriver } from './ai.js';
 import { CarFactory } from './raceCars.js';
+import { createCar } from '../garage/carModel.js';
+import { loadCar } from '../assets/modelLoader.js';
 import { ChaseCamera } from './chaseCamera.js';
 import { Particles, SpeedLines, softDotTexture } from './effects.js';
 import { mulberry32 } from './noise.js';
@@ -37,7 +39,7 @@ export class Race {
   }
 
   // Builds the world once (procedural, a few hundred ms) and pre-compiles its shaders.
-  async prepare({ quality, paint }) {
+  async prepare({ quality, paint, car }) {
     if (this.ready) return;
     const renderer = this.renderer;
     this.quality = quality;
@@ -49,7 +51,10 @@ export class Race {
     this.scene.add(buildTrackMeshes(this.track, renderer));
     this.props = new SmashProps(this.track, this.def, this.scene);
 
-    this.factory = new CarFactory(paint.color, paint.finish);
+    // Rivals share the procedural coupe; the player's car comes from the spawner (.glb or procedural).
+    this.rivalFactory = new CarFactory(createCar({ paintColor: paint.color, finish: paint.finish, detail: 0.6 }));
+    this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, detail: 0.6 }));
+    this.playerCarId = car.id;
     const dot = softDotTexture();
     this.smoke = new Particles(this.scene, { count: 360, texture: dot });
     this.sparks = new Particles(this.scene, { count: 160, additive: true, texture: dot });
@@ -60,7 +65,7 @@ export class Race {
     const player = this.factory.build({ player: true });
     this.racers.push({ id: 'player', name: 'You', color: paint.color, isPlayer: true, visual: player });
     for (const r of RIVALS) {
-      this.racers.push({ ...r, isPlayer: false, visual: this.factory.build({ color: r.color, finish: r.finish }) });
+      this.racers.push({ ...r, isPlayer: false, visual: this.rivalFactory.build({ color: r.color, finish: r.finish }) });
     }
     for (const racer of this.racers) this.scene.add(racer.visual.root);
     this.player = this.racers[0];
@@ -73,6 +78,21 @@ export class Race {
     this.chase.snap(this.player.vehicle);
     await renderer.compileAsync(this.scene, this.camera);
     this.ready = true;
+  }
+
+  // Swaps the player's car between races (garage selection changed). Physics is untouched:
+  // the Vehicle keeps simulating and the new visual just follows it.
+  async setPlayerCar(car, paint) {
+    if (car.id === this.playerCarId) return;
+    const old = this.player.visual;
+    this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, detail: 0.6 }));
+    this.playerCarId = car.id;
+    this.player.visual = this.factory.build({ player: true });
+    this.scene.remove(old.root);
+    this.scene.add(this.player.visual.root);
+    old.root.traverse((o) => o.isMesh && o.geometry.dispose());
+    if (this.player.vehicle) this.player.visual.update(this.player.vehicle, 0, 0);
+    await this.renderer.compileAsync(this.scene, this.camera);
   }
 
   resize() {

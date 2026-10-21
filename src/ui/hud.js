@@ -1,6 +1,8 @@
-import { PAINTS, FINISHES, UPGRADES, upgradeCost, BASE_STATS, STAT_PER_LEVEL } from '../data/catalog.js';
+import { PAINTS, FINISHES, UPGRADES, upgradeCost, STAT_PER_LEVEL } from '../data/catalog.js';
+import { CARS, carById } from '../data/cars.js';
 import { state, save, subscribe, spendCoins } from '../core/store.js';
 import { sfx } from '../core/audio.js';
+import { billing } from '../monetization/billing.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -20,7 +22,7 @@ export function toast(message, ms = 2400) {
   toastTimer = setTimeout(() => (el.hidden = true), ms);
 }
 
-export function createHud(garage, { onRaceStart } = {}) {
+export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
   const hud = $('#hud');
   let previewPaint = state.paint;
 
@@ -161,11 +163,54 @@ export function createHud(garage, { onRaceStart } = {}) {
     save();
   });
 
+  // ---- Cars ----
+  const carList = $('#car-list');
+  function renderCars() {
+    carList.innerHTML = CARS.map((c) => {
+      const owned = state.ownedCars.includes(c.id);
+      const selected = state.car === c.id;
+      const action = selected
+        ? '<button class="pill-btn" disabled>Selected</button>'
+        : owned
+          ? `<button class="pill-btn" data-car="${c.id}">Select</button>`
+          : `<button class="pill-btn gold" data-unlock="${c.unlockProduct}">${LOCK_ICON}${billing.price(c.unlockProduct)}</button>`;
+      return `<li class="car-item${selected ? ' is-selected' : ''}">
+        <span class="tier tier-${c.tier.toLowerCase()}">${c.tier}</span>
+        <div><strong>${c.name}</strong><small>${owned ? c.class : 'Supercar Bundle exclusive'}</small></div>
+        ${action}
+      </li>`;
+    }).join('');
+  }
+  carList.addEventListener('click', (e) => {
+    const unlock = e.target.closest('[data-unlock]');
+    if (unlock) {
+      onOpenStore?.(unlock.dataset.unlock);
+      return;
+    }
+    const btn = e.target.closest('[data-car]');
+    if (!btn) return;
+    sfx.buy();
+    revertPreview();
+    state.car = btn.dataset.car;
+    save();
+    garage.rev();
+  });
+
+  // Keeps the turntable in step with the selected car (selection, purchase or revoke).
+  function syncCar() {
+    if (garage.wantedCarId === state.car) return;
+    const p = paintById(state.paint);
+    garage.setCar(carById(state.car), { color: p.color, finish: p.finish });
+  }
+
   // ---- Stats ----
   const statsEl = $('#stats');
   const STAT_LABELS = { speed: 'Speed', nitro: 'Nitro', handling: 'Handling', grip: 'Grip' };
   function renderStats() {
-    const values = { ...BASE_STATS };
+    const car = carById(state.car);
+    $('#car-class').textContent = car.class.toUpperCase();
+    $('#car-name').textContent = car.name.toUpperCase();
+    const values = { ...car.stats };
     UPGRADES.forEach((u) => (values[u.stat] += state.upgrades[u.id] * STAT_PER_LEVEL));
     statsEl.innerHTML = Object.entries(STAT_LABELS)
       .map(([key, label]) => {
@@ -231,9 +276,12 @@ export function createHud(garage, { onRaceStart } = {}) {
     renderCoins();
     renderPaint();
     renderUpgrades();
+    renderCars();
     renderStats();
+    syncCar();
   }
   subscribe(renderAll);
+  billing.subscribe(renderAll);
   renderAll();
 
   return {

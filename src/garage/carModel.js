@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { createCarPaint } from './carPaint.js';
 
-// Starter sports coupe ("RP-1 Vanta"), built procedurally so the garage ships with zero
-// downloaded assets. The car faces +X, sits on y = 0 and is centered on the origin.
+// Procedural cars, built so the garage ships with zero downloaded assets: the starter
+// coupe ("RP-1 Vanta") and, with the `hyper` aero kit, the RP-X Hyperion. The car faces +X,
+// sits on y = 0 and is centered on the origin. External .glb models follow the same
+// conventions and expose the same interface (see src/assets/modelLoader.js).
 
 export const WHEEL_BASE = 1.3; // half wheelbase (x)
 export const TRACK = 0.86; // half track width (z)
@@ -171,8 +173,8 @@ function surfaceFrame(section, x, theta, deform) {
   return { position: p, normal };
 }
 
-function createMaterials(paintColor, finish) {
-  return {
+function createMaterials(paintColor, finish, kit) {
+  const m = {
     paint: createCarPaint(paintColor, finish),
     glass: new THREE.MeshPhysicalMaterial({
       color: 0x0a0e14,
@@ -189,7 +191,7 @@ function createMaterials(paintColor, finish) {
     rim: new THREE.MeshStandardMaterial({ color: 0x2a2d33, roughness: 0.22, metalness: 0.95 }),
     tire: new THREE.MeshStandardMaterial({ color: 0x111112, roughness: 0.92, metalness: 0 }),
     disc: new THREE.MeshStandardMaterial({ color: 0x6d7076, roughness: 0.4, metalness: 0.9 }),
-    caliper: new THREE.MeshStandardMaterial({ color: 0xe2231a, roughness: 0.35, metalness: 0.2 }),
+    caliper: new THREE.MeshStandardMaterial({ color: kit === 'hyper' ? 0xffc21a : 0xe2231a, roughness: 0.35, metalness: 0.2 }),
     interior: new THREE.MeshStandardMaterial({ color: 0x090909, roughness: 0.9 }),
     wellLiner: new THREE.MeshStandardMaterial({ color: 0x050506, roughness: 0.95, side: THREE.DoubleSide }),
     headLens: new THREE.MeshStandardMaterial({ color: 0xdfe8ff, roughness: 0.1, metalness: 0.2, emissive: 0xe8f0ff, emissiveIntensity: 0 }),
@@ -203,6 +205,9 @@ function createMaterials(paintColor, finish) {
       side: THREE.DoubleSide,
     }),
   };
+  // Race baking gives every car its own brake-light material; this flag finds it.
+  m.tailLens.userData.tailLight = true;
+  return m;
 }
 
 function tireGeometry(segments = 40) {
@@ -266,6 +271,7 @@ function createWheel(m, side, sharedTire) {
   disc.position.z = 0.02 * side;
   wheel.add(disc);
   const caliper = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.07, 0.06), m.caliper);
+  caliper.name = 'caliper';
   caliper.position.set(-0.11, 0.11, 0.045 * side);
   caliper.rotation.z = 0.8;
   wheel.add(caliper);
@@ -273,12 +279,32 @@ function createWheel(m, side, sharedTire) {
   return { wheel, spin };
 }
 
+// Hypercar aero kit: big rear wing, front canards, roof scoop and side blades.
+function addHyperKit(m, add) {
+  const wing = add(new THREE.BoxGeometry(0.34, 0.035, 1.78), m.carbon, -2.0, 1.13, 0);
+  wing.rotation.z = -0.12;
+  add(new THREE.BoxGeometry(0.05, 0.16, 1.78), m.paint, -2.17, 1.17, 0); // gurney flap
+  for (const z of [-1, 1]) {
+    add(new THREE.BoxGeometry(0.4, 0.2, 0.025), m.carbon, -2.0, 1.15, z * 0.9); // end plates
+    const strut = add(new THREE.BoxGeometry(0.07, 0.32, 0.04), m.carbon, -1.98, 0.96, z * 0.42);
+    strut.rotation.z = 0.25;
+    const canard = add(new THREE.BoxGeometry(0.22, 0.02, 0.16), m.carbon, 2.08, 0.4, z * 0.8);
+    canard.rotation.x = z * 0.35;
+    canard.rotation.z = 0.18;
+    add(new THREE.BoxGeometry(0.9, 0.14, 0.03), m.carbon, -0.75, 0.52, z * 0.935); // side blade
+  }
+  const scoop = add(new THREE.BoxGeometry(0.42, 0.11, 0.3), m.carbon, -0.55, 1.17, 0);
+  scoop.rotation.z = -0.08;
+  add(new THREE.BoxGeometry(0.03, 0.08, 0.22), m.trim, -0.33, 1.17, 0); // scoop mouth
+  add(new THREE.BoxGeometry(1.1, 0.02, 0.012), m.carbon, -1.35, 1.06, 0); // shark fin
+}
+
 // `detail` scales the loft resolution (1 = showroom; the race uses a lighter mesh).
-export function createCar({ paintColor, finish, detail = 1 }) {
+export function createCar({ paintColor, finish, detail = 1, kit = 'coupe' }) {
   const res = (n) => Math.max(8, Math.round((n * detail) / 4) * 4);
-  const m = createMaterials(paintColor, finish);
+  const m = createMaterials(paintColor, finish, kit);
   const car = new THREE.Group();
-  car.name = 'starter-coupe';
+  car.name = kit === 'hyper' ? 'hypercar' : 'starter-coupe';
 
   const body = new THREE.Mesh(
     loft(bodySection, { x0: -2.3, x1: 2.3, stations: res(96), ring: res(64), deform: carveArches }),
@@ -335,6 +361,7 @@ export function createCar({ paintColor, finish, detail = 1 }) {
     mirror.rotation.y = -0.25 * z;
     add(new THREE.CylinderGeometry(0.05, 0.05, 0.14, 16).rotateZ(Math.PI / 2), m.chrome, -2.24, 0.32, z * 0.42); // exhaust
   }
+  if (kit === 'hyper') addHyperKit(m, add);
 
   // Lights. Slim LED headlights, wraparound tail lights, real light sources and soft beams.
   const lights = { head: [], tail: [], beams: [] };
@@ -400,8 +427,12 @@ export function createCar({ paintColor, finish, detail = 1 }) {
 
   return {
     group: car,
+    source: 'procedural',
     paintMaterial: m.paint,
     wheels,
+    wheelRadius: WHEEL_RADIUS,
+    // Nitro flame anchors (car space), at the exhaust tips.
+    exhausts: [new THREE.Vector3(-2.28, 0.32, -0.42), new THREE.Vector3(-2.28, 0.32, 0.42)],
     get lightsOn() {
       return lightsOn;
     },

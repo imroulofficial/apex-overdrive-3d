@@ -5,9 +5,13 @@ import { createSettings } from './ui/settings.js';
 import { createRaceHud } from './ui/raceHud.js';
 import { Race } from './race/Race.js';
 import { createRaceInput } from './race/input.js';
-import { PAINTS, UPGRADES, BASE_STATS, STAT_PER_LEVEL } from './data/catalog.js';
+import { createStore } from './ui/store.js';
+import { PAINTS, UPGRADES, STAT_PER_LEVEL } from './data/catalog.js';
+import { carById } from './data/cars.js';
 import { EMERALD_COAST } from './data/tracks.js';
 import { state, save, addCoins } from './core/store.js';
+import { ads } from './monetization/ads.js';
+import { billing } from './monetization/billing.js';
 import { suspendAudio, resumeAudio } from './core/audio.js';
 import { onAppStateChange, onBackButton } from './core/platform.js';
 
@@ -20,6 +24,7 @@ const showFps = (fps) => {
 };
 
 const garage = new Garage(canvas, {
+  car: carById(state.car),
   paintColor: currentPaint().color,
   finish: currentPaint().finish,
   quality: state.settings.quality,
@@ -30,11 +35,15 @@ const garage = new Garage(canvas, {
 let mode = 'garage';
 let race = null;
 let lastWinnings = 0;
+let lastResult = null; // the finished race whose coins the rewarded ad can double
 
-const hud = createHud(garage, { onRaceStart: () => startRace() });
+const store = createStore({ onPurchased: () => ads.refreshEntitlements() });
+const hud = createHud(garage, { onRaceStart: () => startRace(), onOpenStore: (id) => store.open(id) });
 if (new URLSearchParams(location.search).has('debug')) window.__garage = garage;
 const settings = createSettings(garage, {
   onFpsToggle: (on) => (fpsEl.hidden = !on),
+  onEntitlementsChanged: () => ads.refreshEntitlements(),
+  onCrateReset: () => store.resetCrate(),
 });
 fpsEl.hidden = !state.settings.showFps;
 
@@ -46,6 +55,7 @@ const raceHud = createRaceHud({
   onQuit: () => exitToGarage(),
   onGarage: () => exitToGarage(),
   onRaceAgain: () => restartRace(),
+  onDoubleCoins: () => doubleCoins(),
 });
 
 // ---------------------------------------------------------------------------
@@ -76,7 +86,7 @@ const wipe = {
 };
 
 function playerStats() {
-  const values = { ...BASE_STATS };
+  const values = { ...carById(state.car).stats };
   UPGRADES.forEach((u) => (values[u.stat] += state.upgrades[u.id] * STAT_PER_LEVEL));
   for (const k of Object.keys(values)) values[k] = Math.min(100, values[k]);
   return values;
@@ -101,7 +111,9 @@ async function startRace() {
   try {
     if (!race) {
       race = new Race(garage.renderer, EMERALD_COAST, { onFps: showFps });
-      await race.prepare({ quality: garage.qualityLevel, paint: currentPaint() });
+      await race.prepare({ quality: garage.qualityLevel, paint: currentPaint(), car: carById(state.car) });
+    } else {
+      await race.setPlayerCar(carById(state.car), currentPaint());
     }
   } catch (err) {
     console.error(err);
@@ -112,6 +124,7 @@ async function startRace() {
     return;
   }
   hud.hide();
+  ads.setBanner(false);
   garage.stop();
   lastWinnings = 0;
   beginRace();
@@ -131,9 +144,29 @@ function bankResult(result) {
   };
   addCoins(result.coins.total);
   lastWinnings += result.coins.total;
+  lastResult = { coins: result.coins.total, doubled: false };
+  ads.noteRaceFinished();
   save();
   result.best = best && rec.bestTime !== null;
   result.wallet = state.coins;
+}
+
+// Results screen: a rewarded video pays the race's coins a second time.
+async function doubleCoins() {
+  if (!lastResult || lastResult.doubled || mode !== 'race') return;
+  const res = lastResult;
+  raceHud.setDoubleState('loading');
+  const outcome = await ads.showRewarded();
+  if (outcome !== 'rewarded') {
+    raceHud.setDoubleState('ready');
+    if (outcome === 'unavailable') toast('No ad available right now. Try again in a moment.');
+    return;
+  }
+  res.doubled = true;
+  addCoins(res.coins);
+  lastWinnings += res.coins;
+  save();
+  raceHud.setDoubleState('done', { bonus: res.coins, wallet: state.coins });
 }
 
 function pauseRace() {
@@ -155,6 +188,7 @@ async function restartRace() {
   raceHud.closePause();
   await wipe.cover('RESTARTING');
   raceHud.hideResults();
+  lastResult = null;
   beginRace();
   mode = 'race';
   await wipe.reveal();
@@ -168,10 +202,14 @@ async function exitToGarage() {
   race.exit();
   raceHud.hide();
   raceHud.hideResults();
+  lastResult = null;
+  // Every 2-3 finished races an interstitial plays here, behind the wipe.
+  await ads.maybeShowInterstitial();
   garage.resize();
   garage.start();
   hud.snapBody();
   hud.show();
+  ads.setBanner(true);
   mode = 'garage';
   await wipe.reveal();
   if (lastWinnings > 0) {
@@ -189,6 +227,9 @@ requestAnimationFrame(() =>
     $('#splash').classList.add('is-done');
     hud.show();
     garage.intro();
+    // Monetization starts after the first frame so it never delays the garage reveal.
+    billing.init().then(() => ads.refreshEntitlements());
+    ads.init().then(() => ads.setBanner(mode === 'garage'));
   })
 );
 
@@ -216,6 +257,10 @@ onBackButton(() => {
     settings.close();
     return true;
   }
+  if (store.isOpen) {
+    store.close();
+    return true;
+  }
   if (mode === 'busy') return true;
   if (mode === 'race') {
     if (raceHud.resultsOpen || race.phase === 'finished') exitToGarage();
@@ -233,5 +278,5 @@ window.addEventListener('keydown', (e) => {
 });
 
 if (new URLSearchParams(location.search).has('debug')) {
-  window.__app = { get race() { return race; }, startRace, exitToGarage, state };
+  window.__app = { get race() { return race; }, startRace, exitToGarage, state, ads, billing, store };
 }

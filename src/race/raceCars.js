@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { createCar, WHEEL_RADIUS } from '../garage/carModel.js';
 import { applyFinish } from '../garage/carPaint.js';
 
-// Race-ready cars built from the garage coupe. The showroom model has dozens of meshes and
-// real light sources; on track six of them would cost hundreds of draw calls and a heavy
-// light loop in every shader. Here the body is baked into one mesh per material, each wheel
-// into two spinning meshes, and lights are replaced by emissive lenses.
+// Race-ready cars baked from a garage car rig (procedural or .glb, see modelLoader.js). The
+// showroom model has dozens of meshes and real light sources; on track six of them would
+// cost hundreds of draw calls and a heavy light loop in every shader. Here the body is baked
+// into one mesh per material, each wheel into one spinning mesh per material, and lights
+// are replaced by emissive lenses.
 
 function sliceGroups(mesh) {
   const geo = mesh.geometry;
@@ -70,11 +70,11 @@ function flameTexture() {
 }
 
 export class CarFactory {
-  constructor(paintColor, finish) {
-    this.template = createCar({ paintColor, finish, detail: 0.6 });
-    const t = this.template.group;
-    t.updateMatrixWorld(true);
-    this.paint = this.template.paintMaterial;
+  // `template` is a car rig from loadCar(); the factory never mutates it.
+  constructor(template) {
+    this.template = template;
+    template.group.updateMatrixWorld(true);
+    this.paint = template.paintMaterial;
     this.flameTex = flameTexture();
   }
 
@@ -98,7 +98,7 @@ export class CarFactory {
       if (mat === this.paint) return paint;
       if (mat.name === 'skip') return null;
       // Tail lenses are per car so brake lights can glow independently.
-      if (mat.emissive && mat.emissive.r > 0.9 && mat.emissive.g < 0.2) {
+      if (mat.userData.tailLight) {
         if (!own.has(mat)) own.set(mat, mat.clone());
         return own.get(mat);
       }
@@ -122,21 +122,12 @@ export class CarFactory {
       wheel.position.copy(src.position);
       const spin = new THREE.Group();
       wheel.add(spin);
-      // Tyre + one metal mesh for rim, spokes, lip, hub and disc (the caliper is dropped).
-      const mats = new Map();
-      src.traverse((o) => {
-        if (!o.isMesh) return;
-        const isTire = o.material.roughness > 0.85;
-        if (!isTire && o.material.color.r > 0.8 && o.material.color.g < 0.3) return; // caliper
-        const key = isTire ? 'tire' : 'metal';
-        if (!mats.has(key)) mats.set(key, { mat: isTire ? o.material : null, geos: [] });
-        const rel = new THREE.Matrix4().copy(src.matrixWorld).invert().multiply(o.matrixWorld);
-        mats.get(key).geos.push(normalize(o.geometry, rel));
-        if (!isTire && !mats.get(key).mat) mats.get(key).mat = o.material;
+      // Everything except the caliper spins; procedural wheels merge to tyre + metal.
+      const merged = bake(src, src, (o) => o.name === 'caliper', (mat) => (mat.roughness > 0.85 ? mat : this.metalOf(mat)));
+      merged.forEach((mesh) => {
+        mesh.castShadow = false;
+        spin.add(mesh);
       });
-      for (const { mat, geos } of mats.values()) {
-        spin.add(new THREE.Mesh(mergeGeometries(geos), mat));
-      }
       body.add(wheel);
       return { wheel, spin, front: index < 2 };
     });
@@ -155,15 +146,23 @@ export class CarFactory {
     flameGeo.rotateZ(Math.PI / 2); // tip points backwards (-x)
     flameGeo.translate(-0.55, 0, 0); // base at the nozzle
     const flames = [];
-    for (const z of [-0.42, 0.42]) {
+    for (const at of this.template.exhausts) {
       const fl = new THREE.Mesh(flameGeo, flameMat);
-      fl.position.set(-2.28, 0.32, z);
+      fl.position.copy(at);
       fl.visible = false;
       fl.renderOrder = 5;
       body.add(fl);
       flames.push(fl);
     }
-    return new CarVisual(root, body, wheels, tail, flames, flameMat);
+    return new CarVisual(root, body, wheels, tail, flames, flameMat, this.template.wheelRadius);
+  }
+
+  // Procedural rims, spokes, lip, hub and disc share one material per wheel (fewer draws);
+  // a .glb keeps its own wheel materials.
+  metalOf(mat) {
+    if (this.template.source !== 'procedural') return mat;
+    this.wheelMetal ??= mat;
+    return this.wheelMetal;
   }
 }
 
@@ -172,8 +171,9 @@ const ORANGE = new THREE.Color(0xff7a1a);
 const PURPLE = new THREE.Color(0xb44dff);
 
 export class CarVisual {
-  constructor(root, body, wheels, tail, flames, flameMat) {
+  constructor(root, body, wheels, tail, flames, flameMat, wheelRadius) {
     this.root = root;
+    this.wheelRadius = wheelRadius;
     this.body = body;
     this.wheels = wheels;
     this.tail = tail;
@@ -201,7 +201,7 @@ export class CarVisual {
 
     const steerTarget = v.drifting ? -v.driftDir * 0.5 : this.steerInput ?? 0;
     this.steerVis += (steerTarget - this.steerVis) * Math.min(1, dt * 12);
-    const spinRate = v.forward / WHEEL_RADIUS;
+    const spinRate = v.forward / this.wheelRadius;
     for (const w of this.wheels) {
       w.spin.rotation.z -= spinRate * dt;
       if (w.front) w.wheel.rotation.y = -this.steerVis * 0.45;

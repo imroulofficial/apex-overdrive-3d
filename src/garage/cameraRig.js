@@ -7,12 +7,13 @@ import { WHEEL_BASE, TRACK, WHEEL_RADIUS } from './carModel.js';
 
 const IDLE_AUTO_ROTATE_S = 7;
 
-const wheelShot = (index) => {
-  const x = index < 2 ? WHEEL_BASE : -WHEEL_BASE;
-  const z = index % 2 === 0 ? TRACK : -TRACK;
+// `at` is the wheel's actual hub position (external models differ from the procedural car).
+const wheelShot = (index, at = null, radius = WHEEL_RADIUS) => {
+  const x = at ? at.x : index < 2 ? WHEEL_BASE : -WHEEL_BASE;
+  const z = at ? at.z : index % 2 === 0 ? TRACK : -TRACK;
   return {
     position: new THREE.Vector3(x + Math.sign(x) * 0.7, 0.5, z + Math.sign(z) * 1.55),
-    target: new THREE.Vector3(x, WHEEL_RADIUS, z),
+    target: new THREE.Vector3(x, radius, z),
     minDistance: 1.1,
   };
 };

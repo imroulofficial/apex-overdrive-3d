@@ -28,6 +28,12 @@
 
         </activity>
 
+        <!-- AdMob app id. Defaults to Google's test app id; release builds pass the real one
+             with -PadmobAppId=ca-app-pub-XXXX~YYYY (see app/build.gradle). -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="${admobAppId}" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

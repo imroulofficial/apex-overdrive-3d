@@ -19,10 +19,17 @@
           <small>3D RACING</small>
         </div>
         <div class="top-actions">
+          <button id="btn-crate" class="crate-btn glass angled" aria-label="Free coins reward crate">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18v4H3zM5 13h14v8H5zM12 9v12M12 9c-1.5-3-5.5-4-6-1.5S9 9 12 9Zm0 0c1.5-3 5.5-4 6-1.5S15 9 12 9Z" /></svg>
+            <span class="crate-text"><b id="crate-label">FREE 500</b><small id="crate-sub">Watch ad</small></span>
+          </button>
           <div class="coins glass angled" aria-label="Coins">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="coin-face" /><path d="M12 7v10M9.5 9.5h4a1.5 1.5 0 0 1 0 3h-3a1.5 1.5 0 0 0 0 3h4" class="coin-mark" /></svg>
             <span id="coin-count">0</span>
           </div>
+          <button id="btn-store" class="icon-btn glass angled" aria-label="Store">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2.5l2.2 11h10.6L20.5 7H6.4" /><circle cx="9" cy="19.5" r="1.5" /><circle cx="17" cy="19.5" r="1.5" /></svg>
+          </button>
           <button id="btn-settings" class="icon-btn glass angled" aria-label="Settings">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" /></svg>
           </button>
@@ -33,6 +40,7 @@
         <div class="tabs" role="tablist">
           <button class="tab is-active" role="tab" aria-selected="true" data-tab="paint">Paint</button>
           <button class="tab" role="tab" aria-selected="false" data-tab="upgrades">Upgrades</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="cars">Cars</button>
         </div>
         <section class="tab-panel" data-panel="paint" role="tabpanel">
           <div class="paint-grid" id="paint-grid"></div>
@@ -44,10 +52,13 @@
         <section class="tab-panel" data-panel="upgrades" role="tabpanel" hidden>
           <ul class="upgrade-list" id="upgrade-list"></ul>
         </section>
+        <section class="tab-panel" data-panel="cars" role="tabpanel" hidden>
+          <ul class="car-list" id="car-list"></ul>
+        </section>
       </aside>
 
       <section class="car-card glass angled" aria-label="Vehicle">
-        <div class="car-title"><small>STARTER COUPE</small><strong>RP-1 VANTA</strong></div>
+        <div class="car-title"><small id="car-class">STARTER COUPE</small><strong id="car-name">RP-1 VANTA</strong></div>
         <ul class="stats" id="stats"></ul>
       </section>
 
@@ -165,6 +176,10 @@
         </div>
         <p class="res-best" id="res-best" hidden>NEW BEST TIME</p>
         <div class="res-actions">
+          <button class="pill-btn gold" id="res-double" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg>
+            <span>Watch ad · 2× coins</span>
+          </button>
           <button class="pill-btn ghost" id="res-again">Race again</button>
           <button class="pill-btn" id="res-garage">Back to garage</button>
         </div>
@@ -198,6 +213,27 @@
           <span>Show FPS</span>
           <input type="checkbox" class="switch" id="opt-fps" />
         </label>
+        <div class="setting">
+          <span>Purchases</span>
+          <button class="pill-btn ghost" id="btn-restore">Restore purchases</button>
+        </div>
+        <div class="setting" id="row-ad-privacy" hidden>
+          <span>Ad privacy</span>
+          <button class="pill-btn ghost" id="btn-ad-privacy">Privacy options</button>
+        </div>
+        <div class="dev-tools" id="dev-tools" hidden>
+          <label class="setting">
+            <span>Sandbox store <small>Test purchases offline, no charge</small></span>
+            <input type="checkbox" class="switch" id="opt-sandbox" />
+          </label>
+          <div class="setting">
+            <span>Sandbox tools</span>
+            <div class="legal-links">
+              <button class="pill-btn ghost" id="btn-sandbox-reset">Reset purchases</button>
+              <button class="pill-btn ghost" id="btn-crate-reset">Reset crate</button>
+            </div>
+          </div>
+        </div>
         <div class="setting legal">
           <span>Legal</span>
           <div class="legal-links">
@@ -206,6 +242,20 @@
           </div>
         </div>
         <p class="about" id="about"></p>
+      </div>
+    </dialog>
+
+    <dialog id="store" class="dialog store glass angled" aria-labelledby="store-title">
+      <header class="dialog-head">
+        <h2 id="store-title">Store</h2>
+        <span class="sandbox-badge" id="store-sandbox" hidden>SANDBOX</span>
+        <button class="icon-btn close" data-close aria-label="Close store">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+        </button>
+      </header>
+      <div class="dialog-body">
+        <ul class="offers" id="offers"></ul>
+        <p class="about">One-time purchases through Google Play. Restore them any time from Settings.</p>
       </div>
     </dialog>
 

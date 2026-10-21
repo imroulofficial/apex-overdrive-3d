@@ -9,8 +9,14 @@ const defaults = () => ({
   paint: 'apex-red',
   ownedPaints: ['apex-red', 'midnight', 'arctic', 'carbon'],
   upgrades: { engine: 0, nitro: 0, handling: 0, tires: 0 },
-  settings: { quality: 'auto', sound: true, showFps: false },
+  car: 'rp1-vanta',
+  ownedCars: ['rp1-vanta'],
+  settings: { quality: 'auto', sound: true, showFps: false, sandboxStore: false },
   records: {}, // per track: { bestTime, stars, races, wins }
+  // Play purchases. `owned` mirrors what the store reports; `granted` records which
+  // products already paid out their one-time coin bonus so a restore never pays twice.
+  purchases: { owned: [], sandboxOwned: [], granted: [], noAds: false },
+  ads: { crateClaimedAt: 0, racesSinceInterstitial: 0, nextInterstitialAt: 2, lastInterstitialAt: 0 },
 });
 
 function load() {
@@ -25,6 +31,8 @@ function load() {
       upgrades: { ...base.upgrades, ...data.upgrades },
       settings: { ...base.settings, ...data.settings },
       records: { ...base.records, ...data.records },
+      purchases: { ...base.purchases, ...data.purchases },
+      ads: { ...base.ads, ...data.ads },
     };
   } catch {
     return defaults();

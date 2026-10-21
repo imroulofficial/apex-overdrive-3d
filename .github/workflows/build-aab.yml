@@ -38,6 +38,13 @@ jobs:
         run: npm ci
 
       - name: Build web bundle
+        # Test ad units and the sandbox store stay on until the repository variable
+        # VITE_RELEASE is set to 1 together with the production AdMob unit ids.
+        env:
+          VITE_RELEASE: ${{ vars.VITE_RELEASE }}
+          VITE_ADMOB_BANNER: ${{ vars.VITE_ADMOB_BANNER }}
+          VITE_ADMOB_INTERSTITIAL: ${{ vars.VITE_ADMOB_INTERSTITIAL }}
+          VITE_ADMOB_REWARDED: ${{ vars.VITE_ADMOB_REWARDED }}
         run: npm run build
 
       - name: Set up JDK 21
@@ -76,9 +83,10 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ADMOB_APP_ID: ${{ vars.ADMOB_APP_ID }}
         run: |
           chmod +x gradlew
-          ./gradlew bundleRelease --no-daemon --stacktrace -PversionCode=${{ github.run_number }}
+          ./gradlew bundleRelease --no-daemon --stacktrace -PversionCode=${{ github.run_number }} ${ADMOB_APP_ID:+-PadmobAppId=$ADMOB_APP_ID}
 
       - name: Verify bundle signature
         if: steps.keystore.outputs.signed == 'true'
