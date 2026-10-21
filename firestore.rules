@@ -1,0 +1,29 @@
+rules_version = '2';
+
+// Apex Overdrive cloud save. One document per anonymous player at players/{uid}:
+//   v          schema version (int)
+//   save       the progress JSON written by src/core/cloud.js (string, capped at 16 KB)
+//   updatedAt  when that progress last changed on the device, ms since epoch (int)
+//   appVersion game version that wrote it (string)
+// Players can only read and write their own document; everything else is closed.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /players/{uid} {
+      allow get: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['v', 'save', 'updatedAt', 'appVersion'])
+        && request.resource.data.v is int
+        && request.resource.data.save is string
+        && request.resource.data.save.size() <= 16384
+        && request.resource.data.updatedAt is int
+        && request.resource.data.appVersion is string
+        && request.resource.data.appVersion.size() <= 32;
+      allow list, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

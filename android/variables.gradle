@@ -13,4 +13,7 @@ ext {
     androidxJunitVersion = '1.3.0'
     androidxEspressoCoreVersion = '3.7.0'
     cordovaAndroidVersion = '14.0.1'
+    // Firebase SDKs used by @capacitor-firebase/authentication and /firestore
+    firebaseAuthVersion = '24.0.1'
+    firebaseFirestoreVersion = '26.0.2'
 }

@@ -15,6 +15,10 @@
       "initialViewportFitValueHint": "cover",
       "style": "DARK",
       "hidden": false
+    },
+    "FirebaseAuthentication": {
+      "skipNativeAuth": false,
+      "providers": []
     }
   }
 }

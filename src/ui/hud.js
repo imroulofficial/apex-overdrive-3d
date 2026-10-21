@@ -3,6 +3,7 @@ import { CARS, carById } from '../data/cars.js';
 import { state, save, subscribe, spendCoins } from '../core/store.js';
 import { sfx } from '../core/audio.js';
 import { billing } from '../monetization/billing.js';
+import { cloud } from '../core/cloud.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -127,6 +128,7 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
     }
     state.paint = p.id;
     save();
+    cloud.syncSoon();
   });
 
   // ---- Upgrades ----
@@ -161,6 +163,7 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
     sfx.buy();
     garage.rev();
     save();
+    cloud.syncSoon();
   });
 
   // ---- Cars ----
@@ -303,5 +306,12 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
       setActiveShot('body');
     },
     revertPreview,
+    // A newer cloud save replaced the device's progress: show its paint and wallet.
+    reloadSave() {
+      previewPaint = state.paint;
+      const p = paintById(state.paint);
+      garage.setPaint(p.color, p.finish);
+      renderAll();
+    },
   };
 }
