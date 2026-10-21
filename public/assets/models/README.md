@@ -6,8 +6,22 @@ so a model can land at any time without code changes.
 
 | Car | File |
 | --- | --- |
-| RP-1 Vanta (starter) | `rp1_vanta.glb` |
+| RP-1 Vanta (Tier D starter) | `rp1_vanta.glb` |
+| Fujin Type-R (Tier D) | `kz_kestrel.glb` |
+| Kaze 370 (Tier D) | `rz_sakura.glb` |
+| Trailblazer Rally (Tier C) | `rb_ridgeback.glb` |
+| Mustang Bandit (Tier C) | `sv_stallion.glb` |
+| Apex WRX (Tier C) | `dr_raptor.glb` |
+| Bavaria M-Sport (Tier B) | `ag_aurelia.glb` |
+| Stuttgart Carrera (Tier B) | `st_stratos.glb` |
+| Monza GT3 (Tier B) | `mz_monza.glb` |
 | Valkyrie GT-R (Tier A) | `valkyrie_gtr.glb` |
+| Chimera Senna (Tier A) | `tm_tempesta.glb` |
+| Revuelto Storm (Tier A) | `zn_zenith.glb` |
+
+File names follow the permanent car ids, not the display names. A `.glb` brings its own
+wheels, wing and doors: the Rims and Kit choices and the door hotspot only apply to the
+procedural cars.
 
 ## Export conventions
 

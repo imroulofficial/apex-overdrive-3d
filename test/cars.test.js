@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CARS, TIERS, STARTER_CAR, RELEASED_CARS } from '../src/data/cars.js';
+import { CARS, TIERS, STARTER_CAR, RELEASED_CARS, DISPLAY_NAMES } from '../src/data/cars.js';
+import { STYLES } from '../src/garage/carShapes.js';
 import { PRODUCTS } from '../src/config.js';
 import { MAX_STARS } from '../src/data/career.js';
 
@@ -51,8 +52,39 @@ test('stats use the four garage bars and rise with tier', () => {
   assert.ok(tierAvg('D') < tierAvg('C') && tierAvg('C') < tierAvg('B') && tierAvg('B') < tierAvg('A'));
 });
 
-test('only cars with art are released to the garage', () => {
-  assert.deepEqual(RELEASED_CARS.map((c) => c.id), ['rp1-vanta', 'rpx-hyperion']);
+test('the full roster is in the garage, each car on a known body style', () => {
+  assert.equal(RELEASED_CARS.length, 12);
+  for (const c of CARS) assert.ok(STYLES[c.procedural.style], `${c.id}: ${c.procedural.style}`);
+  // Eleven silhouettes: only the Vanta and the Valkyrie share a body (the Valkyrie adds aero).
+  assert.equal(new Set(CARS.map((c) => c.procedural.style)).size, 12);
+});
+
+test('ids are permanent and display names are one line each', () => {
+  // Saves, cloud documents and Play grants store these ids: renaming a car never changes them.
+  assert.deepEqual(CARS.map((c) => c.id), [
+    'rp1-vanta', 'kz-kestrel', 'rz-sakura',
+    'rb-ridgeback', 'sv-stallion', 'dr-raptor',
+    'ag-aurelia', 'st-stratos', 'mz-monza',
+    'rpx-hyperion', 'tm-tempesta', 'zn-zenith',
+  ]);
+  for (const c of CARS) assert.equal(c.name, DISPLAY_NAMES[c.id]);
+  const byTier = (t) => CARS.filter((c) => c.tier === t).map((c) => c.name).sort();
+  assert.deepEqual(byTier('D'), ['Fujin Type-R', 'Kaze 370', 'RP-1 Vanta']);
+  assert.deepEqual(byTier('C'), ['Apex WRX', 'Mustang Bandit', 'Trailblazer Rally']);
+  assert.deepEqual(byTier('B'), ['Bavaria M-Sport', 'Monza GT3', 'Stuttgart Carrera']);
+  assert.deepEqual(byTier('A'), ['Chimera Senna', 'Revuelto Storm', 'Valkyrie GT-R']);
+});
+
+test('every car has its own performance profile', () => {
+  const sig = (c) => JSON.stringify([c.stats, c.feel]);
+  assert.equal(new Set(CARS.map(sig)).size, 12);
+  for (const c of CARS) {
+    assert.ok(c.feel.weight >= 0.8 && c.feel.weight <= 1.35, c.id);
+    assert.ok(c.feel.power >= 1.3 && c.feel.power <= 3.3, c.id);
+    assert.ok(c.feel.drift >= 0.8 && c.feel.drift <= 1.4, c.id);
+  }
+  // The starter keeps the original tuning exactly.
+  assert.deepEqual(CARS[0].feel, { weight: 1, power: 2, drift: 1 });
 });
 
 test('the Tier A hypercar is the Valkyrie GT-R under its original id', () => {

@@ -46,7 +46,7 @@ export const UPGRADES = [
 // Cost of the next level for a car currently at `level` (0-4).
 export const upgradeCost = (upgrade, level) => UPGRADE_COSTS[level] ?? Infinity;
 
-// Six rim designs, bought per car (the 3D wheels arrive with the garage finish phase).
+// Six rim designs, bought per car; each is a 3D wheel in garage/rims.js.
 export const RIMS = [
   { id: 'stock', name: 'Stock Split-5', price: 0 },
   { id: 'mesh', name: 'Classic Mesh', price: 500 },
@@ -55,6 +55,29 @@ export const RIMS = [
   { id: 'monoblock', name: 'Forged Monoblock', price: 1250 },
   { id: 'carbon-aero', name: 'Carbon Aero', price: 1500 },
 ];
+
+// Rear wings, bought per car. 'factory' is the car's own (none, a lip or its stock wing);
+// the others bolt onto the deck, or the roof's trailing edge on hatchbacks.
+export const SPOILERS = [
+  { id: 'factory', name: 'Factory Aero', price: 0 },
+  { id: 'ducktail', name: 'Ducktail Lip', price: 800 },
+  { id: 'gt-wing', name: 'GT Wing', price: 1500 },
+  { id: 'swan-neck', name: 'Swan-Neck Wing', price: 2200 },
+];
+
+// Tyre smoke and nitro trail colours, chosen per car (free). `pulse` is the Pulse Nitro
+// flicker pair; Nitro Blue keeps the original orange-violet pulse.
+export const FX_COLORS = [
+  { id: 'white', name: 'Factory White', color: '#e6e9ee', pulse: ['#ffffff', '#9fd2ff'] },
+  { id: 'blue', name: 'Nitro Blue', color: '#3aa8ff', pulse: ['#ff7a1a', '#b44dff'] },
+  { id: 'crimson', name: 'Crimson Fury', color: '#ff2340', pulse: ['#ff2340', '#ffb02e'] },
+  { id: 'green', name: 'Neon Green', color: '#39ff6a', pulse: ['#39ff6a', '#d6ff3a'] },
+  { id: 'gold', name: 'Midas Gold', color: '#ffc23a', pulse: ['#ffc23a', '#fff1b8'] },
+  { id: 'violet', name: 'Electric Violet', color: '#9b4dff', pulse: ['#9b4dff', '#ff4fd8'] },
+];
+export const DEFAULT_SMOKE = 'white';
+export const DEFAULT_NITRO = 'blue';
+export const fxById = (id, fallback = DEFAULT_SMOKE) => FX_COLORS.find((f) => f.id === id) ?? FX_COLORS.find((f) => f.id === fallback);
 
 // Starter coupe baseline stats (0-100) plus per-level gains. The four stats match the four
 // garage bars: top speed, acceleration, handling and nitro.

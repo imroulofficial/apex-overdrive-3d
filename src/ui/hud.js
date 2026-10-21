@@ -1,9 +1,10 @@
-import { PAINTS, FINISHES, UPGRADES, upgradeCost } from '../data/catalog.js';
+import { PAINTS, FINISHES, UPGRADES, RIMS, SPOILERS, FX_COLORS, upgradeCost } from '../data/catalog.js';
 import { MILESTONES, chapterById } from '../data/career.js';
 import { PRODUCTS } from '../config.js';
-import { RELEASED_CARS, carById } from '../data/cars.js';
+import { RELEASED_CARS, TIERS, carById } from '../data/cars.js';
+import { TAB_SHOTS } from '../garage/cameraRig.js';
 import { state, save, subscribe, spendCoins, activeCar } from '../core/store.js';
-import { buyUpgrade, carStats, equipPaint, unlockStatus, unlockCar, activeProducts } from '../core/inventory.js';
+import { buyUpgrade, buyRim, buySpoiler, equipFx, carStats, equipPaint, unlockStatus, unlockCar, activeProducts } from '../core/inventory.js';
 import { sfx } from '../core/audio.js';
 import { billing } from '../monetization/billing.js';
 import { cloud } from '../core/cloud.js';
@@ -13,6 +14,21 @@ const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const fmt = (n) => n.toLocaleString('en-US');
 
 const LOCK_ICON = '<svg viewBox="0 0 24 24"><path d="M7 10V8a5 5 0 0 1 10 0v2h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h1Zm2 0h6V8a3 3 0 0 0-6 0v2Z"/></svg>';
+
+// Small front-view drawings of the six rim designs for the Rims tab.
+function rimIcon(id) {
+  const spokes = (n, w, len = 34, off = 0) =>
+    Array.from({ length: n }, (_, i) => `<rect x="50" y="${50 - w / 2}" width="${len}" height="${w}" transform="rotate(${off + (360 / n) * i} 50 50)" />`).join('');
+  const body = {
+    stock: spokes(5, 5, 34, -6) + spokes(5, 5, 34, 6),
+    mesh: spokes(20, 2, 34, 9),
+    turbofan: `<circle cx="50" cy="50" r="33" class="rim-fill" />${spokes(12, 4, 30, 0)}`,
+    blade: spokes(10, 3.5, 35, 4),
+    monoblock: spokes(6, 11, 33),
+    'carbon-aero': `<circle cx="50" cy="50" r="36" class="rim-carbon" />${spokes(5, 3, 10, 18).replace(/x="50"/g, 'x="74"')}`,
+  }[id];
+  return `<svg class="rim-icon rim-${id}" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="47" class="rim-tyre" /><circle cx="50" cy="50" r="38" class="rim-lip" />${body}<circle cx="50" cy="50" r="7" class="rim-hub" /></svg>`;
+}
 
 let toastTimer = 0;
 export function toast(message, ms = 2400) {
@@ -66,6 +82,15 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
       });
       $$('.tab-panel').forEach((p) => (p.hidden = p.dataset.panel !== tab.dataset.tab));
       if (tab.dataset.tab !== 'paint') revertPreview();
+      if (tab.dataset.tab !== 'rims') revertRim();
+      if (tab.dataset.tab !== 'kit') revertWing();
+      if (tab.dataset.tab !== 'cars') endPeek();
+      // Each tab frames the part it edits.
+      const shot = TAB_SHOTS[tab.dataset.tab];
+      if (shot !== undefined) {
+        garage.snap(shot);
+        setActiveShot(typeof shot === 'number' ? 'wheels' : shot);
+      }
     })
   );
 
@@ -158,6 +183,135 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
     cloud.syncSoon();
   });
 
+  // ---- Rims (bought per car; the turntable previews before you buy) ----
+  const rimGrid = $('#rim-grid');
+  let previewRim = activeCar().rim;
+  const rimById = (id) => RIMS.find((r) => r.id === id) ?? RIMS[0];
+  rimGrid.innerHTML = RIMS.map((r) => `<button class="rim-card" data-rim="${r.id}" aria-label="${r.name}">${rimIcon(r.id)}<span>${r.name}</span></button>`).join('');
+  function renderRims() {
+    const entry = activeCar();
+    $$('.rim-card', rimGrid).forEach((el) => {
+      const id = el.dataset.rim;
+      el.classList.toggle('is-selected', id === previewRim);
+      el.classList.toggle('is-equipped', id === entry.rim);
+      el.classList.toggle('is-locked', !entry.rims.includes(id));
+    });
+    const r = rimById(previewRim);
+    $('#rim-name').textContent = r.name;
+    $('#rim-note').textContent = entry.rims.includes(r.id) ? 'Owned on this car' : `${fmt(r.price)} coins · this car`;
+    const action = $('#rim-action');
+    if (entry.rim === r.id) {
+      action.textContent = 'Equipped';
+      action.disabled = true;
+    } else {
+      action.textContent = entry.rims.includes(r.id) ? 'Equip' : `Buy · ${fmt(r.price)}`;
+      action.disabled = false;
+    }
+  }
+  function revertRim() {
+    if (previewRim === activeCar().rim) return;
+    previewRim = activeCar().rim;
+    garage.setRim(previewRim);
+    renderRims();
+  }
+  rimGrid.addEventListener('click', (e) => {
+    const el = e.target.closest('.rim-card');
+    if (!el) return;
+    sfx.tap();
+    previewRim = el.dataset.rim;
+    garage.setRim(previewRim);
+    garage.snap(TAB_SHOTS.rims);
+    renderRims();
+  });
+  $('#rim-action').addEventListener('click', () => {
+    const owned = activeCar().rims.includes(previewRim);
+    const res = buyRim(state, state.car, previewRim);
+    if (!res.ok) {
+      sfx.deny();
+      if (res.reason === 'coins') toast(`You need ${fmt(res.cost - state.coins)} more coins`);
+      return;
+    }
+    if (owned) sfx.tap();
+    else {
+      sfx.buy();
+      toast(`${rimById(previewRim).name} fitted`);
+    }
+    garage.rev();
+    save();
+    cloud.syncSoon();
+  });
+
+  // ---- Kit: rear wing (bought per car), tyre smoke and nitro trail colours (free) ----
+  const wingList = $('#wing-list');
+  let previewWing = activeCar().spoiler;
+  const wingById = (id) => SPOILERS.find((w) => w.id === id) ?? SPOILERS[0];
+  function renderKit() {
+    const entry = activeCar();
+    wingList.innerHTML = SPOILERS.map((w) => {
+      const owned = entry.spoilers.includes(w.id);
+      const equippedWing = entry.spoiler === w.id;
+      const label = equippedWing ? 'Fitted' : owned ? 'Fit' : fmt(w.price);
+      return `<li class="wing${w.id === previewWing ? ' is-selected' : ''}">
+        <button class="wing-pick" data-wing="${w.id}"><strong>${w.name}</strong><small>${owned ? 'Owned' : 'Preview'}</small></button>
+        <button class="pill-btn" data-fit-wing="${w.id}" ${equippedWing ? 'disabled' : ''}>${owned || equippedWing ? '' : LOCK_ICON}${label}</button>
+      </li>`;
+    }).join('');
+    for (const row of [$('#fx-smoke'), $('#fx-nitro')]) {
+      const current = entry[row.dataset.slot];
+      row.innerHTML = FX_COLORS.map(
+        (f) => `<button class="fx-swatch${f.id === current ? ' is-selected' : ''}" data-fx="${f.id}" style="--swatch:${f.color}" aria-label="${f.name}"><span>${f.name}</span></button>`
+      ).join('');
+    }
+  }
+  function revertWing() {
+    if (previewWing === activeCar().spoiler) return;
+    previewWing = activeCar().spoiler;
+    garage.setSpoiler(previewWing);
+    renderKit();
+  }
+  wingList.addEventListener('click', (e) => {
+    const pick = e.target.closest('[data-wing]');
+    if (pick) {
+      sfx.tap();
+      previewWing = pick.dataset.wing;
+      garage.setSpoiler(previewWing);
+      garage.snap('spoiler');
+      setActiveShot('rear');
+      renderKit();
+      return;
+    }
+    const fit = e.target.closest('[data-fit-wing]');
+    if (!fit) return;
+    const id = fit.dataset.fitWing;
+    const owned = activeCar().spoilers.includes(id);
+    const res = buySpoiler(state, state.car, id);
+    if (!res.ok) {
+      sfx.deny();
+      if (res.reason === 'coins') toast(`You need ${fmt(res.cost - state.coins)} more coins`);
+      return;
+    }
+    if (owned) sfx.tap();
+    else {
+      sfx.buy();
+      toast(`${wingById(id).name} fitted`);
+    }
+    previewWing = id;
+    garage.setSpoiler(id);
+    save();
+    cloud.syncSoon();
+  });
+  for (const row of [$('#fx-smoke'), $('#fx-nitro')]) {
+    row.addEventListener('click', (e) => {
+      const el = e.target.closest('[data-fx]');
+      if (!el || !equipFx(state, state.car, row.dataset.slot, el.dataset.fx)) return;
+      sfx.tap();
+      if (row.dataset.slot === 'nitroFx') sfx.rev();
+      toast(`${row.dataset.slot === 'smoke' ? 'Tyre smoke' : 'Nitro trail'}: ${FX_COLORS.find((f) => f.id === el.dataset.fx).name}`, 1400);
+      save();
+      cloud.syncSoon();
+    });
+  }
+
   // ---- Upgrades ----
   const list = $('#upgrade-list');
   function renderUpgrades() {
@@ -194,7 +348,10 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
   // ---- Cars ----
   const carList = $('#car-list');
   function renderCars() {
+    let tierShown = null;
     carList.innerHTML = RELEASED_CARS.map((c) => {
+      const header = c.tier === tierShown ? '' : `<li class="tier-head"><span class="tier tier-${c.tier.toLowerCase()}">${c.tier}</span>${TIERS[c.tier].name}</li>`;
+      tierShown = c.tier;
       const owned = state.ownedCars.includes(c.id);
       const selected = state.car === c.id;
       const lock = owned ? null : unlockStatus(state, c.id, activeProducts(state, { sandbox: billing.sandbox }));
@@ -209,14 +366,25 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
         action = `<button class="pill-btn" disabled>${LOCK_ICON}${c.unlock.stars} ★</button>`;
         note = `Earn ${lock.starsNeeded} more career stars`;
       } else action = `<button class="pill-btn" data-buy-car="${c.id}">${LOCK_ICON}${fmt(lock.price)}</button>`;
-      return `<li class="car-item${selected ? ' is-selected' : ''}">
-        <span class="tier tier-${c.tier.toLowerCase()}">${c.tier}</span>
-        <div><strong>${c.name}</strong><small>${note}</small></div>
+      return `${header}<li class="car-item${selected ? ' is-selected' : ''}">
+        <button class="car-peek" data-peek="${c.id}" aria-label="Preview ${c.name}"><strong>${c.name}</strong><small>${note}</small></button>
         ${action}
       </li>`;
     }).join('');
   }
   carList.addEventListener('click', (e) => {
+    const peek = e.target.closest('[data-peek]');
+    if (peek) {
+      // Owned cars are selected; any other car rolls onto the turntable as a preview.
+      const id = peek.dataset.peek;
+      if (state.ownedCars.includes(id) && id !== state.car) {
+        e.target.closest('.car-item').querySelector('[data-car]')?.click();
+      } else if (id !== garage.wantedCarId) {
+        sfx.tap();
+        previewCar(id);
+      }
+      return;
+    }
     const unlock = e.target.closest('[data-unlock]');
     if (unlock) {
       onOpenStore?.(unlock.dataset.unlock);
@@ -246,27 +414,65 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
   });
 
   // Keeps the turntable in step with the selected car (selection, purchase or revoke).
+  let peeking = null; // a car the player does not own, shown on the turntable
   function syncCar() {
-    if (garage.wantedCarId === state.car) return;
+    if (peeking) return;
+    const entry = activeCar();
     const p = paintById(equipped());
+    if (garage.wantedCarId === state.car) {
+      // Same car: keep its rim and wing in step (a cloud reload can change them).
+      if (previewRim === shownRim && entry.rim !== shownRim) garage.setRim((previewRim = entry.rim));
+      if (previewWing === shownWing && entry.spoiler !== shownWing) garage.setSpoiler((previewWing = entry.spoiler));
+      shownRim = entry.rim;
+      shownWing = entry.spoiler;
+      return;
+    }
     previewPaint = shownEquipped = p.id;
-    garage.setCar(carById(state.car), { color: p.color, finish: p.finish });
+    previewRim = shownRim = entry.rim;
+    previewWing = shownWing = entry.spoiler;
+    garage.setCar(carById(state.car), { color: p.color, finish: p.finish, rim: entry.rim, spoiler: entry.spoiler });
+  }
+  let shownRim = activeCar().rim;
+  let shownWing = activeCar().spoiler;
+  function previewCar(id) {
+    peeking = id === state.car ? null : id;
+    const p = paintById(equipped());
+    garage.setCar(carById(id), { color: p.color, finish: p.finish });
+    renderStats();
+    garage.snap('body');
+    setActiveShot('body');
+  }
+  function endPeek() {
+    if (!peeking) return;
+    peeking = null;
+    syncCar();
+    renderStats();
   }
 
   // ---- Stats ----
   const statsEl = $('#stats');
   const STAT_LABELS = { speed: 'Top Speed', accel: 'Accel', handling: 'Handling', nitro: 'Nitro' };
   function renderStats() {
-    const car = carById(state.car);
-    $('#car-class').textContent = car.class.toUpperCase();
+    const car = carById(peeking ?? state.car);
+    $('#car-class').textContent = (peeking ? `${car.class} · preview` : car.class).toUpperCase();
     $('#car-name').textContent = car.name.toUpperCase();
     const values = carStats(state, car.id);
+    renderFeel(car);
     statsEl.innerHTML = Object.entries(STAT_LABELS)
       .map(([key, label]) => {
         const v = Math.min(100, values[key]);
         return `<li class="stat"><span>${label}</span><div class="bar"><i style="--v:${v}%"></i></div><b>${v}</b></li>`;
       })
       .join('');
+  }
+
+  // How the car drives, from its feel profile (data/cars.js).
+  function renderFeel(car) {
+    const f = car.feel ?? { weight: 1, power: 2, drift: 1 };
+    const kg = Math.round((1250 * f.weight) / 10) * 10;
+    const band = f.power < 1.7 ? 'Low-end torque' : f.power < 2.35 ? 'Flat torque' : f.power < 2.9 ? 'High-rev pull' : 'Pulls to redline';
+    const tail = f.drift > 1.2 ? 'Loose tail' : f.drift < 0.92 ? 'Planted' : 'Neutral';
+    $('#car-feel').innerHTML = [['Weight', `${fmt(kg)} kg`], ['Power', band], ['Balance', tail]].map(([k, v]) => `<li><small>${k}</small><b>${v}</b></li>`).join('');
   }
 
   // ---- Camera bar ----
@@ -296,9 +502,34 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
   }
   lightsBtn.addEventListener('click', toggleLights);
 
+  // Driver door: the hotspot follows the handle on screen.
+  const hotspot = $('#door-hotspot');
+  function toggleDoor() {
+    const open = garage.toggleDoor();
+    if (open === null) return;
+    sfx.door(open);
+    hotspot.setAttribute('aria-label', open ? 'Close the driver door' : 'Open the driver door');
+    setActiveShot(open ? null : 'body');
+  }
+  hotspot.addEventListener('click', toggleDoor);
+  garage.onHotspot = (h) => {
+    if (hud.hidden || !h.visible) {
+      if (!hotspot.hidden) hotspot.hidden = true;
+      return;
+    }
+    hotspot.hidden = false;
+    hotspot.classList.toggle('is-open', h.open);
+    hotspot.style.transform = `translate(${Math.round(h.x)}px, ${Math.round(h.y)}px)`;
+  };
+
+  // Auto-showcase: the HUD fades back while the camera tours the car; any touch restores it.
+  garage.onShowcase = (on) => hud.classList.toggle('showcase', on);
+  window.addEventListener('pointerdown', () => garage.poke(), { capture: true });
+
   // Taps on the car itself.
   garage.onTap = (hit) => {
     if (hit.type === 'lights') toggleLights();
+    else if (hit.type === 'door') toggleDoor();
     else if (hit.type === 'wheel') {
       sfx.tap();
       wheelCursor = hit.index;
@@ -314,6 +545,9 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
   // ---- Race start ----
   $('#btn-race').addEventListener('click', () => {
     revertPreview();
+    revertRim();
+    revertWing();
+    endPeek();
     sfx.rev();
     garage.rev();
     garage.snap('rear');
@@ -327,7 +561,10 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
     if (equipped() !== shownEquipped && previewPaint === shownEquipped) revertPreview();
     shownEquipped = equipped();
     renderCoins();
+    if (peeking && state.ownedCars.includes(peeking)) peeking = null; // just bought it
     renderPaint();
+    renderRims();
+    renderKit();
     renderUpgrades();
     renderCars();
     renderStats();
@@ -355,9 +592,16 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
       garage.snap('body');
       setActiveShot('body');
     },
-    revertPreview,
+    revertPreview() {
+      revertPreview();
+      revertRim();
+      revertWing();
+      endPeek();
+    },
     // A newer cloud save replaced the device's progress: show its paint and wallet.
     reloadSave() {
+      previewRim = shownRim;
+      previewWing = shownWing;
       previewPaint = shownEquipped = equipped();
       const p = paintById(previewPaint);
       garage.setPaint(p.color, p.finish);
