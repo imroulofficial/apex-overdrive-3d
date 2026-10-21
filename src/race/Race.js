@@ -12,13 +12,18 @@ import { loadCar } from '../assets/modelLoader.js';
 import { ChaseCamera } from './chaseCamera.js';
 import { Particles, SkidMarks, SpeedLines, softDotTexture } from './effects.js';
 import { mulberry32 } from './noise.js';
-import { RIVALS } from '../data/rivals.js';
+import { ModeProps } from './modeProps.js';
+import { courseFor, raceFraction } from './course.js';
+import { createMode } from './modes/index.js';
+import { draftFactor, DRAFT } from './modes/rules.js';
 import { SMASH_COINS } from '../data/economy.js';
 import { raceSfx, raceMusic, createEngineSound } from '../core/audio.js';
 import { BASE_STATS as BASE } from '../data/catalog.js';
 
-// One race on a track: owns the 3D scene, the six cars, the race state machine
-// (intro → countdown → racing → finished) and reports to the HUD every frame.
+// One race on a track: owns the 3D scene, the cars, the race state machine
+// (intro → countdown → racing → finished) and reports to the HUD every frame. What kind of
+// race it is (who is on the grid, how it ends, extra rules) comes from the stage's game mode
+// (race/modes/index.js); the host tracks every car's distance along the stage's course.
 
 const STEP = 1 / 60;
 const SMOKE = new THREE.Color(0xe9ebee);
@@ -28,6 +33,10 @@ const SPARK = new THREE.Color(0xffb347);
 const PULSE_SPARK = new THREE.Color(0xc062ff);
 const PERFECT_SPARK = new THREE.Color(0x7dffe0);
 const COUNTDOWN_STEP = 0.9;
+const FIRE = new THREE.Color(0xff5a1a);
+const EMBER = new THREE.Color(0xffc23a);
+const SOOT = new THREE.Color(0x2a2b30);
+const COAST_INPUT = { steer: 0, throttle: 0, brake: false, brakePressed: false, nitroTaps: [] };
 const now = () => performance.now() / 1000;
 
 export class Race {
@@ -43,7 +52,7 @@ export class Race {
   }
 
   // Builds the world once (procedural, a few hundred ms) and pre-compiles its shaders.
-  async prepare({ quality, paint, car }) {
+  async prepare({ quality, paint, car, stage }) {
     if (this.ready) return;
     const renderer = this.renderer;
     this.quality = quality;
@@ -54,6 +63,7 @@ export class Race {
     this.scenery = buildScenery(this.scene, renderer, this.track, this.def, quality);
     this.scene.add(buildTrackMeshes(this.track, renderer, { groundMaterial: this.scenery.groundMaterial }));
     this.props = new SmashProps(this.track, this.def, this.scene);
+    this.modeProps = new ModeProps(this.scene, this.track);
     // Cars and water reflect the real coastline: bake the finished world into a cubemap once,
     // from just above the start line (before any car exists, so none reflects itself).
     const f = this.track.frame(0, {});
@@ -71,14 +81,12 @@ export class Race {
     this.speedLines = new SpeedLines(this.camera);
     this.chase = new ChaseCamera(this.camera);
 
-    this.racers = [];
     const player = this.factory.build({ player: true });
-    this.racers.push({ id: 'player', name: 'You', color: paint.color, isPlayer: true, visual: player });
-    for (const r of RIVALS) {
-      this.racers.push({ ...r, isPlayer: false, visual: this.rivalFactory.build({ color: r.color, finish: r.finish }) });
-    }
-    for (const racer of this.racers) this.scene.add(racer.visual.root);
-    this.player = this.racers[0];
+    this.player = { id: 'player', name: 'You', color: paint.color, isPlayer: true, visual: player };
+    this.scene.add(player.root);
+    this.racers = [this.player];
+    this.pool = new Map(); // rival id -> racer, built on demand per stage
+    await this.setStage(stage, { compile: false });
 
     this.shadowState = renderer.shadowMap.enabled;
     window.addEventListener('resize', this.resize);
@@ -88,6 +96,37 @@ export class Race {
     this.chase.snap(this.player.vehicle);
     await renderer.compileAsync(this.scene, this.camera);
     this.ready = true;
+  }
+
+  // Puts a career stage on the track: its course, its game mode and its rivals. Rivals the
+  // stage does not use are thrown away; new ones are baked from the shared coupe.
+  async setStage(stage, { compile = true } = {}) {
+    this.stage = stage;
+    this.course = courseFor(stage, this.track.length);
+    this.mode = createMode(stage, this);
+    const rivals = this.mode.rivals;
+    const keep = new Set(rivals.map((r) => r.id));
+    for (const [id, r] of this.pool) {
+      if (keep.has(id)) continue;
+      this.rivalFactory.release(r.visual);
+      this.scene.remove(r.visual.root);
+      r.visual.root.traverse((o) => o.isMesh && o.geometry.dispose());
+      this.pool.delete(id);
+    }
+    let built = false;
+    for (const r of rivals) {
+      if (this.pool.has(r.id)) continue;
+      const racer = { ...r, isPlayer: false, visual: this.rivalFactory.build({ color: r.color, finish: r.finish }) };
+      this.scene.add(racer.visual.root);
+      this.pool.set(r.id, racer);
+      built = true;
+    }
+    this.racers = [this.player, ...rivals.map((r) => this.pool.get(r.id))];
+    this.mode.layout();
+    if (compile && built) {
+      this.reset({ stats: null });
+      await this.renderer.compileAsync(this.scene, this.camera);
+    }
   }
 
   // Swaps the player's car between races (garage selection changed). Physics is untouched:
@@ -122,42 +161,54 @@ export class Race {
   // stats: player's effective stats (0..100) from the garage upgrades.
   reset({ stats }) {
     const track = this.track;
-    const L = track.length;
+    const course = this.course;
+    const mode = this.mode;
     const rand = mulberry32(Math.floor(Math.random() * 1e9));
     const base = stats ?? BASE;
-    // Rivals scale a little with the player's upgrades so races stay close.
+    // Rivals scale a little with the player's upgrades so races stay close, and with how hard
+    // the stage's rival set pushes.
     const upgradeBoost = stats ? Math.max(0, (stats.speed + stats.accel + stats.handling + stats.nitro - 200) / 4) * 0.45 : 0;
-    const order = [0, 1, 2, 3, 4]; // rival grid order (shuffled)
+    const boost = upgradeBoost + mode.difficulty * 4;
+    const rivals = this.racers.filter((r) => !r.isPlayer);
+    const order = rivals.map((_, i) => i); // rival grid order (shuffled)
     for (let i = order.length - 1; i > 0; i--) {
       const j = Math.floor(rand() * (i + 1));
       [order[i], order[j]] = [order[j], order[i]];
     }
-    this.racers.forEach((r, idx) => {
-      const slot = r.isPlayer ? 5 : order[idx - 1];
-      const s = L - 14 - Math.floor(slot / 2) * 11;
-      const d = slot % 2 ? 4.2 : -4.2;
+    const duel = mode.id === 'BossDuel';
+    this.racers.forEach((r) => {
+      const slot = mode.gridSlot(r, r.isPlayer ? -1 : order[rivals.indexOf(r)]);
+      const back = 14 + Math.max(0, Math.floor(slot / 2)) * 11;
+      const s = track.wrapS(course.startS - back);
+      const d = slot < 0 ? 0 : slot % 2 ? 4.2 : -4.2;
       let params;
       if (r.isPlayer) params = statsToParams(base);
       else {
         params = statsToParams({
-          speed: BASE.speed + r.stats.speed + upgradeBoost,
-          nitro: BASE.nitro + r.stats.nitro + upgradeBoost,
-          handling: BASE.handling + r.stats.handling + upgradeBoost,
-          accel: BASE.accel + r.stats.accel + upgradeBoost,
+          speed: BASE.speed + r.stats.speed + boost,
+          nitro: BASE.nitro + r.stats.nitro + boost,
+          handling: BASE.handling + r.stats.handling + boost,
+          accel: BASE.accel + r.stats.accel + boost,
         });
       }
       if (!r.vehicle) r.vehicle = new Vehicle(track, params, { passiveNitro: r.isPlayer ? 0.6 : 3.2, skills: r.isPlayer });
       r.vehicle.params = params;
       r.vehicle.reset(s, d);
-      if (!r.isPlayer) r.ai = new AIDriver(r.vehicle, track, { aggression: r.aggression, skill: r.skill, laneBias: r.laneBias, rand });
+      r.vehicle.proximity = false;
+      if (!r.isPlayer) r.ai = new AIDriver(r.vehicle, track, { aggression: r.aggression, skill: Math.min(1, r.skill + mode.difficulty * 0.01), laneBias: r.laneBias, rand, duel });
       else r.ai = null;
-      r.lapsDone = -1;
+      r.dist = -back; // metres along the course from the start line
       r.lastS = r.vehicle.proj.s;
-      r.progress = r.vehicle.proj.s - L;
+      r.lapsDone = -1;
+      r.progress = r.dist;
       r.finished = false;
+      r.out = false;
+      r.place = 0;
       r.finishTime = 0;
       r.lapStart = 0;
       r.lapTimes = [];
+      r.draft = 0;
+      r.visual.root.scale.setScalar(1);
       r.visual.update(r.vehicle, 0, 0);
       r.skidTrails = [null, null];
     });
@@ -179,13 +230,16 @@ export class Race {
     this.bigAirs = 0;
     this.airTotal = 0;
     this.pulses = 0;
+    this.topSpeed = 0;
     this.result = null;
     this.lastCountdown = null;
     this.hits = [];
     this.positions = [...this.racers];
+    mode.start();
   }
 
-  begin({ stats, paint, input, hud, onFinish, autoQuality = false }) {
+  // earnedStars: the stage's stars already held, for the intro card's objective list.
+  begin({ stats, paint, input, hud, onFinish, autoQuality = false, earnedStars = 0 }) {
     this.autoQuality = autoQuality;
     this.input = input;
     this.hud = hud;
@@ -203,7 +257,7 @@ export class Race {
     this.engine?.stop();
     this.engine = createEngineSound();
     raceMusic.start();
-    this.hud.intro(this.def);
+    this.hud.intro(this.mode.intro(), this.course, { objectives: this.stage.objectives, earned: earnedStars });
     this.start();
   }
 
@@ -237,6 +291,11 @@ export class Race {
     raceMusic.setPaused(false);
     this.last = performance.now();
     this.input.setEnabled(this.phase === 'racing');
+  }
+
+  // QA (?debug): let the AI drive the player's car.
+  autopilot(skill = 0.97) {
+    this.player.ai = new AIDriver(this.player.vehicle, this.track, { aggression: 0.6, skill });
   }
 
   get isPaused() {
@@ -311,13 +370,15 @@ export class Race {
       const steps = Math.max(1, Math.ceil(dt / STEP));
       const h = dt / steps;
       for (let k = 0; k < steps; k++) this.simStep(h, playerInput, k === 0);
-      this.updateLaps();
+      this.updateProgress();
       this.onChain(this.chain.update(dt));
+      if (this.phase === 'racing') this.mode.update(dt);
     }
 
     // Visuals.
     for (const r of this.racers) {
-      if (r.isPlayer) r.visual.steerInput = r.ai ? r.ai.input.steer : playerInput.steer;
+      if (r.out && !r.isPlayer) continue;
+      if (r.isPlayer) r.visual.steerInput = r.ai ? r.ai.input.steer : r.out ? 0 : playerInput.steer;
       else r.visual.steerInput = r.ai.input.steer;
       r.visual.update(r.vehicle, dt, this.time);
       this.emitEffects(r, dt);
@@ -327,6 +388,7 @@ export class Race {
     this.smoke.update(dt, -0.6);
     this.sparks.update(dt, 9);
     this.props.update(dt);
+    this.modeProps.update(dt, this.time);
     this.scenery.update(this.time, this.camera);
     this.scenery.follow(player.pos);
 
@@ -355,15 +417,17 @@ export class Race {
   }
 
   simStep(h, playerInput, first) {
+    const active = this.active;
     const ctx = {
       time: this.time,
-      cars: this.racers,
+      cars: active,
       props: this.props,
       racing: true,
       playerGap: 0,
+      rival: this.player.out ? null : this.player.vehicle,
     };
     const playerProgress = this.player.progress;
-    for (const r of this.racers) {
+    for (const r of active) {
       let input;
       if (r.ai) {
         ctx.playerGap = r.isPlayer ? 0 : playerProgress - r.progress;
@@ -380,11 +444,14 @@ export class Race {
       }
       r.vehicle.step(h, input, r.ai ? this.time : now());
     }
+    // A knocked-out player coasts to a stop under the camera.
+    if (this.player.out) this.player.vehicle.step(h, COAST_INPUT, this.time);
+    this.applyDraft(active, h);
     // Car-to-car contact.
-    const n = this.racers.length;
-    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) this.collideCars(this.racers[i].vehicle, this.racers[j].vehicle);
+    const n = active.length;
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) this.collideCars(active[i].vehicle, active[j].vehicle);
     // Props scatter without slowing anyone down; the player earns a little nitro for each.
-    for (const r of this.racers) {
+    for (const r of active) {
       const hits = this.props.collide(r.vehicle, this.hits);
       for (const p of hits) {
         const big = p.type !== 'cone';
@@ -400,6 +467,32 @@ export class Race {
           }
         }
       }
+    }
+  }
+
+  // Cars still in the race (Elimination knocks them out one by one).
+  get active() {
+    return this.racers.filter((r) => !r.out);
+  }
+
+  // Slipstream: a car tucked in behind another gets extra pull along its heading.
+  applyDraft(active, h) {
+    const strength = this.mode.draft;
+    for (const r of active) {
+      r.draft = 0;
+      if (!strength || r.vehicle.airborne) continue;
+      const v = r.vehicle;
+      let best = 0;
+      for (const o of active) {
+        if (o === r) continue;
+        const ahead = this.track.delta(v.proj.s, o.vehicle.proj.s);
+        best = Math.max(best, draftFactor(ahead, o.vehicle.proj.d - v.proj.d, v.speed));
+      }
+      if (!best) continue;
+      r.draft = best;
+      const a = DRAFT.accel * strength * best * h;
+      v.vel.x += Math.cos(v.heading) * a;
+      v.vel.y -= Math.sin(v.heading) * a;
     }
   }
 
@@ -442,38 +535,118 @@ export class Race {
     }
   }
 
-  updateLaps() {
+  // Distance along the course for every car, laps, the finish line and the running order.
+  updateProgress() {
     const L = this.track.length;
-    const laps = this.def.laps;
+    const course = this.course;
     for (const r of this.racers) {
       const s = r.vehicle.proj.s;
-      const ds = s - r.lastS;
-      if (ds < -L / 2) {
-        r.lapsDone += 1;
-        if (r.lapsDone >= 1) r.lapTimes.push(this.raceTime - r.lapStart);
-        r.lapStart = this.raceTime;
-        if (r.lapsDone >= laps && !r.finished) this.finishRacer(r);
-        else if (r.isPlayer && r.lapsDone === laps - 1 && laps > 1) {
-          raceSfx.lap();
-          this.hud.callout('FINAL LAP', 'lap');
-        }
-      } else if (ds > L / 2) {
-        r.lapsDone -= 1;
+      if (r.out) {
+        r.lastS = s;
+        continue;
       }
+      let ds = s - r.lastS;
+      if (ds < -L / 2) ds += L;
+      else if (ds > L / 2) ds -= L;
       r.lastS = s;
-      r.progress = r.finished ? laps * L + 1e6 - r.finishTime : r.lapsDone * L + s;
+      r.dist += ds;
+      if (!r.finished) {
+        const lap = Math.floor(r.dist / L);
+        if (lap > r.lapsDone) {
+          if (lap >= 1 && course.layout === 'circuit') r.lapTimes.push(this.raceTime - r.lapStart);
+          r.lapsDone = lap;
+          r.lapStart = this.raceTime;
+          if (r.isPlayer && course.layout === 'circuit' && !course.endless && lap === course.laps - 1 && course.laps > 1) {
+            raceSfx.lap();
+            this.hud.callout('FINAL LAP', 'lap');
+          }
+        }
+        if (r.dist >= course.distance) this.finishRacer(r);
+      }
+      r.progress = r.finished ? course.distance + 1e6 - r.finishTime : r.dist;
     }
-    this.positions = [...this.racers].sort((a, b) => b.progress - a.progress);
+    if (this.phase === 'racing') this.topSpeed = Math.max(this.topSpeed, Math.abs(this.player.vehicle.forward) * 3.6);
+    // Running order: cars still racing by distance, then the knocked-out ones by where they went out.
+    this.positions = [...this.racers].sort((a, b) => (a.out !== b.out ? (a.out ? 1 : -1) : a.out ? a.place - b.place : b.progress - a.progress));
   }
 
   finishRacer(r) {
     r.finished = true;
     r.finishTime = this.raceTime;
     r.place = this.racers.filter((x) => x.finished).length;
-    if (!r.isPlayer) return;
-    // Player crossed the line: autopilot takes over while the camera orbits.
-    r.ai = new AIDriver(r.vehicle, this.track, { aggression: 0.2, skill: 0.8 });
-    // Bank a drift or chain still running as the player crosses the line.
+    if (r.lapTimes.length === 0 || this.course.layout !== 'circuit') r.lapTimes.push(this.raceTime - r.lapStart);
+    if (r.isPlayer) this.endRun({ finished: true, reason: 'finish', position: r.place });
+  }
+
+  // Knocks a car out of the race (Elimination): a fireball, then it is gone.
+  eliminate(r) {
+    if (r.out) return;
+    const alive = this.active.length;
+    r.out = true;
+    r.place = alive;
+    const v = r.vehicle;
+    this.explode(v.pos, r.isPlayer);
+    raceSfx.eliminated(r.isPlayer);
+    const near = v.pos.distanceTo(this.player.vehicle.pos);
+    this.chase.bump(Math.max(0.1, 0.8 - near / 120));
+    this.hud.flash('elim');
+    if (r.isPlayer) {
+      this.endRun({ finished: true, reason: 'eliminated', position: alive });
+      return;
+    }
+    r.visual.root.scale.setScalar(1e-4);
+    this.hud.callout(`${r.name.toUpperCase()} ELIMINATED`, 'elim');
+    if (alive - 1 === 1 && !this.player.out && this.phase === 'racing') this.endRun({ finished: true, reason: 'champion', position: 1 });
+  }
+
+  explode(pos, big) {
+    for (let k = 0; k < (big ? 70 : 50); k++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 4 + Math.random() * 12;
+      this.sparks.emit(pos.x, pos.y + 0.8, pos.z, Math.cos(a) * sp, 3 + Math.random() * 10, Math.sin(a) * sp, {
+        color: Math.random() < 0.5 ? FIRE : EMBER,
+        size: 0.35 + Math.random() * 0.3,
+        life: 0.5 + Math.random() * 0.6,
+        grow: -0.2,
+        alpha: 1,
+      });
+    }
+    for (let k = 0; k < 26; k++) {
+      this.smoke.emit(pos.x + (Math.random() - 0.5) * 2, pos.y + 0.6, pos.z + (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 4, 2 + Math.random() * 3, (Math.random() - 0.5) * 4, {
+        color: k < 8 ? FIRE : SOOT,
+        size: 1.4,
+        life: 1.2 + Math.random() * 0.8,
+        grow: 3.2,
+        alpha: k < 8 ? 0.7 : 0.5,
+      });
+    }
+  }
+
+  // Sparks for mode pickups (Time Trial pylons).
+  burst(pos, color, n = 20) {
+    for (let k = 0; k < n; k++) {
+      this.sparks.emit(pos.x, pos.y + 1 + Math.random(), pos.z, (Math.random() - 0.5) * 8, 2 + Math.random() * 5, (Math.random() - 0.5) * 8, {
+        color,
+        size: 0.22,
+        life: 0.4 + Math.random() * 0.35,
+        grow: -0.3,
+        alpha: 1,
+      });
+    }
+  }
+
+  // The player's run is over: they crossed the line, ran out of time, or were knocked out.
+  endRun({ finished = true, reason = 'finish', position = null }) {
+    if (this.result) return;
+    const r = this.player;
+    if (!r.finished) {
+      r.finished = finished;
+      r.finishTime = this.raceTime;
+    }
+    r.done = true;
+    // Autopilot takes over while the camera orbits (a knocked-out car just coasts).
+    if (!r.out) r.ai = new AIDriver(r.vehicle, this.track, { aggression: 0.2, skill: 0.8 });
+    // Bank a drift or chain still running as the run ends.
     if (r.vehicle.drifting) r.vehicle.endDrift();
     this.processEvents();
     this.onChain(this.chain.finish());
@@ -481,18 +654,23 @@ export class Race {
     this.toPhase('finished');
     this.resultShown = false;
     this.chase.orbit(r.vehicle);
-    raceSfx.finish();
-    const position = r.place;
+    if (reason === 'finish' || reason === 'champion') raceSfx.finish();
+    else if (reason === 'timeout') raceSfx.empty();
+    const place = position ?? this.positions.indexOf(r) + 1;
+    const laps = r.lapTimes.filter((t) => t > 0);
     // Raw run metrics; coins and stars are worked out by the career (core/career.js) when
     // main.js banks the result.
     this.result = {
+      stageId: this.stage.stageId,
+      mode: this.mode.id,
+      reason,
       trackId: this.def.id,
-      trackName: this.def.name,
-      finished: true,
-      position,
+      trackName: this.course.name,
+      finished,
+      position: place,
       total: this.racers.length,
-      time: r.finishTime,
-      bestLap: Math.min(...r.lapTimes),
+      time: Math.round(this.raceTime * 1000) / 1000,
+      bestLap: laps.length ? Math.min(...laps) : null,
       driftScore: Math.round(this.driftTotal),
       driftDistance: Math.round(r.vehicle.driftDistance),
       airTime: Math.round(this.airTotal * 10) / 10,
@@ -500,8 +678,11 @@ export class Race {
       smashes: this.smashes,
       perfectExits: this.perfects,
       bestCombo: this.bestCombo,
+      topSpeed: Math.round(this.topSpeed),
     };
-    this.hud.callout(position === 1 ? 'VICTORY!' : `FINISHED ${ordinal(position)}`, 'finish');
+    this.mode.finalize(this.result);
+    this.result.view = this.mode.view(this.result);
+    this.hud.callout(this.mode.finishCallout(this.result), reason === 'finish' || reason === 'champion' ? 'finish' : 'over');
     this.onFinish?.(this.result);
   }
 
@@ -733,16 +914,19 @@ export class Race {
     const v = this.player.vehicle;
     const p = this.player;
     const L = this.track.length;
-    const laps = this.def.laps;
-    const total = laps * L;
+    const course = this.course;
+    let lapText;
+    if (course.endless) lapText = `LAP ${Math.max(1, p.lapsDone + 1)}`;
+    else if (course.layout === 'circuit') lapText = `LAP ${Math.min(course.laps, Math.max(1, p.lapsDone + 1))}/${course.laps}`;
+    else lapText = `SPRINT ${Math.round(raceFraction(p.dist, course, L) * 100)}%`;
     this.hud.update({
       phase: this.phase,
       speed: Math.round(Math.abs(v.forward) * 3.6),
       position: this.positions.indexOf(p) + 1,
       total: this.racers.length,
-      lap: Math.min(laps, Math.max(1, p.lapsDone + 1)),
-      laps,
-      time: p.finished ? p.finishTime : this.raceTime,
+      solo: course.solo,
+      lapText,
+      time: p.finished || p.done ? p.finishTime : this.raceTime,
       nitro: v.nitro / NITRO.max,
       tier: v.tier,
       sinceTap: v.canPulse ? now() - v.lastTap : -1,
@@ -754,10 +938,13 @@ export class Race {
       apexReady: v.apexReady,
       surface: v.surface,
       wrongWay: v.wrongWay > 1.2,
+      draft: this.phase === 'racing' && p.draft > 0.2,
+      panel: this.mode.panel(),
       racers: this.racers.map((r) => ({
-        frac: Math.max(0, Math.min(1, r.finished ? 1 : r.progress / total)),
+        frac: r.finished ? 1 : raceFraction(r.dist, course, L),
         color: r.color,
         isPlayer: r.isPlayer,
+        out: r.out,
       })),
     });
   }

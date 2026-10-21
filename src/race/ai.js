@@ -4,11 +4,15 @@ import { wrapAngle } from './noise.js';
 // chosen lane, slows for corners using the track's speed profile, changes lanes to pass or to
 // avoid cars and props ahead, and fires nitro on straights. `aggression` (0..1) shapes how
 // often it changes lanes, how close it follows, whether it goes for ramps, and nitro use.
+// A `duel` driver (Boss Duel) races the player alone: it tucks into the player's slipstream,
+// pulls out to pass once it is on the bumper, blocks the player's line when leading, rubber-
+// bands harder and fires nitro more often.
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 export class AIDriver {
-  constructor(vehicle, track, { aggression = 0.5, skill = 0.95, laneBias = 0, rand = Math.random } = {}) {
+  constructor(vehicle, track, { aggression = 0.5, skill = 0.95, laneBias = 0, rand = Math.random, duel = false } = {}) {
+    this.duel = duel;
     this.v = vehicle;
     this.track = track;
     this.aggression = aggression;
@@ -86,6 +90,21 @@ export class AIDriver {
       if (o.forward < speed) follow = Math.min(follow, ahead);
     }
 
+    // Duel: draft, pass, block (ctx.rival is the player's car).
+    if (this.duel && ctx.rival) {
+      const o = ctx.rival;
+      const ahead = track.delta(pr.s, o.proj.s);
+      if (ahead > 0 && ahead < 45) {
+        // Tuck in behind for the tow, then slingshot out to the side with more room.
+        const pass = o.proj.d > 0 ? o.proj.d - 3.6 : o.proj.d + 3.6;
+        target = clamp(ahead > 11 ? o.proj.d : pass, -limit, limit);
+        if (ahead < 11) follow = Infinity;
+      } else if (ahead <= 0 && ahead > -28) {
+        // Leading: sit on the player's line so they cannot draft past cleanly.
+        target = clamp(target * 0.3 + o.proj.d * 0.7, -limit, limit);
+      }
+    }
+
     // Swerve around props unless we enjoy smashing them.
     if (this.aggression < 0.7 && ctx.props) {
       for (const p of ctx.props.items) {
@@ -111,7 +130,9 @@ export class AIDriver {
     let profile = Infinity;
     for (let d = 0; d <= 60; d += 10) profile = Math.min(profile, track.speedAt(pr.s + d));
     const gapToPlayer = ctx.playerGap ?? 0; // + means the player is ahead of us
-    const band = gapToPlayer > 60 ? 1.06 : gapToPlayer < -160 ? 0.93 : gapToPlayer < -60 ? 0.97 : 1;
+    const band = this.duel
+      ? gapToPlayer > 40 ? 1.09 : gapToPlayer > 10 ? 1.04 : gapToPlayer < -140 ? 0.95 : 1
+      : gapToPlayer > 60 ? 1.06 : gapToPlayer < -160 ? 0.93 : gapToPlayer < -60 ? 0.97 : 1;
     this.rubber += (band - this.rubber) * Math.min(1, dt * 0.5);
     let targetSpeed = Math.min(profile, v.params.topSpeed * 1.2) * this.skill * this.rubber;
     if (follow < 12) targetSpeed = Math.min(targetSpeed, speed - 1);
@@ -132,7 +153,7 @@ export class AIDriver {
       if (straight && speed > 25) {
         input.nitroTaps.push(ctx.time);
         if (v.nitro >= 58 && this.rand() < this.aggression) this.pendingPulse = ctx.time + 0.26;
-        this.nitroCooldown = 6 + this.rand() * 8 * (1.2 - this.aggression);
+        this.nitroCooldown = (6 + this.rand() * 8 * (1.2 - this.aggression)) * (this.duel ? 0.55 : 1);
       }
     }
 

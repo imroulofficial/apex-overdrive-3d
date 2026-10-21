@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { surfaceMix, blendSurface, dominantSurface } from './surface.js';
+import { proximityFactor, PROXIMITY } from './modes/rules.js';
 
 // Arcade vehicle model. Velocity lives in world space; each step it is split into forward and
 // lateral parts relative to the heading. Grip bleeds off the lateral part (fast when gripping,
@@ -82,6 +83,8 @@ export class Vehicle {
     this.driftScore = 0; // current combo
     this.driftExitTimer = 0;
     this.driftDistance = 0; // metres travelled while drifting, whole race
+    this.proximityScore = 0; // Drift Touge: extra points earned drifting close to the rail
+    this.nearRail = 0;
     this.releaseS = -1; // where the player began letting go of the drift
     this.perfectT = 0;
     this.slip = 0;
@@ -178,6 +181,7 @@ export class Vehicle {
   endDrift(reason = 'forced') {
     if (!this.drifting) return;
     this.drifting = false;
+    this.nearRail = 0;
     const t = this.driftTime;
     let kick = t > 0.8 ? Math.min(6, 2 + t * 1.4) : 0;
     const at = this.releaseS >= 0 ? this.releaseS : this.proj.s;
@@ -292,7 +296,15 @@ export class Vehicle {
         this.driftDistance += mag * dt;
         const q = clamp((Math.abs(this.slip) - 0.12) / 0.4, 0, 1) * clamp(mag / 35, 0, 1.4);
         this.addNitro(q * 13 * dt);
-        this.driftScore += q * mag * dt * 12;
+        const points = q * mag * dt * 12;
+        this.driftScore += points;
+        // Drift Touge (`proximity` on): hugging the guardrail pays extra.
+        this.nearRail = this.proximity ? proximityFactor(pr.d, track.wallLimit) : 0;
+        if (this.nearRail > 0 && q > 0) {
+          const bonus = points * PROXIMITY.bonus * this.nearRail;
+          this.driftScore += bonus;
+          this.proximityScore += bonus;
+        }
         const rel = steer * this.driftDir;
         if (rel < -0.35 || (Math.abs(steer) < 0.15 && !input.brake)) {
           if (this.driftExitTimer === 0) this.releaseS = pr.s;

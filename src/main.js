@@ -9,10 +9,13 @@ import { createStore } from './ui/store.js';
 import { createCloudBadge } from './ui/cloudBadge.js';
 import { PAINTS } from './data/catalog.js';
 import { carById } from './data/cars.js';
-import { EMERALD_COAST } from './data/tracks.js';
-import { STAGES } from './data/career.js';
+import { EMERALD_COAST, TRACKS } from './data/tracks.js';
+import { STAGES, TRACK_SEGMENTS, stageById } from './data/career.js';
+import { STAR_BONUS } from './data/economy.js';
 import { state, save, addCoins, activeCar } from './core/store.js';
-import { settleStage } from './core/career.js';
+import { settleStage, isStageUnlocked } from './core/career.js';
+import { createStagePicker, defaultStage, isPlayable, stageLabel, starIcons, trackBuilt } from './ui/stagePicker.js';
+import { RELEASE } from './config.js';
 import { carStats } from './core/inventory.js';
 import { ads } from './monetization/ads.js';
 import { billing } from './monetization/billing.js';
@@ -24,8 +27,23 @@ const $ = (sel) => document.querySelector(sel);
 const canvas = $('#scene');
 const fpsEl = $('#fps');
 const currentPaint = () => PAINTS.find((p) => p.id === activeCar().paint) ?? PAINTS[0];
-// Until the stage map lands, every race is career stage 1 (Classic, Coastal Loop, 2 laps).
-const CURRENT_STAGE = STAGES[0];
+const params = new URLSearchParams(location.search);
+const DEBUG = params.has('debug');
+// Dev builds (pre-release, or ?debug) can pick any stage; locked ones run as practice.
+const DEV = !RELEASE || DEBUG;
+
+// Until the Phase 10 world map lands, the garage's stage chip picks what RACE START runs: by
+// default the furthest unlocked stage. Dev shortcuts: ?stage=ec-05, or ?mode=TimeTrial for the
+// first stage of that mode.
+function initialStage() {
+  const byId = params.get('stage') && stageById(params.get('stage'));
+  const byMode = params.get('mode') && STAGES.find((s) => s.gameMode === params.get('mode'));
+  const asked = byId || byMode;
+  return asked && isPlayable(state, asked, DEV) ? asked : defaultStage(state);
+}
+let stage = initialStage();
+// Stages on a chapter whose track is not built yet race their segment on Emerald Coast.
+const trackFor = (s) => TRACKS.find((t) => t.id === TRACK_SEGMENTS[s.trackSegment].trackId) ?? EMERALD_COAST;
 const showFps = (fps) => {
   if (!fpsEl.hidden) fpsEl.textContent = `${Math.round(fps)} FPS`;
 };
@@ -41,12 +59,31 @@ const garage = new Garage(canvas, {
 // 'garage' | 'busy' (transitioning) | 'race'
 let mode = 'garage';
 let race = null;
+let raceStage = null; // the stage the current race was set up for
 let lastWinnings = 0;
 let lastResult = null; // the finished race whose coins the rewarded ad can double
 
 const store = createStore({ onPurchased: () => ads.refreshEntitlements() });
 const hud = createHud(garage, { onRaceStart: () => startRace(), onOpenStore: (id) => store.open(id) });
-if (new URLSearchParams(location.search).has('debug')) window.__garage = garage;
+if (DEBUG) window.__garage = garage;
+
+const stagePicker = createStagePicker({
+  dev: DEV,
+  onPick: (s) => {
+    stage = s;
+    renderStageChip();
+  },
+});
+$('#btn-stage').addEventListener('click', () => stagePicker.open(stage));
+function renderStageChip() {
+  if (!isPlayable(state, stage, DEV)) stage = defaultStage(state);
+  const practice = !isStageUnlocked(state, stage) || !trackBuilt(stage);
+  $('#stage-kicker').textContent = `${stageLabel(stage).replace('STAGE ', '')}${practice ? ' · PRACTICE' : ''}`;
+  $('#stage-name').textContent = TRACK_SEGMENTS[stage.trackSegment].name;
+  $('#stage-stars').innerHTML = starIcons(state.career.stageStars[stage.index]);
+  $('#btn-stage').dataset.mode = stage.gameMode;
+}
+renderStageChip();
 const settings = createSettings(garage, {
   onFpsToggle: (on) => (fpsEl.hidden = !on),
   onEntitlementsChanged: () => ads.refreshEntitlements(),
@@ -119,6 +156,7 @@ function beginRace() {
   raceInput.setAutoAccelerate(state.settings.autoAccelerate);
   raceInput.setScheme(state.settings.controls);
   race.begin({
+    earnedStars: state.career.stageStars[raceStage.index],
     stats: playerStats(),
     paint: currentPaint(),
     input: raceInput,
@@ -132,14 +170,18 @@ async function startRace() {
   if (mode !== 'garage') return;
   mode = 'busy';
   await wait(600); // let the rev and the rear-camera swing play
-  await wipe.cover(`LOADING ${EMERALD_COAST.name.toUpperCase()}`);
+  const track = trackFor(stage);
+  await wipe.cover(`LOADING ${TRACK_SEGMENTS[stage.trackSegment].name.toUpperCase()}`);
   try {
-    if (!race) {
-      race = new Race(garage.renderer, EMERALD_COAST, { onFps: showFps });
-      await race.prepare({ quality: garage.qualityLevel, paint: currentPaint(), car: carById(state.car) });
+    // One track exists today; when a second lands, switching tracks builds a new Race.
+    if (!race || race.def !== track) {
+      race = new Race(garage.renderer, track, { onFps: showFps });
+      await race.prepare({ quality: garage.qualityLevel, paint: currentPaint(), car: carById(state.car), stage });
     } else {
       await race.setPlayerCar(carById(state.car), currentPaint());
+      if (race.stage !== stage) await race.setStage(stage);
     }
+    raceStage = stage;
   } catch (err) {
     console.error(err);
     race = null;
@@ -157,19 +199,34 @@ async function startRace() {
   await wipe.reveal();
 }
 
-// Coins, stars and bests are saved the moment the player crosses the line.
+// Coins, stars and bests are saved the moment the run ends. A practice run (a locked stage
+// opened from the dev picker) is judged on a throwaway copy of the save and pays nothing.
 function bankResult(result) {
-  const settled = settleStage(state, CURRENT_STAGE, result);
+  const s = raceStage;
+  const practice = !isStageUnlocked(state, s) || !trackBuilt(s);
+  const target = practice ? structuredClone(state) : state;
+  const settled = settleStage(target, s, result);
+  result.coins = settled.coins;
+  result.stars = settled.stars;
+  result.newStars = settled.newStars;
+  result.stageStars = settled.stageStars;
+  result.starBonus = STAR_BONUS;
+  result.objectives = s.objectives;
+  result.best = settled.newBest;
+  result.practice = practice;
+  result.stageLabel = `${stageLabel(s)} · `;
+  if (practice) {
+    lastResult = null;
+    result.wallet = state.coins;
+    return;
+  }
   lastWinnings += settled.coins.total;
   // The rewarded 2x pays the race coins again (finish + skill), not the one-time star bonus.
   lastResult = { coins: settled.coins.race, doubled: false };
   ads.noteRaceFinished();
   save();
-  result.coins = settled.coins;
-  result.stars = settled.stars;
-  result.objectives = CURRENT_STAGE.objectives;
-  result.best = settled.newBest;
   result.wallet = state.coins;
+  if (settled.unlocked) toast(`Stage ${settled.unlocked.chapterStage} unlocked`);
 }
 
 // Results screen: a rewarded video pays the race's coins a second time.
@@ -232,6 +289,7 @@ async function exitToGarage() {
   hud.snapBody();
   hud.show();
   mode = 'garage';
+  renderStageChip();
   await wipe.reveal();
   if (lastWinnings > 0) {
     hud.animateCoinsFrom(state.coins - lastWinnings);
@@ -286,6 +344,10 @@ onBackButton(() => {
     store.close();
     return true;
   }
+  if (stagePicker.isOpen) {
+    stagePicker.close();
+    return true;
+  }
   if (mode === 'busy') return true;
   if (mode === 'race') {
     if (raceHud.resultsOpen || race.phase === 'finished') exitToGarage();
@@ -302,6 +364,15 @@ window.addEventListener('keydown', (e) => {
   else pauseRace();
 });
 
-if (new URLSearchParams(location.search).has('debug')) {
-  window.__app = { get race() { return race; }, startRace, exitToGarage, state, ads, billing, store, cloud };
+if (DEBUG) {
+  window.__app = {
+    get race() { return race; },
+    get stage() { return stage; },
+    pickStage(id) {
+      stage = typeof id === 'string' ? stageById(id) : STAGES[id];
+      renderStageChip();
+      return stage;
+    },
+    startRace, exitToGarage, state, ads, billing, store, cloud,
+  };
 }

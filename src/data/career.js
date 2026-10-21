@@ -117,7 +117,7 @@ const SKILLS = {
   pulse: (count) => ({ type: 'pulseNitro', count }),
 };
 
-const fmtTime = (s) => {
+export const fmtTime = (s) => {
   const m = Math.floor(s / 60);
   return `${m}:${(s - m * 60).toFixed(2).padStart(5, '0')}`;
 };

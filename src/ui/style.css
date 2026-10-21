@@ -1046,3 +1046,182 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .crate-btn { height: 40px; padding: 0 10px 0 8px; }
 }
 .pill-btn.gold.is-done svg { display: none; }
+
+/* =====================================================================
+   Game modes (Phase 9)
+   ===================================================================== */
+
+/* ---- Garage: stage chip above RACE START ---- */
+.race-launch { grid-area: race; align-self: end; justify-self: end; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none; }
+.race-launch > * { pointer-events: auto; }
+.race-launch .race-btn { grid-area: auto; }
+.stage-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 300px;
+  padding: 7px 14px 7px 12px;
+  --cut: 10px;
+  text-align: left;
+  box-shadow: inset 3px 0 0 var(--mode, var(--accent)), inset 0 0 0 1px var(--edge);
+}
+.stage-chip-text { display: flex; flex-direction: column; min-width: 0; }
+.stage-chip small { font-size: 9px; font-weight: 800; letter-spacing: 0.14em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stage-chip b { font-size: 14px; font-style: italic; letter-spacing: 0.04em; white-space: nowrap; }
+.stage-chip-stars,
+.stage-tile .stars { display: flex; gap: 1px; }
+.stage-chip-stars i,
+.stage-tile .stars i { display: block; width: 14px; height: 14px; }
+.stage-chip-stars svg,
+.stage-tile .stars svg { width: 100%; height: 100%; fill: rgba(255, 255, 255, 0.14); }
+.stage-chip-stars i.on svg,
+.stage-tile .stars i.on svg { fill: #ffd34d; }
+[data-mode='Classic'] { --mode: #ff2a3a; }
+[data-mode='TimeTrial'] { --mode: #3dff7a; }
+[data-mode='DriftTouge'] { --mode: #ffd34d; }
+[data-mode='Elimination'] { --mode: #ff7a1a; }
+[data-mode='BossDuel'] { --mode: #c062ff; }
+
+/* ---- Stage picker ---- */
+.stage-picker { width: min(620px, calc(100vw - var(--sal) - var(--sar) - 32px)); }
+.stage-modes { flex-wrap: wrap; margin-bottom: 6px; }
+.stage-modes button { flex: 1; }
+.stage-list section { margin: 6px 0 4px; }
+.stage-list h3 { margin: 6px 0; font-size: 11px; font-weight: 800; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); }
+.stage-list h3 em { font-style: normal; font-weight: 700; letter-spacing: 0.06em; text-transform: none; color: #ffb347; }
+.stage-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; }
+.stage-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 3px 0 var(--mode), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  text-align: left;
+}
+.stage-tile.m-Classic { --mode: #ff2a3a; }
+.stage-tile.m-TimeTrial { --mode: #3dff7a; }
+.stage-tile.m-DriftTouge { --mode: #ffd34d; }
+.stage-tile.m-Elimination { --mode: #ff7a1a; }
+.stage-tile.m-BossDuel { --mode: #c062ff; background: rgba(192, 98, 255, 0.12); }
+.stage-tile b { font-size: 17px; font-style: italic; line-height: 1; }
+.stage-tile small { font-size: 9px; font-weight: 800; letter-spacing: 0.14em; color: var(--mode); }
+.stage-tile .stars i { width: 11px; height: 11px; }
+.stage-tile.locked { opacity: 0.55; }
+.stage-tile:disabled { opacity: 0.25; }
+.stage-tile.is-current { box-shadow: inset 0 3px 0 var(--mode), inset 0 0 0 2px #fff; }
+.stage-detail { min-height: 16px; margin-top: 8px; font-size: 11px; color: var(--muted); }
+
+/* ---- Race HUD: mode panel, slipstream ---- */
+.race-hud.is-solo .rh-pos { display: none; }
+.race-hud.is-solo .rh-standing { gap: 0; }
+.rh-dot.out { opacity: 0.2; background: #555; }
+.rh-mode {
+  position: fixed;
+  left: var(--pad-l);
+  top: calc(var(--pad-t) + 72px);
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: baseline;
+  column-gap: 10px;
+  min-width: 170px;
+  padding: 8px 16px 9px 14px;
+  --cut: 10px;
+  pointer-events: none;
+  box-shadow: inset 3px 0 0 var(--mode, #fff), inset 0 0 0 1px var(--edge);
+  transition: opacity 0.4s;
+}
+.race-hud.is-intro .rh-mode { opacity: 0; }
+.rh-mode small { grid-column: 1 / -1; font-size: 9.5px; font-weight: 800; letter-spacing: 0.18em; color: var(--muted); }
+.rh-mode b { grid-column: 1 / -1; font-size: 26px; font-style: italic; font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1.05; }
+.rh-mode > span:not(.rh-mode-meter) { grid-column: 1 / -1; font-size: 10px; font-weight: 800; letter-spacing: 0.12em; color: #dfe6f2; }
+.rh-mode em { grid-column: 1 / -1; justify-self: start; margin-top: 3px; padding: 1px 6px; font-size: 9px; font-style: normal; font-weight: 900; letter-spacing: 0.18em; color: #111; background: #22e8ff; animation: tag-blink 0.5s ease-in-out infinite alternate; }
+.rh-mode-meter { grid-column: 1 / -1; position: relative; display: block; height: 5px; margin: 4px 0 3px; background: rgba(255, 255, 255, 0.14); }
+.rh-mode-meter i { position: absolute; inset: 0; background: var(--mode, #fff); transform-origin: left; transform: scaleX(0); transition: transform 0.15s linear; }
+.rh-mode-meter .mark { position: absolute; top: -3px; width: 2px; height: 11px; margin-left: -1px; background: #fff; }
+.rh-mode[data-state='good'] b { color: #7dffa8; }
+.rh-mode[data-state='warn'] b { color: #ffb347; }
+.rh-mode[data-state='danger'] b { color: #ff5a5a; animation: danger 0.5s ease-in-out infinite alternate; }
+.rh-mode[data-state='danger'] { box-shadow: inset 3px 0 0 #ff3a3a, inset 0 0 0 1px rgba(255, 60, 60, 0.6), 0 0 24px rgba(255, 40, 40, 0.35); }
+.race-hud[data-mode='BossDuel'] .rh-mode { box-shadow: inset 3px 0 0 var(--accent, #c062ff), inset 0 0 0 1px var(--edge); }
+.race-hud[data-mode='Classic'] { --mode: #ff2a3a; }
+.race-hud[data-mode='TimeTrial'] { --mode: #3dff7a; }
+.race-hud[data-mode='DriftTouge'] { --mode: #ffd34d; }
+.race-hud[data-mode='Elimination'] { --mode: #ff7a1a; }
+.race-hud[data-mode='BossDuel'] { --mode: #c062ff; }
+@keyframes danger { to { opacity: 0.55; } }
+@keyframes tag-blink { to { opacity: 0.6; } }
+.rh-draft {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--pad-b) + 178px);
+  transform: translateX(-50%) skewX(-12deg);
+  padding: 3px 12px;
+  font-size: 12px;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.3em;
+  color: #9ff3ff;
+  background: linear-gradient(90deg, transparent, rgba(34, 232, 255, 0.28), transparent);
+  text-shadow: 0 0 10px rgba(34, 232, 255, 0.9);
+  animation: tag-blink 0.35s ease-in-out infinite alternate;
+}
+.rh-callout.pylon { font-size: 30px; color: #3dff7a; text-shadow: 0 0 22px rgba(61, 255, 122, 0.9); }
+.rh-callout.checkpoint { font-size: 28px; color: #22e8ff; text-shadow: 0 0 22px rgba(34, 232, 255, 0.85); }
+.rh-callout.proximity { font-size: 20px; color: #9ff3ff; }
+.rh-callout.elim { font-size: 30px; color: #ff7a1a; text-shadow: 0 0 24px rgba(255, 90, 26, 0.9); }
+.rh-callout.over { font-size: 44px; color: #ff5a5a; text-shadow: 0 0 30px rgba(255, 40, 40, 0.8); animation-duration: 2.4s; }
+.race-fx.flash-elim::after { content: ''; position: absolute; inset: 0; background: radial-gradient(circle, rgba(255, 140, 40, 0.1) 20%, rgba(255, 60, 20, 0.5)); animation: flash 0.7s ease-out both; }
+
+/* ---- Intro card: objectives and boss styling ---- */
+.ri-objectives { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; margin: 12px 0 0; padding: 0; }
+.ri-objectives li { display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; color: #fff; }
+.ri-objectives svg { width: 14px; height: 14px; fill: rgba(255, 255, 255, 0.2); stroke: rgba(255, 255, 255, 0.5); }
+.ri-objectives li.have svg { fill: #ffd34d; stroke: #fff2b0; }
+.race-intro.boss small { color: #e2b8ff; }
+.race-intro.boss strong { font-size: min(14vh, 82px); background: linear-gradient(90deg, #ffffff, #c062ff 60%, #ff2bd6); -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 0 22px rgba(192, 98, 255, 0.6)); }
+
+/* ---- Results: objectives checklist, new-star chips ---- */
+.res-objectives { list-style: none; margin: 0 auto 12px; padding: 0; display: grid; gap: 4px; max-width: 520px; text-align: left; }
+.res-objectives li {
+  display: grid;
+  grid-template-columns: 18px 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+  opacity: 0.4;
+  transition: opacity 0.25s, background 0.25s;
+}
+.res-objectives li.checked { opacity: 1; }
+.res-objectives li svg { width: 16px; height: 16px; fill: rgba(255, 255, 255, 0.12); stroke: rgba(255, 255, 255, 0.3); }
+.res-objectives li.had svg { fill: rgba(255, 211, 77, 0.35); }
+.res-objectives li.met { color: #fff; background: rgba(255, 211, 77, 0.1); }
+.res-objectives li.met svg { fill: #ffd34d; stroke: #fff2b0; animation: star 0.4s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+.res-objectives b { color: #fff; font-variant-numeric: tabular-nums; }
+.res-objectives li:not(.met).checked b { color: #ff8a8a; }
+.res-objectives em { font-style: normal; font-size: 11px; font-weight: 900; color: #111; background: #ffd34d; padding: 1px 6px; opacity: 0; transform: scale(0.4); }
+.res-objectives li.new em { opacity: 1; transform: none; animation: star 0.45s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+.res-stars svg.had { fill: rgba(255, 211, 77, 0.25); stroke: rgba(255, 242, 176, 0.4); }
+.res-stars svg.new { filter: drop-shadow(0 0 16px rgba(255, 220, 90, 1)); }
+.res-place.compact b { font-size: 46px; }
+.res-practice { margin: 8px 0 0; font-size: 11px; font-weight: 900; letter-spacing: 0.24em; color: #ffb347; }
+
+@media (max-height: 430px) {
+  .stage-chip { padding: 5px 12px 5px 10px; }
+  .stage-chip b { font-size: 12.5px; }
+  .rh-mode { top: calc(var(--pad-t) + 60px); min-width: 150px; padding: 6px 12px 7px 11px; }
+  .rh-mode b { font-size: 21px; }
+  .rh-draft { bottom: calc(var(--pad-b) + 150px); }
+  .ri-objectives { margin-top: 6px; }
+  .res-objectives { margin-bottom: 8px; }
+  .res-objectives li { padding: 3px 8px; font-size: 11px; }
+  .res-place.compact b { font-size: 36px; }
+}
+@media (orientation: portrait) {
+  .race-launch { justify-self: stretch; align-items: stretch; }
+  .stage-chip { max-width: none; }
+}

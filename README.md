@@ -9,7 +9,21 @@ Offline-first 3D arcade racer for Android by **Red Pen Studio**.
 | Stack | Three.js (WebGL2) + Vite, wrapped with Capacitor 8 |
 | Audience | 13+, no sign-up, no analytics; gameplay is offline, cloud save, ads and Play Billing use the network when available |
 
-## Phase 8: driving feel and control schemes (this release)
+## Phase 9: game modes, boss duels and 3-star results (this release)
+
+Blueprint section 02. The race loop is now a host for five match types (`src/race/modes/`): the host owns the world, the cars, each car's distance along the stage's course, laps and the finish line; a mode picks who is on the grid, lays out its own track furniture, runs its rules every frame, fills a mode panel on the HUD and dresses the result.
+
+- **Stages drive the race**: every race is now a career stage (`src/data/career.js`): its track segment (circuit laps, or a point-to-point sprint with START / FINISH arches), its game mode, its rival set (rival difficulty nudges their stats) and its three objectives, which also show on the intro card.
+- **Classic Expedition**: pack race against the stage's five rivals; first past the line wins. All pack modes now have **slipstream**: tucking in within 32 m and 2.6 m of a car's line gives extra pull (strongest on the bumper), so a drafting car can briefly run past its top speed. A SLIPSTREAM tag shows while the player is in a tow.
+- **Time Trial (Chrono Run)**: solo against a countdown. The clock starts with one share of the run budget (star-1 target x 1.12) and each cyan **checkpoint gate** (about one per 650 m) adds another share. Floating **green pylons** on the racing line (clusters of three every 150 m, swinging to the inside of corners) take **1.0 s** off the run time when smashed, which also gives that second back to the clock, and count as props smashed. Red clock and ticks in the last seconds; running out ends the run as TIME UP (no stars, skill coins still paid).
+- **Drift Touge**: solo score attack against the stage's target and gold scores (meter with both marks). Drifting within 2.4 m of the guardrail pays up to **+100%** drift points (**proximity bonus**, `RAIL KISS` callout, PROXIMITY tag); the run's score is judged at the finish line.
+- **Elimination Knock-Out**: six-car sprint with a 20 s knock-out timer that loops; when it hits zero the car in last place explodes out of the race (fireball, blast and falling exit siren, `NAME ELIMINATED`) until one champion remains. The race runs as long as it takes (no finish line); being knocked out ends the player's run in that place.
+- **Boss Duel**: 1v1 from a side-by-side front row against the chapter boss (Tidebreaker, Avalanche, Voltage) with a boss intro card and a live gap panel. The boss AI tucks into the player's slipstream and slingshots out to pass, sits on the player's line to block when leading, rubber-bands harder and fires nitro more often; the duel uses a heavy draft (2.2x).
+- **3-star results**: the results card lists the stage's three objectives with what the run achieved (`objectiveProgress` in `src/core/career.js`), lights each earned star in turn, dims stars held from earlier runs, and pops a **+250** chip on first-time stars that counts into the star-bonus line. The headline figure and stat rows follow the mode (position, run time, drift score). Stars and coins are banked as soon as the run ends; star 1 unlocks the next stage.
+- **Stage picker** (stand-in for the Phase 10 world map): the chip above RACE START shows the stage, mode and stars; tapping it lists the stages by chapter with mode tags and stars, filterable by mode. Players get the stages they have unlocked; **dev builds (no `VITE_RELEASE=1`, or `?debug`) can open every stage**, and locked ones run as **practice** (judged and shown, nothing saved or paid). Alpine Summit and Neon City stages race their segment on Emerald Coast until those tracks exist. URL shortcuts: `?stage=ec-07`, `?mode=BossDuel`. With `?debug`, `__app.pickStage('ec-20')` and `__app.race.autopilot()` help QA.
+- New procedural SFX: pylon ping, checkpoint arpeggio, countdown tick, elimination blast. Version 0.9.0.
+
+## Phase 8: driving feel and control schemes
 
 Blueprint sections 2.2 and 2.3.
 
@@ -167,8 +181,10 @@ src/
   garage/              renderer + quality, showroom, procedural car, paint shader, camera rig
   render/              batching material (vertex PBR) and procedural surface textures
   race/                track spline + meshes, scenery, props, vehicle physics, AI, race cars,
-                       effects, chase camera, input and the Race state machine
-  ui/                  garage HUD, store + reward crate, race HUD + finish screen, settings, styles
+                       effects, chase camera, input and the Race host (course.js: stage courses)
+  race/modes/          the five game modes and their pure rules (clock, knock-outs, draft, proximity)
+  ui/                  garage HUD, stage picker, store + reward crate, race HUD + 3-star results,
+                       settings, styles
 public/assets/models/  drop-in .glb car models (see README there)
 android/               Capacitor Android project (signing reads env vars / keystore.properties)
 docs/                  GitHub Pages: privacy-policy.html, terms.html

@@ -84,6 +84,13 @@ export const raceSfx = {
   lap: fx((m) => race.lap(m)),
   finish: fx((m) => race.finish(m)),
   coin: fx((m, i) => race.coin(m, i)),
+  pylon: fx((m) => race.pylon(m)),
+  checkpoint: fx((m) => race.checkpoint(m)),
+  tick: fx((m) => race.tick(m)),
+  eliminated: fx((m, big) => {
+    race.eliminated(m, big);
+    duckFor(0.45, 1.4);
+  }),
 };
 
 // ---- Music ----
