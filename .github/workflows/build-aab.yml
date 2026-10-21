@@ -37,6 +37,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Unit tests
+        run: npm test
+
       - name: Build web bundle
         # Test ad units and the sandbox store stay on until the repository variable
         # VITE_RELEASE is set to 1 together with the production AdMob unit ids.

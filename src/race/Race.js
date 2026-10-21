@@ -11,7 +11,8 @@ import { loadCar } from '../assets/modelLoader.js';
 import { ChaseCamera } from './chaseCamera.js';
 import { Particles, SkidMarks, SpeedLines, softDotTexture } from './effects.js';
 import { mulberry32 } from './noise.js';
-import { RIVALS, POSITION_REWARD, DRIFT_POINTS_PER_COIN, SMASH_COINS, starsFor } from '../data/rivals.js';
+import { RIVALS } from '../data/rivals.js';
+import { SMASH_COINS } from '../data/economy.js';
 import { raceSfx, raceMusic, createEngineSound } from '../core/audio.js';
 import { BASE_STATS as BASE } from '../data/catalog.js';
 
@@ -80,7 +81,7 @@ export class Race {
     window.addEventListener('resize', this.resize);
     this.resize();
     // Place cars so the compile pass sees a representative frame.
-    this.reset({ upgrades: { engine: 0, nitro: 0, handling: 0, tires: 0 }, stats: null });
+    this.reset({ stats: null });
     this.chase.snap(this.player.vehicle);
     await renderer.compileAsync(this.scene, this.camera);
     this.ready = true;
@@ -122,7 +123,7 @@ export class Race {
     const rand = mulberry32(Math.floor(Math.random() * 1e9));
     const base = stats ?? BASE;
     // Rivals scale a little with the player's upgrades so races stay close.
-    const upgradeBoost = stats ? Math.max(0, (stats.speed + stats.handling + stats.grip + stats.nitro - 200) / 4) * 0.45 : 0;
+    const upgradeBoost = stats ? Math.max(0, (stats.speed + stats.accel + stats.handling + stats.nitro - 200) / 4) * 0.45 : 0;
     const order = [0, 1, 2, 3, 4]; // rival grid order (shuffled)
     for (let i = order.length - 1; i > 0; i--) {
       const j = Math.floor(rand() * (i + 1));
@@ -139,7 +140,7 @@ export class Race {
           speed: BASE.speed + r.stats.speed + upgradeBoost,
           nitro: BASE.nitro + r.stats.nitro + upgradeBoost,
           handling: BASE.handling + r.stats.handling + upgradeBoost,
-          grip: BASE.grip + r.stats.grip + upgradeBoost,
+          accel: BASE.accel + r.stats.accel + upgradeBoost,
         });
       }
       if (!r.vehicle) r.vehicle = new Vehicle(track, params, { passiveNitro: r.isPlayer ? 0.6 : 3.2 });
@@ -169,6 +170,8 @@ export class Race {
     this.driftTotal = 0;
     this.smashes = 0;
     this.bigAirs = 0;
+    this.airTotal = 0;
+    this.pulses = 0;
     this.result = null;
     this.lastCountdown = null;
     this.hits = [];
@@ -467,20 +470,21 @@ export class Race {
     this.chase.orbit(r.vehicle);
     raceSfx.finish();
     const position = r.place;
-    const driftCoins = Math.floor(this.driftTotal / DRIFT_POINTS_PER_COIN);
-    const smashCoins = this.smashes * SMASH_COINS;
-    const positionCoins = POSITION_REWARD[position - 1] ?? 0;
+    // Raw run metrics; coins and stars are worked out by the career (core/career.js) when
+    // main.js banks the result.
     this.result = {
       trackId: this.def.id,
       trackName: this.def.name,
+      finished: true,
       position,
       total: this.racers.length,
       time: r.finishTime,
       bestLap: Math.min(...r.lapTimes),
       driftScore: Math.round(this.driftTotal),
+      driftDistance: Math.round(r.vehicle.driftDistance),
+      airTime: Math.round(this.airTotal * 10) / 10,
+      pulses: this.pulses,
       smashes: this.smashes,
-      coins: { position: positionCoins, drift: driftCoins, smash: smashCoins, total: positionCoins + driftCoins + smashCoins },
-      stars: starsFor(position),
     };
     this.hud.callout(position === 1 ? 'VICTORY!' : `FINISHED ${ordinal(position)}`, 'finish');
     this.onFinish?.(this.result);
@@ -495,6 +499,7 @@ export class Race {
           this.hud.callout('NITRO', 'blue');
           break;
         case 'pulse':
+          this.pulses += 1;
           raceSfx.pulse();
           this.chase.bump(0.4);
           this.hud.callout('PULSE NITRO!', 'pulse');
@@ -537,6 +542,7 @@ export class Race {
           }
           break;
         case 'air':
+          this.airTotal += e.value;
           if (e.value > 0.6) {
             v.addNitro(e.value * 14);
             this.bigAirs += 1;

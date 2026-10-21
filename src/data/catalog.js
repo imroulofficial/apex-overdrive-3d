@@ -1,5 +1,6 @@
-// Garage catalog: paint finishes and performance upgrades.
+// Garage catalog: paint finishes, rims and performance upgrades.
 // Prices are in soft currency (coins) earned offline; nothing here requires a server.
+import { UPGRADE_COSTS } from './economy.js';
 
 export const FINISHES = {
   metallic: { label: 'Metallic', metalness: 0.65, roughness: 0.32, clearcoat: 1.0, clearcoatRoughness: 0.03, flake: 0.35, iridescence: 0 },
@@ -16,8 +17,8 @@ export const PAINTS = [
   { id: 'midnight', name: 'Midnight Blue', color: '#0d2a6b', finish: 'metallic', price: 0 },
   { id: 'arctic', name: 'Arctic White', color: '#e9edf2', finish: 'gloss', price: 0 },
   { id: 'carbon', name: 'Carbon Black', color: '#121317', finish: 'gloss', price: 0 },
-  { id: 'volt', name: 'Volt Lime', color: '#9be22d', finish: 'gloss', price: 400 },
-  { id: 'sunset', name: 'Sunset Orange', color: '#ff6a13', finish: 'metallic', price: 400 },
+  { id: 'volt', name: 'Volt Lime', color: '#9be22d', finish: 'gloss', price: 500 },
+  { id: 'sunset', name: 'Sunset Orange', color: '#ff6a13', finish: 'metallic', price: 500 },
   { id: 'stealth', name: 'Stealth Grey', color: '#4a4f57', finish: 'matte', price: 600 },
   { id: 'ultraviolet', name: 'Ultraviolet', color: '#5b2bd1', finish: 'pearl', price: 900 },
   { id: 'aqua-pearl', name: 'Aqua Pearl', color: '#19b5c4', finish: 'pearl', price: 900 },
@@ -26,15 +27,29 @@ export const PAINTS = [
   { id: 'founder', name: 'Red Pen Studio Founder', color: '#b3122f', finish: 'founder', price: 0, product: 'remove_ads' },
 ];
 
+// Every car has its own levels (0 = stock, 1-5 bought with coins), stored per car in the
+// save (see core/saveSchema.js). `stat` is the car stat (0-100) each level raises.
 export const UPGRADES = [
-  { id: 'engine', name: 'Engine', blurb: 'Top speed and acceleration', stat: 'speed', maxLevel: 5, baseCost: 300 },
-  { id: 'nitro', name: 'Nitro', blurb: 'Boost duration and power', stat: 'nitro', maxLevel: 5, baseCost: 350 },
-  { id: 'handling', name: 'Handling', blurb: 'Steering and drift control', stat: 'handling', maxLevel: 5, baseCost: 250 },
-  { id: 'tires', name: 'Tires', blurb: 'Grip and launch', stat: 'grip', maxLevel: 5, baseCost: 200 },
+  { id: 'topSpeed', name: 'Top Speed', blurb: 'Maximum velocity on long straights', stat: 'speed', maxLevel: 5 },
+  { id: 'acceleration', name: 'Acceleration', blurb: 'Launch and recovery after a hit', stat: 'accel', maxLevel: 5 },
+  { id: 'handling', name: 'Handling', blurb: 'Cornering, grip and drift control', stat: 'handling', maxLevel: 5 },
+  { id: 'nitro', name: 'Nitro', blurb: 'Boost duration and shockwave power', stat: 'nitro', maxLevel: 5 },
 ];
 
-export const upgradeCost = (upgrade, level) => Math.round(upgrade.baseCost * Math.pow(1.6, level));
+// Cost of the next level for a car currently at `level` (0-4).
+export const upgradeCost = (upgrade, level) => UPGRADE_COSTS[level] ?? Infinity;
 
-// Starter coupe baseline stats (0-100) plus per-level gains.
-export const BASE_STATS = { speed: 52, nitro: 40, handling: 58, grip: 50 };
+// Six rim designs, bought per car (the 3D wheels arrive with the garage finish phase).
+export const RIMS = [
+  { id: 'stock', name: 'Stock Split-5', price: 0 },
+  { id: 'mesh', name: 'Classic Mesh', price: 500 },
+  { id: 'turbofan', name: 'Turbofan', price: 750 },
+  { id: 'blade', name: 'Twin Blade', price: 1000 },
+  { id: 'monoblock', name: 'Forged Monoblock', price: 1250 },
+  { id: 'carbon-aero', name: 'Carbon Aero', price: 1500 },
+];
+
+// Starter coupe baseline stats (0-100) plus per-level gains. The four stats match the four
+// garage bars: top speed, acceleration, handling and nitro.
+export const BASE_STATS = { speed: 52, accel: 52, handling: 58, nitro: 40 };
 export const STAT_PER_LEVEL = 9;

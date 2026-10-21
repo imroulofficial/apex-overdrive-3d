@@ -6,7 +6,8 @@
 //   - launch: read the cloud copy once and adopt it if it is newer than the device's;
 //   - back in the garage after a race;
 //   - after buying an upgrade, a paint finish or a Play product.
-// Each upload is one write of one document (`players/{uid}`), skipped entirely when nothing
+// Each upload is one write of one document (`players/{uid}`, shape in core/saveSchema.js
+// toCloudDoc), skipped entirely when nothing
 // changed since the last upload, and bursts (several upgrades in a row) collapse into one.
 // A player costs about 1 read per launch and a handful of writes per session, far inside
 // Spark's 50k reads / 20k writes per day.
@@ -15,9 +16,9 @@ import { FirebaseFirestore } from '@capacitor-firebase/firestore';
 import { GAME } from '../config.js';
 import { isNative } from './platform.js';
 import { state, progressOf, applyProgress } from './store.js';
+import { SAVE_VERSION, toCloudDoc, fromCloudDoc } from './saveSchema.js';
 
 const COLLECTION = 'players';
-const SCHEMA = 1;
 const META_KEY = 'apex-overdrive.cloud.v1'; // { uid, uploaded (progress JSON), syncedAt }
 const BURST_MS = 4000; // purchases within this window share one write
 const MIN_GAP_MS = 15_000; // never two writes closer together than this
@@ -59,6 +60,9 @@ function createCloud() {
   let burstTimer = 0;
   let lastWriteAt = 0;
   let again = false;
+  // The cloud copy was written by a newer app version (a higher schema): never overwrite it
+  // from here; this device keeps saving locally until the app is updated.
+  let cloudAhead = false;
 
   const enabled = isNative || !!WEB_CONFIG;
   const progressJson = () => JSON.stringify(progressOf(state));
@@ -91,16 +95,23 @@ function createCloud() {
   }
 
   // Adopts the cloud copy if it was saved after this device's progress last changed.
+  // A v1 document (Phase 4-6 apps) is migrated to v2 on the way in, and the next push
+  // replaces it with a v2 document.
   async function pull() {
     const { snapshot } = await timeout(FirebaseFirestore.getDocument({ reference: docRef() }));
-    const doc = snapshot?.data;
-    if (!doc || doc.v !== SCHEMA || typeof doc.save !== 'string') return false;
-    if (!(doc.updatedAt > (state.savedAt ?? 0))) {
-      // Device is newer (or equal); remember what the cloud holds so equal saves skip a write.
-      if (doc.updatedAt === state.savedAt) meta.uploaded = doc.save;
+    const doc = fromCloudDoc(snapshot?.data);
+    if (!doc) return false;
+    if (doc.newer) {
+      cloudAhead = true;
+      console.warn(`[cloud] cloud save is schema v${doc.v}; this app writes v${SAVE_VERSION}, so uploads are paused`);
       return false;
     }
-    applyProgress(JSON.parse(doc.save), doc.updatedAt);
+    if (!(doc.updatedAt > (state.savedAt ?? 0))) {
+      // Device is newer (or equal); remember what the cloud holds so equal saves skip a write.
+      if (doc.updatedAt === state.savedAt && doc.v === SAVE_VERSION) meta.uploaded = JSON.stringify(doc.progress);
+      return false;
+    }
+    applyProgress(doc.progress, doc.updatedAt);
     meta.uploaded = progressJson();
     meta.syncedAt = Date.now();
     writeMeta();
@@ -109,14 +120,10 @@ function createCloud() {
 
   async function push() {
     const save = progressJson();
-    if (save === meta.uploaded) return;
+    if (save === meta.uploaded || cloudAhead) return;
     lastWriteAt = Date.now();
-    await timeout(
-      FirebaseFirestore.setDocument({
-        reference: docRef(),
-        data: { v: SCHEMA, save, updatedAt: state.savedAt ?? 0, appVersion: GAME.version },
-      })
-    );
+    // setDocument replaces the whole document, so a v1 `save` string never lingers.
+    await timeout(FirebaseFirestore.setDocument({ reference: docRef(), data: toCloudDoc(state, GAME.version) }));
     meta.uploaded = save;
     meta.syncedAt = Date.now();
     writeMeta();

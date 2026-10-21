@@ -1,9 +1,11 @@
 // Studio-wide constants. Legal pages are hosted on GitHub Pages from /docs.
+// Vite replaces import.meta.env at build time; under plain Node (the tests) it is undefined.
+const env = import.meta.env ?? {};
 export const GAME = {
   title: 'Apex Overdrive',
   subtitle: '3D Racing',
   studio: 'Red Pen Studio',
-  version: '0.6.0',
+  version: '0.7.0',
   appId: 'com.redpenstudio.apexoverdrive',
 };
 
@@ -14,12 +16,12 @@ export const LEGAL = {
   termsOfService: `${PAGES_BASE}/terms.html`,
 };
 
-export const STARTING_COINS = 2500;
+export { STARTING_COINS } from './data/economy.js';
 
 // Pre-launch builds use Google's test ad units and offer the sandbox store toggle.
 // A store release is built with VITE_RELEASE=1 (see README), which switches to the
 // production ad units below and removes the sandbox toggle from Settings.
-export const RELEASE = import.meta.env.VITE_RELEASE === '1';
+export const RELEASE = env.VITE_RELEASE === '1';
 
 // Google's published test ad units: always safe to load and click during development.
 // https://developers.google.com/admob/android/test-ads
@@ -31,9 +33,9 @@ const TEST_AD_UNITS = {
 
 // Fill in from the AdMob console before the first store release.
 const PRODUCTION_AD_UNITS = {
-  banner: import.meta.env.VITE_ADMOB_BANNER ?? '',
-  interstitial: import.meta.env.VITE_ADMOB_INTERSTITIAL ?? '',
-  rewarded: import.meta.env.VITE_ADMOB_REWARDED ?? '',
+  banner: env.VITE_ADMOB_BANNER ?? '',
+  interstitial: env.VITE_ADMOB_INTERSTITIAL ?? '',
+  rewarded: env.VITE_ADMOB_REWARDED ?? '',
 };
 
 export const ADS = {
