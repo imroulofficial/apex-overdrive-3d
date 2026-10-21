@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { VERGE } from './surface.js';
 
 // Race spline: a closed Catmull-Rom loop resampled every ~2 m. All driving queries (lap
 // progress, lateral offset, road height, ramps, walls) run against these samples, which keeps
@@ -8,12 +9,16 @@ const SAMPLE_SPACING = 2;
 const LATERAL_ACCEL = 34; // m/s², the AI's cornering budget
 const AI_BRAKE = 15; // m/s²
 const MAX_PROFILE_SPEED = 90;
+// Corners for the Perfect Exit: stretches tighter than this radius, apex at the tightest point.
+const CORNER_RADIUS = 200;
+const CORNER_MIN_LENGTH = 14; // metres
+export const APEX_WINDOW = { before: 6, after: 22 }; // metres around the apex that count
 
 export class Track {
   constructor(def) {
     this.def = def;
     this.halfWidth = def.width / 2;
-    this.shoulder = 1.4; // concrete shoulder beyond the edge line, still drivable
+    this.shoulder = VERGE; // gravel shoulder + grass verge beyond the edge line, still drivable
     this.fenceOffset = this.halfWidth + this.shoulder + 0.4;
     this.carHalfWidth = 1.0;
     this.wallLimit = this.halfWidth + this.shoulder - this.carHalfWidth;
@@ -79,6 +84,46 @@ export class Track {
     }
 
     this.ramps = (def.ramps ?? []).map((r) => ({ ...r, s0: r.at * this.length }));
+    this.corners = this.findCorners();
+  }
+
+  // Driftable corners from the spline curvature: { s0, s1, apexS, dir (+1 right), radius }.
+  findCorners() {
+    const n = this.n;
+    const k0 = 1 / CORNER_RADIUS;
+    const sign = (i) => (Math.abs(this.curv[i]) > k0 ? Math.sign(this.curv[i]) : 0);
+    // Start scanning outside a corner so none is split across the seam.
+    let start = 0;
+    while (start < n && sign(start) !== 0) start++;
+    const corners = [];
+    let run = null;
+    for (let k = 1; k <= n; k++) {
+      const i = (start + k) % n;
+      const sg = sign(i);
+      if (run && sg !== run.dir) {
+        if ((run.len + 1) * this.spacing >= CORNER_MIN_LENGTH) {
+          corners.push({ s0: this.s[run.from], s1: this.s[run.to], apexS: this.s[run.apex], dir: run.dir, radius: 1 / Math.abs(this.curv[run.apex]) });
+        }
+        run = null;
+      }
+      if (sg !== 0 && !run) run = { dir: sg, from: i, to: i, apex: i, len: 0 };
+      else if (run) {
+        run.to = i;
+        run.len += 1;
+        if (Math.abs(this.curv[i]) > Math.abs(this.curv[run.apex])) run.apex = i;
+      }
+    }
+    return corners.sort((a, b) => a.apexS - b.apexS);
+  }
+
+  // The corner whose apex window contains s, turning the way `dir` drifts (or any way if 0).
+  apexAt(s, dir = 0) {
+    for (const c of this.corners) {
+      if (dir && c.dir !== dir) continue;
+      const ds = this.delta(c.apexS, s);
+      if (ds >= -APEX_WINDOW.before && ds <= APEX_WINDOW.after) return c;
+    }
+    return null;
   }
 
   wrapS(s) {

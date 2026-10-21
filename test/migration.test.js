@@ -26,7 +26,7 @@ test('v1 -> v2 keeps coins and every purchase flag', () => {
   assert.deepEqual(s.purchases.granted, ['supercar_bundle']);
   assert.equal(s.purchases.noAds, true);
   assert.equal(s.savedAt, v1.savedAt);
-  assert.deepEqual(s.settings, v1.settings);
+  assert.deepEqual(s.settings, { ...v1.settings, controls: 'touch' }); // Phase 8 added the control scheme
   assert.deepEqual(s.ads, v1.ads);
 });
 
@@ -162,4 +162,15 @@ test('cloud documents from a newer app are recognised and not parsed', () => {
   assert.equal(fromCloudDoc(null), null);
   assert.equal(fromCloudDoc({ v: 1, save: '{broken' }), null);
   assert.equal(fromCloudDoc({ v: 2, economy: {} }), null);
+});
+
+test('control scheme defaults to Touch Drive and survives migration', () => {
+  assert.equal(migrate(null).settings.controls, 'touch');
+  // Phase 1-7 saves have no controls setting.
+  assert.equal(migrate(v1Save()).settings.controls, 'touch');
+  const s = migrate(null);
+  s.settings.controls = 'wheel';
+  assert.equal(normalize(JSON.parse(JSON.stringify(s))).settings.controls, 'wheel');
+  s.settings.controls = 'joystick';
+  assert.equal(normalize(s).settings.controls, 'touch');
 });

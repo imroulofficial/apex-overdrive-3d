@@ -54,3 +54,13 @@ test('stats use the four garage bars and rise with tier', () => {
 test('only cars with art are released to the garage', () => {
   assert.deepEqual(RELEASED_CARS.map((c) => c.id), ['rp1-vanta', 'rpx-hyperion']);
 });
+
+test('the Tier A hypercar is the Valkyrie GT-R under its original id', () => {
+  // Saves, cloud documents and the supercar_bundle grant store 'rpx-hyperion': it must not change.
+  const car = CARS.find((c) => c.id === 'rpx-hyperion');
+  assert.equal(car.name, 'Valkyrie GT-R');
+  assert.equal(car.tier, 'A');
+  assert.equal(car.unlock.product, 'supercar_bundle');
+  assert.ok(!CARS.some((c) => /Hyperion/.test(c.name)));
+  assert.match(PRODUCTS.supercar_bundle.blurb, /Valkyrie GT-R/);
+});

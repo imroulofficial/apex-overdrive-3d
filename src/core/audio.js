@@ -75,6 +75,12 @@ export const raceSfx = {
   land: fx((m, k) => race.land(m, k)),
   chirp: fx((m) => race.chirp(m)),
   driftBank: fx((m) => race.driftBank(m)),
+  combo: fx((m, level) => race.combo(m, level)),
+  perfect: fx((m) => {
+    race.perfect(m);
+    duckFor(0.5, 0.9);
+  }),
+  shatter: fx((m, kind) => race.shatter(m, kind)),
   lap: fx((m) => race.lap(m)),
   finish: fx((m) => race.finish(m)),
   coin: fx((m, i) => race.coin(m, i)),
@@ -137,13 +143,14 @@ export function createEngineSound() {
       return box.gear;
     },
     // dt seconds; speedNorm forward speed / top speed; throttle 0..1; neutral on the grid;
-    // speed 0..1 (wind); boost nitro tier 0..2; skid 0..1; slip angle (rad); volume 0..1.
-    update({ dt = 1 / 60, speedNorm = 0, throttle = 1, neutral = false, airborne = false, speed = 0, boost = 0, skid = 0, slip = 0, volume = 1 }) {
+    // speed 0..1 (wind); boost nitro tier 0..2; skid 0..1; slip angle (rad); gravel / grass
+    // 0..1 share of the tyres off the asphalt; volume 0..1.
+    update({ dt = 1 / 60, speedNorm = 0, throttle = 1, neutral = false, airborne = false, speed = 0, boost = 0, skid = 0, slip = 0, gravel = 0, grass = 0, volume = 1 }) {
       if (stopped) return;
       const t = m.ac.currentTime;
       const events = box.step(dt, { speedNorm, throttle, neutral, airborne });
       if (volume > 0) playEngineEvents(m, events, t);
-      voice.set({ rpm: box.rpm, load: throttle, boost: box.boost, tier: boost, speed, skid, slip, cut: box.cut, volume }, t);
+      voice.set({ rpm: box.rpm, load: throttle, boost: box.boost, tier: boost, speed, skid, slip, cut: box.cut, gravel, grass, volume }, t);
       const r = Math.max(0, Math.min(1, (box.rpm - 1500) / 6000));
       duckForEngine(volume > 0 ? Math.min(1, r * throttle * 0.8 + boost * 0.25) : 0);
     },

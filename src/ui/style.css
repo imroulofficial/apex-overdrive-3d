@@ -656,6 +656,26 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rc-btn.gas { display: none; width: 74px; height: 118px; clip-path: polygon(12px 0, 100% 0, 100% 100%, 0 100%, 0 12px); color: #c9ffd9; }
 .race-hud.manual-throttle .rc-btn.gas { display: grid; place-items: center; }
 .rc-btn.gas.is-pressed { background: linear-gradient(180deg, rgba(43, 212, 107, 0.85), rgba(20, 120, 70, 0.75)); color: #fff; transform: scale(0.97); }
+/* Pedals: ribbed foot plates. */
+.rc-btn.pedal { background-image: repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.07) 0 3px, transparent 3px 12px); }
+.rc-btn.pedal span { transform: rotate(-90deg); white-space: nowrap; }
+.rc-btn.brake { display: none; width: 84px; height: 124px; clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%); color: #ffd0d0; }
+.rc-btn.brake.is-pressed { background: linear-gradient(180deg, rgba(255, 42, 58, 0.9), rgba(140, 16, 30, 0.8)); color: #fff; transform: scale(0.97); }
+
+/* Control schemes (Settings → Controls): which steering control fills the left side. */
+.rc-left { display: flex; align-items: flex-end; }
+.rc-wheel { display: none; position: relative; width: 156px; height: 156px; margin: -6px; padding: 6px; touch-action: none; }
+.rc-wheel-rim { display: block; width: 100%; height: 100%; transition: transform 0.04s linear; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.45)); }
+.rc-wheel .w-rim { fill: rgba(14, 17, 26, 0.42); stroke: rgba(255, 255, 255, 0.28); stroke-width: 9; }
+.rc-wheel .w-grip { fill: none; stroke: rgba(255, 255, 255, 0.12); stroke-width: 9; stroke-dasharray: 1.2 2.4; }
+.rc-wheel .w-spoke { fill: none; stroke: rgba(255, 255, 255, 0.4); stroke-width: 6; stroke-linecap: round; }
+.rc-wheel .w-hub { fill: rgba(14, 17, 26, 0.7); stroke: var(--accent); stroke-width: 2.5; }
+.rc-wheel .w-mark { stroke: var(--accent); stroke-width: 7; stroke-linecap: round; }
+.rc-wheel.is-held .w-rim { stroke: rgba(255, 122, 26, 0.85); }
+.race-hud.ctl-wheel .rc-steer,
+.race-hud.ctl-tilt .rc-steer { display: none; }
+.race-hud.ctl-wheel .rc-wheel { display: block; }
+.race-hud.ctl-tilt .rc-btn.brake { display: grid; place-items: center; }
 .rc-btn.drift.is-pressed { background: linear-gradient(135deg, rgba(255, 42, 58, 0.9), rgba(255, 122, 26, 0.8)); transform: scale(0.96); }
 .rc-btn.nitro { width: 112px; height: 112px; border-radius: 50%; color: #cfeaff; box-shadow: inset 0 0 0 1.5px rgba(58, 168, 255, 0.4); }
 .rc-btn.nitro span { position: relative; z-index: 1; }
@@ -680,7 +700,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rh-callouts {
   position: fixed;
   left: 50%;
-  top: calc(var(--sat) + 22%);
+  top: calc(var(--sat) + 13%);
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
@@ -722,7 +742,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rh-drift-score {
   position: fixed;
   left: 50%;
-  top: calc(var(--sat) + 38%);
+  top: calc(var(--sat) + 29%);
   transform: translateX(-50%) skewX(-8deg);
   display: flex;
   flex-direction: column;
@@ -733,6 +753,46 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 }
 .rh-drift-score small { font-size: 11px; font-weight: 800; letter-spacing: 0.4em; }
 .rh-drift-score b { font-size: 30px; font-weight: 900; font-style: italic; font-variant-numeric: tabular-nums; }
+/* Combo multiplier badge: hotter colour per level, pops on every step up. */
+.rh-drift-score em {
+  margin-top: 3px;
+  padding: 2px 10px;
+  font-size: 18px;
+  font-weight: 900;
+  font-style: italic;
+  color: #1a0e00;
+  text-shadow: none;
+  background: linear-gradient(90deg, #ffd34d, #ff8a2a);
+  clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+}
+.rh-drift-score[data-level='2'] em { background: linear-gradient(90deg, #ff8a2a, #ff2a3a); color: #fff; }
+.rh-drift-score[data-level='3'] em { background: linear-gradient(90deg, #ff2bd6, #8b5cff, #22e8ff); color: #fff; box-shadow: 0 0 18px rgba(255, 43, 214, 0.6); }
+.rh-drift-score em.pop { animation: combo-pop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1); }
+@keyframes combo-pop { 0% { transform: scale(1.9); } 100% { transform: scale(1); } }
+.rh-link { display: block; width: 92px; height: 3px; margin-top: 5px; background: rgba(255, 255, 255, 0.15); opacity: 0; transition: opacity 0.15s; }
+.rh-link i { display: block; height: 100%; width: 100%; background: #ffd34d; transform-origin: left; }
+.rh-drift-score.linking .rh-link { opacity: 1; }
+.rh-drift-score.linking b { opacity: 0.75; }
+.rh-combo-row { display: flex; align-items: center; gap: 8px; }
+.rh-chain { margin-top: 3px; font-size: 11px; font-weight: 800; letter-spacing: 0.18em; color: #fff3c4; }
+.rh-apex { display: none; margin-top: 5px; padding: 3px 10px; font-size: 11px; font-weight: 900; letter-spacing: 0.24em; color: #062a25; background: #7dffe0; box-shadow: 0 0 16px rgba(125, 255, 224, 0.8); animation: apex-blink 0.32s ease-in-out infinite alternate; }
+.race-hud.apex-ready .rh-apex { display: block; }
+.race-hud.apex-ready .rc-btn.drift,
+.race-hud.apex-ready .rc-btn.brake { box-shadow: inset 0 0 0 2px #7dffe0, 0 0 20px rgba(125, 255, 224, 0.6); }
+@keyframes apex-blink { to { opacity: 0.55; } }
+.rh-callout.perfect {
+  font-size: 46px;
+  background: linear-gradient(90deg, #7dffe0, #22e8ff 30%, #ffd34d 65%, #ff2bd6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+  filter: drop-shadow(0 0 16px rgba(34, 232, 255, 0.85));
+}
+.rh-callout.combo { font-size: 24px; color: #ffd34d; }
+.rh-callout.combo.l3 { color: #ff7af0; text-shadow: 0 0 18px rgba(255, 43, 214, 0.8); }
+.rh-surface { position: absolute; right: 12px; top: 8px; transform: skewX(-10deg); padding: 2px 8px; font-size: 9px; font-weight: 900; letter-spacing: 0.25em; color: #1b1406; background: #d9b878; }
+.rh-surface[data-surface='grass'] { background: #9ccf5a; }
 .rh-wrong {
   position: fixed;
   left: 50%;
@@ -756,7 +816,9 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .race-hud[data-boost='2'] .race-fx { box-shadow: inset 0 0 170px rgba(255, 122, 26, 0.5), inset 0 0 70px rgba(192, 98, 255, 0.55); animation: pulse-glow 0.22s ease-in-out infinite alternate; }
 @keyframes pulse-glow { to { box-shadow: inset 0 0 120px rgba(192, 98, 255, 0.55), inset 0 0 50px rgba(255, 122, 26, 0.6); } }
 .race-fx.flash-pulse::after,
+.race-fx.flash-perfect::after,
 .race-fx.flash-drift::after { content: ''; position: absolute; inset: 0; }
+.race-fx.flash-perfect::after { background: radial-gradient(circle, rgba(255, 255, 255, 0) 35%, rgba(34, 232, 255, 0.5)); animation: flash 0.55s ease-out both; }
 .race-fx.flash-pulse::after { background: radial-gradient(circle, rgba(255, 255, 255, 0) 30%, rgba(192, 98, 255, 0.55)); animation: flash 0.5s ease-out both; }
 .race-fx.flash-drift::after { background: radial-gradient(circle, transparent 55%, rgba(255, 211, 77, 0.22)); animation: flash 0.35s ease-out both; }
 @keyframes flash { from { opacity: 1; } to { opacity: 0; } }
@@ -860,6 +922,9 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .rc-half svg { width: 34px; height: 34px; }
   .rc-btn.drift { width: 84px; height: 68px; }
   .rc-btn.nitro { width: 94px; height: 94px; }
+  .rc-wheel { width: 132px; height: 132px; }
+  .rc-btn.brake { width: 74px; height: 104px; }
+  .rh-callout.perfect { font-size: 38px; }
   .rh-speedo { width: 168px; padding: 6px 12px 10px; }
   .rh-dial { margin-bottom: -32px; }
   .rh-speed b { font-size: 32px; }

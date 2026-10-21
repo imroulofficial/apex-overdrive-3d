@@ -4,7 +4,8 @@ import { raceSfx, sfx } from '../core/audio.js';
 import { describeObjective } from '../data/career.js';
 
 // In-race HUD: standing, lap, timer, progress strip, speedometer, nitro gauge with the
-// double-tap sweet-spot ring, callouts, pause menu and the finish screen.
+// double-tap sweet-spot ring, drift score with the combo multiplier and link timer, the apex
+// "release" hint, callouts, pause menu and the finish screen.
 
 const $ = (sel) => document.querySelector(sel);
 const fmt = (n) => n.toLocaleString('en-US');
@@ -37,6 +38,10 @@ export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, 
     needle: $('#rc-needle'),
     drift: $('#rh-drift'),
     driftValue: $('#rh-drift b'),
+    combo: $('#rh-combo'),
+    chain: $('#rh-chain'),
+    linkFill: $('#rh-link-fill'),
+    surface: $('#rh-surface'),
     wrong: $('#rh-wrong'),
     callouts: $('#rh-callouts'),
     fx: $('#race-fx'),
@@ -104,6 +109,7 @@ export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, 
       el.callouts.innerHTML = '';
       el.drift.hidden = true;
       el.wrong.hidden = true;
+      root.classList.remove('apex-ready');
       el.laps.textContent = def.laps;
       el.lapmarks.innerHTML = Array.from({ length: def.laps - 1 }, (_, i) => `<i style="left:${((i + 1) / def.laps) * 100}%"></i>`).join('');
       $('#ri-biome').textContent = def.biome.toUpperCase();
@@ -137,8 +143,17 @@ export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, 
       setTimeout(() => c.remove(), 1500);
     },
 
-    driftBank(value) {
-      this.callout(`+${fmt(value)} DRIFT`, 'drift');
+    // A finished drift or chain; multiplier > 0 when drifts were linked.
+    driftBank(value, multiplier = 0) {
+      if (multiplier) this.callout(`COMBO x${multiplier.toFixed(1)}  +${fmt(value)}`, `combo${multiplier >= 3 ? ' l3' : ''}`);
+      else this.callout(`+${fmt(value)} DRIFT`, 'drift');
+    },
+
+    comboUp(multiplier, nitro) {
+      el.combo.classList.remove('pop');
+      void el.combo.offsetWidth;
+      el.combo.classList.add('pop');
+      if (nitro) this.callout(`x${multiplier.toFixed(1)} COMBO · +NITRO`, `combo${multiplier >= 3 ? ' l3' : ''}`);
     },
 
     flash(kind) {
@@ -183,8 +198,28 @@ export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, 
         set('inside', inside, (v) => el.nitroBtn.classList.toggle('sweet', v));
       } else set('inside', false, () => el.nitroBtn.classList.remove('sweet'));
 
-      set('drifting', s.drifting && s.driftScore > 0, (v) => (el.drift.hidden = !v));
+      // Drift panel: live points while sliding; between linked drifts the chain total and a
+      // shrinking link timer.
+      const linking = !s.drifting && s.linkLeft > 0;
+      set('driftShown', (s.drifting && s.driftScore > 0) || linking, (v) => (el.drift.hidden = !v));
+      set('linking', linking, (v) => el.drift.classList.toggle('linking', v));
       if (s.drifting) set('driftScore', s.driftScore, (v) => (el.driftValue.textContent = fmt(v)));
+      if (linking) el.linkFill.style.transform = `scaleX(${s.linkLeft.toFixed(3)})`;
+      set('combo', s.combo, (v) => {
+        el.combo.hidden = v <= 1;
+        el.combo.textContent = `x${v.toFixed(1)}`;
+        el.drift.dataset.level = v >= 3 ? 3 : v >= 2 ? 2 : 1;
+      });
+      set('chain', s.chainTotal, (v) => {
+        el.chain.hidden = !v;
+        el.chain.textContent = `CHAIN ${fmt(v)}`;
+      });
+      set('apex', !!s.apexReady, (v) => root.classList.toggle('apex-ready', v));
+      set('surface', s.surface, (v) => {
+        el.surface.hidden = !v || v === 'asphalt';
+        el.surface.textContent = v === 'grass' ? 'GRASS' : 'GRAVEL';
+        el.surface.dataset.surface = v;
+      });
       set('wrong', s.wrongWay, (v) => (el.wrong.hidden = !v));
 
       for (let i = 0; i < dots.length; i++) {

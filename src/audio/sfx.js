@@ -252,6 +252,46 @@ export const race = {
     [79, 86, 91].forEach((m, i) => tone(mix, mix.space, { t: t + i * 0.06, type: 'triangle', freq: midiHz(m), peak: 0.16, decay: 0.2 }));
     [79, 86, 91].forEach((m, i) => tone(mix, mix.sfx, { t: t + i * 0.06, type: 'triangle', freq: midiHz(m), peak: 0.14, decay: 0.16 }));
   },
+  // Drift combo stepped up: a rising stab, one semitone group higher per level.
+  combo(mix, level = 1, at) {
+    const t = now(mix, at);
+    const root = 74 + level * 4;
+    [0, 7, 12].forEach((iv, i) => {
+      tone(mix, mix.sfx, { t: t + i * 0.035, type: 'square', freq: midiHz(root + iv), peak: 0.06, decay: 0.16 });
+      tone(mix, mix.space, { t: t + i * 0.035, type: 'triangle', freq: midiHz(root + iv + 12), peak: 0.08, decay: 0.22 });
+    });
+    burst(mix, mix.sfx, { t, type: 'highpass', freq: 5000, peak: 0.12, decay: 0.12 });
+  },
+  // Perfect Exit: a whoosh that sweeps up under a bright major chord.
+  perfect(mix, at) {
+    const t = now(mix, at);
+    burst(mix, mix.sfx, { t, buffer: mix.pink, type: 'bandpass', freq: 400, to: 3800, q: 1.4, attack: 0.05, peak: 0.9, decay: 0.45, glide: 0.4 });
+    tone(mix, mix.sfx, { t, type: 'sine', freq: 90, to: 160, peak: 0.45, decay: 0.3 });
+    [84, 88, 91, 96].forEach((m, i) => {
+      tone(mix, mix.sfx, { t: t + 0.04 + i * 0.045, type: 'triangle', freq: midiHz(m), peak: 0.13, decay: 0.32 });
+      tone(mix, mix.space, { t: t + 0.04 + i * 0.045, type: 'sawtooth', freq: midiHz(m), peak: 0.03, decay: 0.3 });
+    });
+  },
+  // Breakables: a fruit stall caving in (wood crack, thuds of fruit) or a neon sign bursting
+  // (glass shatter and an electric fizz).
+  shatter(mix, kind = 'stall', at) {
+    const t = now(mix, at);
+    if (kind === 'neon') {
+      burst(mix, mix.sfx, { t, type: 'highpass', freq: 3500, peak: 0.55, decay: 0.35 });
+      for (let i = 0; i < 7; i++) {
+        tone(mix, mix.space, { t: t + Math.random() * 0.25, type: 'sine', freq: 2500 + Math.random() * 4000, peak: 0.08, decay: 0.12 + Math.random() * 0.2 });
+      }
+      tone(mix, mix.sfx, { t, type: 'sawtooth', freq: 120, to: 60, peak: 0.12, hold: 0.12, decay: 0.2 });
+      burst(mix, mix.sfx, { t: t + 0.02, type: 'bandpass', freq: 6000, q: 3, peak: 0.4, hold: 0.15, decay: 0.1 });
+    } else {
+      burst(mix, mix.sfx, { t, type: 'bandpass', freq: 1100, to: 350, q: 1.1, peak: 0.7, decay: 0.24 });
+      tone(mix, mix.sfx, { t, type: 'sine', freq: 130, to: 50, peak: 0.6, decay: 0.24 });
+      for (let i = 0; i < 6; i++) {
+        tone(mix, mix.sfx, { t: t + 0.05 + Math.random() * 0.4, type: 'sine', freq: 160 + Math.random() * 120, to: 70, peak: 0.3, decay: 0.08 });
+      }
+      burst(mix, mix.space, { t, type: 'bandpass', freq: 800, q: 1, peak: 0.3, decay: 0.3 });
+    }
+  },
   lap(mix, at) {
     const t = now(mix, at);
     [76, 81, 88].forEach((m, i) => tone(mix, mix.space, { t: t + i * 0.12, type: 'square', freq: midiHz(m), peak: 0.07, decay: 0.25 }));

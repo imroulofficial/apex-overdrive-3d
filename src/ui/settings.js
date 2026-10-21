@@ -6,6 +6,13 @@ import { billing } from '../monetization/billing.js';
 import { ads } from '../monetization/ads.js';
 import { cloud } from '../core/cloud.js';
 import { toast } from './hud.js';
+import { requestTiltPermission, probeTilt } from '../race/input.js';
+
+const CONTROL_HINTS = {
+  touch: 'Touch Drive: tap left / right to steer',
+  tilt: 'Tilt-to-Steer: roll the phone like a wheel, GAS and BRAKE pedals',
+  wheel: 'Steering Wheel: turn the wheel on the left, pedals on the right',
+};
 
 export function createSettings(garage, { onFpsToggle, onEntitlementsChanged, onCrateReset }) {
   const dialog = document.getElementById('settings');
@@ -14,6 +21,8 @@ export function createSettings(garage, { onFpsToggle, onEntitlementsChanged, onC
   const music = dialog.querySelector('#opt-music');
   const auto = dialog.querySelector('#opt-auto');
   const fps = dialog.querySelector('#opt-fps');
+  const controlButtons = [...dialog.querySelectorAll('[data-controls]')];
+  const controlsHint = dialog.querySelector('#controls-hint');
 
   const renderAbout = () =>
     (dialog.querySelector('#about').textContent =
@@ -68,6 +77,8 @@ export function createSettings(garage, { onFpsToggle, onEntitlementsChanged, onC
   function render() {
     renderAbout();
     qualityButtons.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.quality === state.settings.quality)));
+    controlButtons.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.controls === state.settings.controls)));
+    controlsHint.textContent = CONTROL_HINTS[state.settings.controls] ?? CONTROL_HINTS.touch;
     sound.checked = state.settings.sound;
     music.checked = state.settings.music;
     auto.checked = state.settings.autoAccelerate;
@@ -85,6 +96,23 @@ export function createSettings(garage, { onFpsToggle, onEntitlementsChanged, onC
       save();
       render();
       sfx.tap();
+    })
+  );
+  controlButtons.forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const scheme = btn.dataset.controls;
+      sfx.tap();
+      if (scheme === 'tilt') {
+        // The permission prompt (iOS) has to come straight from this tap.
+        if (!(await requestTiltPermission())) {
+          toast('Motion sensors are blocked, so Tilt-to-Steer is unavailable.');
+          return;
+        }
+      }
+      state.settings.controls = scheme;
+      save();
+      render();
+      if (scheme === 'tilt' && !(await probeTilt())) toast('No motion sensor found on this device: steer with the arrow keys instead.', 3200);
     })
   );
   sound.addEventListener('change', () => {

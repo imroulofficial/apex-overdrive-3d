@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createCarPaint } from './carPaint.js';
 
 // Procedural cars, built so the garage ships with zero downloaded assets: the starter
-// coupe ("RP-1 Vanta") and, with the `hyper` aero kit, the RP-X Hyperion. The car faces +X,
+// coupe ("RP-1 Vanta") and, with the `hyper` aero kit, the Valkyrie GT-R. The car faces +X,
 // sits on y = 0 and is centered on the origin. External .glb models follow the same
 // conventions and expose the same interface (see src/assets/modelLoader.js).
 
