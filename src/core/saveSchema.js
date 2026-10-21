@@ -27,6 +27,7 @@ import { CARS, STARTER_CAR } from '../data/cars.js';
 import { PAINTS, RIMS, UPGRADES } from '../data/catalog.js';
 import { STAGES, MILESTONES } from '../data/career.js';
 import { CONTROL_SCHEMES, DEFAULT_CONTROLS } from '../data/controls.js';
+import { BLOOM_LEVELS, DEFAULT_BLOOM } from '../data/weather.js';
 import { SCENES } from '../data/story.js';
 
 export const SAVE_VERSION = 2;
@@ -44,6 +45,7 @@ const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const int = (v, lo, hi, fallback) => (Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : fallback);
 function normalizeSettings(st) {
   if (!CONTROL_SCHEMES.includes(st.controls)) st.controls = DEFAULT_CONTROLS;
+  if (!BLOOM_LEVELS.includes(st.bloom)) st.bloom = DEFAULT_BLOOM;
   return st;
 }
 
@@ -69,7 +71,7 @@ export function defaults() {
     cars: { [STARTER_CAR]: newCarEntry('starter') },
     ownedPaints: [...DEFAULT_PAINTS],
     career: { unlockedStage: 1, stageStars: STAGES.map(() => 0), best: {}, milestones: [] },
-    settings: { quality: 'auto', sound: true, music: true, autoAccelerate: true, showFps: false, sandboxStore: false, controls: DEFAULT_CONTROLS },
+    settings: { quality: 'auto', sound: true, music: true, autoAccelerate: true, showFps: false, sandboxStore: false, controls: DEFAULT_CONTROLS, bloom: DEFAULT_BLOOM },
     // Play purchases. `owned` mirrors what the store reports; `granted` records which
     // products already paid out their one-time coin bonus so a restore never pays twice.
     purchases: { owned: [], sandboxOwned: [], granted: [], noAds: false, paints: [] },

@@ -8,6 +8,8 @@ export const SURFACES = {
   asphalt: { id: 'asphalt', grip: 1, driftGrip: 1, top: 1, drag: 0, steer: 1, jitter: 0 },
   gravel: { id: 'gravel', grip: 0.62, driftGrip: 0.8, top: 0.86, drag: 0.08, steer: 0.88, jitter: 0.05 },
   grass: { id: 'grass', grip: 0.48, driftGrip: 0.66, top: 0.74, drag: 0.16, steer: 0.8, jitter: 0.08 },
+  // Packed red dirt of the redwood trails: loose enough to slide, firm enough to stay fast.
+  dirt: { id: 'dirt', grip: 0.72, driftGrip: 0.86, top: 0.97, drag: 0.02, steer: 0.9, jitter: 0.04 },
 };
 export const SURFACE_IDS = Object.keys(SURFACES);
 
@@ -33,18 +35,49 @@ export function surfaceMix(halfWidth, d, out = {}) {
   out.asphalt = overlap(lo, hi, -Infinity, roadEdge) / w;
   out.gravel = overlap(lo, hi, roadEdge, gravelEdge) / w;
   out.grass = overlap(lo, hi, gravelEdge, Infinity) / w;
+  out.dirt = 0;
+  return out;
+}
+
+// On a trail: asphalt where the car still overlaps the highway (fork and merge zones; dMain is
+// null once the highway is out of reach), packed dirt on the lane, grass and leaf litter beyond.
+export function trailMix(halfWidth, dMain, dTrail, core, out = {}) {
+  const lo = Math.abs(dTrail) - CAR_HALF_WIDTH;
+  const hi = Math.abs(dTrail) + CAR_HALF_WIDTH;
+  const w = hi - lo;
+  let asphalt = 0;
+  if (dMain !== null) {
+    const am = Math.abs(dMain);
+    asphalt = overlap(am - CAR_HALF_WIDTH, am + CAR_HALF_WIDTH, -Infinity, halfWidth + LAYOUT.edgeLine) / w;
+  }
+  const dirt = Math.max(0, overlap(lo, hi, -Infinity, core) / w - asphalt);
+  out.asphalt = asphalt;
+  out.dirt = dirt;
+  out.gravel = 0;
+  out.grass = Math.max(0, 1 - asphalt - dirt);
+  return out;
+}
+
+// On the timber bridge the deck runs rail to rail: every wheel is on planks.
+export function deckMix(out = {}) {
+  out.asphalt = 1;
+  out.gravel = 0;
+  out.grass = 0;
+  out.dirt = 0;
   return out;
 }
 
 // Handling multipliers for a mix: a weighted blend of the surfaces' coefficients.
 export function blendSurface(mix, out = {}) {
   for (const k of ['grip', 'driftGrip', 'top', 'drag', 'steer', 'jitter']) {
-    out[k] = SURFACES.asphalt[k] * mix.asphalt + SURFACES.gravel[k] * mix.gravel + SURFACES.grass[k] * mix.grass;
+    out[k] = SURFACES.asphalt[k] * mix.asphalt + SURFACES.gravel[k] * mix.gravel + SURFACES.grass[k] * mix.grass + SURFACES.dirt[k] * (mix.dirt ?? 0);
   }
   return out;
 }
 
 // The surface with the largest share (for effects and the HUD).
 export function dominantSurface(mix) {
-  return mix.grass > mix.gravel && mix.grass > mix.asphalt ? 'grass' : mix.gravel > mix.asphalt ? 'gravel' : 'asphalt';
+  let best = 'asphalt';
+  for (const k of SURFACE_IDS) if ((mix[k] ?? 0) > (mix[best] ?? 0)) best = k;
+  return best;
 }

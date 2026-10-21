@@ -38,7 +38,7 @@ export const EMERALD_COAST = {
     { at: 0.632, length: 13, height: 1.6, from: -8.6, to: 1.5 },
   ],
   // Smashable props: cone slaloms and wooden barricades, as lap fractions.
-  slaloms: [0.035, 0.45, 0.6, 0.92],
+  slaloms: [0.035, 0.435, 0.615, 0.935],
   barricades: [0.175, 0.275, 0.5, 0.75, 0.8],
   // Breakables on the shoulder: fruit stalls along the straights, neon signposts on the
   // outside of corner entries (lap fractions).
@@ -48,6 +48,28 @@ export const EMERALD_COAST = {
   coastZ: (x) => 254 + 16 * Math.sin(x / 150 + 0.6) + 9 * Math.sin(x / 47) + 46 * Math.exp(-(((x - 250) / 85) ** 2)),
   lighthouseX: 255,
   sun: { azimuth: -0.55, elevation: 0.42 },
+
+  // ---- Biome 1 set-pieces (race/setPieces.js) ----
+  // Timber suspension bridge over a sea gorge cut into the south cliffs (lap fractions). The
+  // gorge runs inland from the sea under the deck; a waterfall pours off its head wall.
+  bridge: { from: 0.894, to: 0.916, name: 'Tidecutter Gorge Bridge' },
+  gorge: { width: 46, inland: 92, headHeight: 40 },
+  // Seabird flocks resting on the verge (lap fraction, side: +1 = right of travel); they
+  // scatter upward when a fast car comes by.
+  seabirds: [
+    { at: 0.03, side: 1 },
+    { at: 0.13, side: -1 },
+    { at: 0.86, side: 1 },
+    { at: 0.955, side: 1 },
+  ],
+  // Off-road red-dirt shortcuts that leave the highway and cut across the inside of a bend
+  // through the redwood groves (lap fractions where they fork off and rejoin). Open as a
+  // risky shortcut on most routes; the Redwood Loop route closes the highway and sends every
+  // car down them.
+  trails: [
+    { id: 'redwood-hollow', name: 'Redwood Hollow', from: 0.305, to: 0.41 }, // cuts the summit hairpins
+    { id: 'sawmill-trail', name: 'Sawmill Trail', from: 0.46, to: 0.6 }, // straightens the valley esses
+  ],
 };
 
 export const TRACKS = [EMERALD_COAST];

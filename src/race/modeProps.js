@@ -138,8 +138,9 @@ export class ModeProps {
       const mat = this.bannerMats[kind].clone();
       const banner = new THREE.Mesh(this.bannerGeo, mat);
       group.add(steel, banner);
-      this.track.frame(this.track.wrapS(s), f);
-      group.position.set(f.x, this.track.roadY(this.track.wrapS(s)), f.z);
+      // On the Redwood Loop a gate over a trail stands on the trail.
+      this.track.routeFrame(this.track.wrapS(s), f);
+      group.position.set(f.x, this.track.routeHeight(this.track.wrapS(s), 0), f.z);
       group.rotation.y = Math.atan2(-f.tz, f.tx);
       this.root.add(group);
       return { s, kind, group, mat, passed: false };
@@ -158,13 +159,13 @@ export class ModeProps {
   setPylons(list) {
     this.pylons = list.slice(0, PYLON_CAPACITY).map(({ s, d }, i) => {
       const s0 = this.track.wrapS(s);
-      const f = this.track.frame(s0, {});
+      const f = this.track.routeFrame(s0, {});
       return {
         s: s0,
         d,
         slot: i,
         phase: i * 0.7,
-        pos: new THREE.Vector3(f.x + f.rx * d, this.track.heightAt(s0, d), f.z + f.rz * d),
+        pos: new THREE.Vector3(f.x + f.rx * d, this.track.routeHeight(s0, d), f.z + f.rz * d),
         taken: false,
       };
     });
@@ -251,6 +252,11 @@ export function racingLinePylons(track, { startS, distance, spacing, avoid = [] 
       return ds > -45 && ds < 30;
     })) continue;
     if (avoid.some((a) => Math.abs(track.delta(track.wrapS(a), track.wrapS(s0))) < 18)) continue;
+    // A closed-off highway (Redwood Loop): the pylons run down the middle of the dirt trail.
+    if (track.forced && track.trailAt(track.wrapS(s0))) {
+      out.push({ s: track.wrapS(s0), d: 0 });
+      continue;
+    }
     let kSum = 0;
     for (let ds = -10; ds <= 40; ds += 10) kSum += track.curvatureAt(track.wrapS(s0 + ds));
     const kAvg = kSum / 6;

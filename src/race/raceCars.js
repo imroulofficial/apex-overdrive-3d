@@ -258,6 +258,10 @@ const BLUE = new THREE.Color(0x3aa8ff);
 const ORANGE = new THREE.Color(0xff7a1a);
 const PURPLE = new THREE.Color(0xb44dff);
 
+// Nitro flame brightness: above 1 the flames feed the bloom pass (race/Race.js sets it while
+// bloom is on; without bloom they would only clip to white).
+export const FLAME = { hdr: 1 };
+
 export class CarVisual {
   constructor(root, body, wheels, tail, flames, flameMat, wheelRadius) {
     this.root = root;
@@ -309,6 +313,7 @@ export class CarVisual {
     if (on) {
       if (v.tier === 2) this.flameMat.color.copy(ORANGE).lerp(PURPLE, 0.5 + 0.5 * Math.sin(time * 18));
       else this.flameMat.color.copy(BLUE);
+      this.flameMat.color.multiplyScalar(FLAME.hdr);
     }
   }
 }

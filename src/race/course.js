@@ -16,6 +16,9 @@ export function courseFor(stage, trackLength) {
   return {
     segmentId: seg.id,
     name: seg.name,
+    route: seg.route,
+    reverse: Boolean(seg.reverse), // race the reversed spline
+    forced: Boolean(seg.forced), // highway closed along the redwood trails
     layout: seg.layout,
     laps: circuit ? seg.laps : 1,
     startS,

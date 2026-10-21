@@ -3,7 +3,7 @@
 // call sites simple. No audio files are loaded: everything is generated on the device.
 import { state } from './store.js';
 import { createMixer, MUSIC_LEVEL } from '../audio/mixer.js';
-import { ui, race, nitroIgnite } from '../audio/sfx.js';
+import { ui, race, nitroIgnite, rainBed } from '../audio/sfx.js';
 import { EngineVoice, Gearbox, playEngineEvents, revEngine } from '../audio/engine.js';
 import { Music } from '../audio/music.js';
 
@@ -91,7 +91,18 @@ export const raceSfx = {
     race.eliminated(m, big);
     duckFor(0.45, 1.4);
   }),
+  // Storm: a crack (close strikes) and a long rolling rumble; `distance` 0 (overhead)..1.
+  thunder: fx((m, distance) => race.thunder(m, distance)),
 };
+
+// ---- Weather ambience ----
+
+// Rain on the car and the road: a soft high hiss whose level follows the rain (0..1).
+export function createRainSound() {
+  const m = state.settings.sound ? ensure() : null;
+  if (!m) return { set() {}, stop() {} };
+  return rainBed(m);
+}
 
 // ---- Music ----
 
@@ -151,13 +162,14 @@ export function createEngineSound() {
     },
     // dt seconds; speedNorm forward speed / top speed; throttle 0..1; neutral on the grid;
     // speed 0..1 (wind); boost nitro tier 0..2; skid 0..1; slip angle (rad); gravel / grass
-    // 0..1 share of the tyres off the asphalt; volume 0..1.
-    update({ dt = 1 / 60, speedNorm = 0, throttle = 1, neutral = false, airborne = false, speed = 0, boost = 0, skid = 0, slip = 0, gravel = 0, grass = 0, volume = 1 }) {
+    // 0..1 share of the tyres off the asphalt; wood 0..1 on the bridge deck, mps road speed
+    // (m/s); volume 0..1.
+    update({ dt = 1 / 60, speedNorm = 0, throttle = 1, neutral = false, airborne = false, speed = 0, boost = 0, skid = 0, slip = 0, gravel = 0, grass = 0, wood = 0, mps = 0, volume = 1 }) {
       if (stopped) return;
       const t = m.ac.currentTime;
       const events = box.step(dt, { speedNorm, throttle, neutral, airborne });
       if (volume > 0) playEngineEvents(m, events, t);
-      voice.set({ rpm: box.rpm, load: throttle, boost: box.boost, tier: boost, speed, skid, slip, cut: box.cut, gravel, grass, volume }, t);
+      voice.set({ rpm: box.rpm, load: throttle, boost: box.boost, tier: boost, speed, skid, slip, cut: box.cut, gravel, grass, wood, mps, volume }, t);
       const r = Math.max(0, Math.min(1, (box.rpm - 1500) / 6000));
       duckForEngine(volume > 0 ? Math.min(1, r * throttle * 0.8 + boost * 0.25) : 0);
     },

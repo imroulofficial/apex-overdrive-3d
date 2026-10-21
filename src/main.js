@@ -270,6 +270,7 @@ function beginRace() {
     input: raceInput,
     hud: raceHud,
     autoQuality: state.settings.quality === 'auto',
+    bloom: state.settings.bloom,
     onFinish: bankResult,
     startNitro: Boolean(raceOpts.startNitro),
   });

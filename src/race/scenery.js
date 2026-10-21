@@ -3,11 +3,13 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createNoise2D, fbm, mulberry32, smoothstep } from './noise.js';
 import { grassTexture, rockTexture } from '../render/textures.js';
 import { bothFaces, createVertexPbrMaterial, mergePainted, paintVertices } from '../render/vertexPbr.js';
+import { installHeightFog } from '../render/heightFog.js';
 
 // Emerald Coast biome: sky, sun, glinting ocean with emerald shallows, layered grass/cliff
-// terrain carved around the road, coast redwoods, palms, undergrowth, rocks, a lighthouse
-// headland and sailboats. Everything is generated from a fixed seed at load time; no
-// textures are downloaded.
+// terrain carved around the road (and the redwood trails, and the sea gorge under the timber
+// bridge), coast redwoods, palms, undergrowth, rocks, a lighthouse headland and sailboats.
+// Everything is generated from a fixed seed at load time; no textures are downloaded.
+// Sky, sun, fog, clouds and sea follow the stage's weather preset (applyWeather, below).
 
 const SKY = {
   top: new THREE.Color(0x2f73c9),
@@ -16,22 +18,70 @@ const SKY = {
 };
 export const FOG_COLOR = SKY.horizon.clone();
 
-function sunDirection(sun) {
+function sunDirection(sun, out = new THREE.Vector3()) {
   const { azimuth, elevation } = sun;
-  return new THREE.Vector3(Math.cos(elevation) * Math.sin(azimuth), Math.sin(elevation), Math.cos(elevation) * Math.cos(azimuth)).normalize();
+  return out.set(Math.cos(elevation) * Math.sin(azimuth), Math.sin(elevation), Math.cos(elevation) * Math.cos(azimuth)).normalize();
 }
 
-function skyMaterial(sunDir) {
+// Tileable cloud density (alpha): periodic value-noise fBm, so the sky never shows a seam.
+function cloudTexture(size = 256) {
+  const rand = mulberry32(404);
+  const octaves = [4, 8, 16, 32, 64].map((p, k) => ({ p, a: 0.5 ** k, v: Float32Array.from({ length: p * p }, () => rand()) }));
+  const sm = (t) => t * t * (3 - 2 * t);
+  const sample = (o, x, y) => {
+    const fx = (x / size) * o.p;
+    const fy = (y / size) * o.p;
+    const x0 = Math.floor(fx);
+    const y0 = Math.floor(fy);
+    const u = sm(fx - x0);
+    const w = sm(fy - y0);
+    const at = (i, j) => o.v[((j + o.p) % o.p) * o.p + ((i + o.p) % o.p)];
+    const a = at(x0, y0) + (at(x0 + 1, y0) - at(x0, y0)) * u;
+    const b = at(x0, y0 + 1) + (at(x0 + 1, y0 + 1) - at(x0, y0 + 1)) * u;
+    return a + (b - a) * w;
+  };
+  const data = new Uint8Array(size * size * 4);
+  const norm = octaves.reduce((n, o) => n + o.a, 0);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let v = 0;
+      for (const o of octaves) v += sample(o, x, y) * o.a;
+      const i = (y * size + x) * 4;
+      data[i] = data[i + 1] = data[i + 2] = 255;
+      data[i + 3] = Math.round((v / norm) * 255);
+    }
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.generateMipmaps = true;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function skyUniforms(sunDir, clouds) {
+  return {
+    top: { value: SKY.top.clone() },
+    horizon: { value: SKY.horizon.clone() },
+    sunColor: { value: SKY.sun.clone() },
+    sunDir: { value: sunDir },
+    glow: { value: 0.32 },
+    flash: { value: 0 },
+    clouds: { value: clouds },
+    cover: { value: 0.3 },
+    cloudLit: { value: new THREE.Color(0xffffff) },
+    cloudShade: { value: new THREE.Color(0x8a96a6) },
+    time: { value: 0 },
+  };
+}
+
+function skyMaterial(uniforms) {
   return new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
     fog: false,
-    uniforms: {
-      top: { value: SKY.top },
-      horizon: { value: SKY.horizon },
-      sunColor: { value: SKY.sun },
-      sunDir: { value: sunDir },
-    },
+    uniforms,
     vertexShader: /* glsl */ `
       varying vec3 vDir;
       void main() {
@@ -40,7 +90,9 @@ function skyMaterial(sunDir) {
         gl_Position = p.xyww;
       }`,
     fragmentShader: /* glsl */ `
-      uniform vec3 top, horizon, sunColor, sunDir;
+      uniform vec3 top, horizon, sunColor, sunDir, cloudLit, cloudShade;
+      uniform float glow, flash, cover, time;
+      uniform sampler2D clouds;
       varying vec3 vDir;
       void main() {
         vec3 d = normalize(vDir);
@@ -49,7 +101,19 @@ function skyMaterial(sunDir) {
         // Below the horizon the fogged ocean takes over; keep it hazy.
         col = mix(col, horizon * 0.92, smoothstep(0.0, -0.08, d.y));
         float s = max(dot(d, sunDir), 0.0);
-        col += sunColor * (pow(s, 900.0) * 3.0 + pow(s, 24.0) * 0.32 + pow(s, 4.0) * 0.08);
+        // Disc, halo, and a wide glow that pools along the horizon on a low sun.
+        col += sunColor * (pow(s, 900.0) * 3.0 * smoothstep(0.08, 0.3, glow) + pow(s, 24.0) * 0.32 * glow * 3.0 + pow(s, 4.0) * 0.25 * glow * (1.0 - h));
+        // A cloud deck: two scales of the tiling density, drifting with the wind, lit on the
+        // side facing the sun, thinning toward the horizon haze.
+        if (d.y > 0.0 && cover > 0.01) {
+          vec2 uv = d.xz / (d.y + 0.12);
+          float c = texture2D(clouds, uv * 0.18 + vec2(time * 0.004, time * 0.0015)).a * 0.65
+            + texture2D(clouds, uv * 0.47 - vec2(time * 0.006, 0.0)).a * 0.35;
+          float k = smoothstep(1.0 - cover - 0.12, 1.0 - cover + 0.28, c) * smoothstep(0.0, 0.22, d.y);
+          vec3 cc = mix(cloudShade, cloudLit, clamp(pow(s, 3.0) * 0.6 + c * 0.5, 0.0, 1.0));
+          col = mix(col, cc, k * 0.92);
+        }
+        col += vec3(0.85, 0.9, 1.0) * flash;
         gl_FragColor = vec4(col, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -199,14 +263,13 @@ function buildTerrain(track, def, quality, material) {
   const noise = createNoise2D(3);
   const detail = createNoise2D(9);
 
-  // Distance from every vertex to the road (and the road height there), rasterized
-  // from the spline samples.
+  // Distance from every vertex to the road (and the road bed height there), rasterized from
+  // the spline samples. The highway sits on a 3.6 m embankment; the redwood trails run flush
+  // with the forest floor (their samples join in once they leave the highway's width).
   const dist = new Float32Array(nx * nz).fill(1e6);
   const roadY = new Float32Array(nx * nz);
   const R = 130;
-  for (let i = 0; i < track.n; i++) {
-    const px = track.px[i];
-    const pz = track.pz[i];
+  const raster = (px, pz, y) => {
     const ia = Math.max(0, Math.floor((px - R - x0) / cx));
     const ib = Math.min(nx - 1, Math.ceil((px + R - x0) / cx));
     const ja = Math.max(0, Math.floor((pz - R - z0) / cz));
@@ -219,10 +282,14 @@ function buildTerrain(track, def, quality, material) {
         const idx = j * nx + k;
         if (d < dist[idx]) {
           dist[idx] = d;
-          roadY[idx] = track.py[i];
+          roadY[idx] = y;
         }
       }
     }
+  };
+  for (let i = 0; i < track.n; i++) raster(track.px[i], track.pz[i], track.py[i] - 3.6);
+  for (const t of track.trails) {
+    for (let i = 0; i < t.n; i += 2) if (Math.abs(t.sep[i]) > track.halfWidth) raster(t.px[i], t.pz[i], t.py[i] - 0.45);
   }
 
   const natural = (x, z) => {
@@ -236,6 +303,7 @@ function buildTerrain(track, def, quality, material) {
     return land + (sea - land) * t;
   };
 
+  const gorge = seaGorge(track, def);
   const heights = new Float32Array(nx * nz);
   for (let j = 0; j < nz; j++) {
     for (let k = 0; k < nx; k++) {
@@ -245,11 +313,12 @@ function buildTerrain(track, def, quality, material) {
       let h = natural(x, z);
       const d = dist[idx];
       if (d < R) {
-        const target = roadY[idx] - 3.6;
+        const target = roadY[idx];
         const w = smoothstep(16, 58, d);
         // Never let the terrain rise above the road bed close to the road.
         h = target + (h - target) * w;
       }
+      if (gorge) h = gorge.carve(x, z, h);
       heights[idx] = h;
     }
   }
@@ -322,7 +391,48 @@ function buildTerrain(track, def, quality, material) {
     const h = heights[i] * (1 - u) * (1 - v) + heights[i + 1] * u * (1 - v) + heights[i + nx] * (1 - u) * v + heights[i + nx + 1] * u * v;
     return { h, road: dist[i], steep: 1 - normals[i * 3 + 1] };
   };
-  return { meshes, sample };
+  return { meshes, sample, natural, gorge };
+}
+
+// The sea gorge under the timber bridge: a narrow inlet cut into the cliffs, running inland
+// across the road from the sea to a head wall (where the waterfall pours in). Local frame:
+// u along the gorge (+ toward the sea), v across it (along the road).
+function seaGorge(track, def) {
+  if (!track.bridge || !def.gorge) return null;
+  const g = def.gorge;
+  const sMid = (track.bridge.s0 + track.bridge.s1) / 2;
+  const f = track.frame(sMid, {});
+  // Toward the sea: the side of the road the coast is on.
+  const sea = Math.sign(def.coastZ(f.x) - f.z) * Math.sign(f.rz) || 1;
+  const ux = f.rx * sea;
+  const uz = f.rz * sea;
+  const floor = -7;
+  const local = (x, z) => ({ u: (x - f.x) * ux + (z - f.z) * uz, v: (x - f.x) * f.tx + (z - f.z) * f.tz });
+  const halfWidth = (u) => (u >= 0 ? g.width / 2 + u * 0.25 : g.width / 2 + (u / g.inland) * (g.width / 2 - 9));
+  return {
+    x: f.x,
+    z: f.z,
+    ux,
+    uz,
+    tx: f.tx,
+    tz: f.tz,
+    floor,
+    width: g.width,
+    inland: g.inland,
+    headHeight: g.headHeight,
+    roadY: track.roadY(sMid),
+    halfWidth,
+    local,
+    carve(x, z, h) {
+      const { u, v } = local(x, z);
+      if (u < -g.inland - 30 || Math.abs(v) > g.width + 40) return h;
+      const hw = halfWidth(Math.max(u, -g.inland));
+      const across = smoothstep(hw, hw + 9, Math.abs(v));
+      const head = smoothstep(-g.inland, -g.inland - 14, u);
+      const t = Math.max(across, head);
+      return Math.min(h, floor + (h - floor) * t);
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -489,13 +599,34 @@ function scatter(mesh, transforms, tint = null) {
   mesh.computeBoundingSphere();
 }
 
-function buildVegetation(def, terrain, quality) {
+function buildVegetation(def, terrain, quality, track) {
   const group = new THREE.Group();
   const rand = mulberry32(42);
   const density = quality === 'low' ? 0.5 : quality === 'medium' ? 0.75 : 1;
   const palms = [];
   const redwoods = [];
   const bushes = [];
+  // Dense groves walling in the redwood trails: big trees just beyond the log fences, ferns and
+  // undergrowth at their feet, never encroaching on the highway.
+  const pr = {};
+  for (const t of track.trails) {
+    for (let ls = t.forkEnd; ls < t.mergeStart; ls += 6 / density) {
+      const f = t.frame(ls, {});
+      for (const side of [-1, 1]) {
+        if (rand() < 0.15) continue;
+        const off = side * (t.halfWidthAt(ls) + 2.2 + rand() * 7);
+        const x = f.x + f.rx * off + (rand() - 0.5) * 2;
+        const z = f.z + f.rz * off + (rand() - 0.5) * 2;
+        track.project(x, z, -1, pr);
+        if (Math.abs(pr.d) < track.fenceOffset + 6) continue;
+        const { h } = terrain.sample(x, z);
+        if (h < 3) continue;
+        redwoods.push({ x, y: h - 0.3, z, rot: rand() * Math.PI * 2, scale: 0.75 + rand() * 0.55, stretch: 0.9 + rand() * 0.35 });
+        if (rand() < 0.6) bushes.push({ x: x - f.rx * side * 1.8, y: h - 0.25, z: z - f.rz * side * 1.8, rot: rand() * 6.28, scale: 0.5 + rand() * 0.6, stretch: 0.6 + rand() * 0.4 });
+      }
+    }
+  }
+  const groveCount = redwoods.length;
   const tries = Math.round(30000 * density);
   for (let i = 0; i < tries; i++) {
     const x = -1100 + rand() * 2200;
@@ -508,11 +639,11 @@ function buildVegetation(def, terrain, quality) {
       if (rand() < 0.45 && palms.length < 220 * density) palms.push(t);
     } else if (road < 260 && rand() < 0.16) {
       // Groves: thicker near the road where the player sees them, sparse in the distance.
-      if (redwoods.length < 420 * density) redwoods.push({ ...t, scale: 0.65 + rand() * 0.5, stretch: 0.85 + rand() * 0.35 });
-    } else if (rand() < 0.012 && redwoods.length < 420 * density) {
+      if (redwoods.length - groveCount < 420 * density) redwoods.push({ ...t, scale: 0.65 + rand() * 0.5, stretch: 0.85 + rand() * 0.35 });
+    } else if (rand() < 0.012 && redwoods.length - groveCount < 420 * density) {
       redwoods.push({ ...t, scale: 0.6 + rand() * 0.45 });
     }
-    if (road < 70 && road > 20 && steep < 0.22 && rand() < 0.25 && bushes.length < 900 * density) {
+    if (road < 70 && road > 20 && steep < 0.22 && rand() < 0.25 && bushes.length < 1000 * density) {
       bushes.push({ x: x + rand() * 2, y: h - 0.25, z: z + rand() * 2, rot: rand() * 6.28, scale: 0.5 + rand() * 0.8, stretch: 0.7 + rand() * 0.5 });
     }
   }
@@ -737,13 +868,15 @@ function oceanMaterial(normalMap, sunDir) {
 }
 
 export function buildScenery(scene, renderer, track, def, quality) {
+  installHeightFog();
   const sunDir = sunDirection(def.sun);
-
-  const sky = new THREE.Mesh(new THREE.SphereGeometry(3000, 32, 16), skyMaterial(sunDir));
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(3000, 32, 16), skyMaterial(skyUniforms(sunDir, cloudTexture())));
+  const skyU = sky.material.uniforms;
   sky.frustumCulled = false;
   sky.renderOrder = -1;
   scene.add(sky);
-  scene.fog = new THREE.Fog(FOG_COLOR, 280, 1900);
+  // Exponential fog with low-lying mist (render/heightFog.js); colour and density per weather.
+  scene.fog = new THREE.FogExp2(FOG_COLOR.clone(), 0.00034);
 
   // Lighting budget: exactly one directional sun (512² shadow map that follows the player)
   // plus a hemisphere ambient. Reflections come from a baked environment cubemap.
@@ -766,8 +899,9 @@ export function buildScenery(scene, renderer, track, def, quality) {
 
   const waterNormals = waterNormalMap();
   const ocean = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000).rotateX(-Math.PI / 2), oceanMaterial(waterNormals, sunDir));
-  ocean.material.uniforms.normalMap.value = waterNormals;
-  ocean.material.uniforms.sunDir.value.copy(sunDir);
+  const oceanU = ocean.material.uniforms;
+  oceanU.normalMap.value = waterNormals;
+  oceanU.sunDir.value.copy(sunDir);
   ocean.frustumCulled = false;
   scene.add(ocean);
   scene.add(buildShallows(def));
@@ -776,31 +910,79 @@ export function buildScenery(scene, renderer, track, def, quality) {
   const atlas = createVertexPbrMaterial({ envMapIntensity: 0.8 });
   const terrain = buildTerrain(track, def, quality, ground);
   scene.add(...terrain.meshes);
-  const vegetation = buildVegetation(def, terrain, quality);
+  const vegetation = buildVegetation(def, terrain, quality, track);
   scene.add(vegetation);
   scene.add(buildRocks(def, terrain));
   const lighthouse = buildLighthouse(def, terrain, atlas);
   scene.add(lighthouse);
   const boats = buildBoats(def, atlas);
   scene.add(boats);
-  scene.add(buildMountains());
+  const mountains = buildMountains();
+  scene.add(mountains);
 
   // Shadow-map texel snapping: moving the shadow camera in whole texels stops the shadow
   // edges from crawling as the player drives.
   const texel = (SHADOW_EXTENT * 2) / 512;
-  const lightRot = new THREE.Matrix4().lookAt(new THREE.Vector3(), sunDir.clone().negate(), new THREE.Vector3(0, 1, 0));
-  const lightInv = lightRot.clone().invert();
+  const lightRot = new THREE.Matrix4();
+  const lightInv = new THREE.Matrix4();
+  const aimLight = () => {
+    lightRot.lookAt(new THREE.Vector3(), sunDir.clone().negate(), new THREE.Vector3(0, 1, 0));
+    lightInv.copy(lightRot).invert();
+  };
+  aimLight();
   const snapped = new THREE.Vector3();
+  const base = { hemi: 1.05, sky: new THREE.Color(), flash: 0 };
+  let envLight = 1;
+  let envTarget = null;
 
   return {
     sun,
     sunDir,
     sky,
+    hemi,
     terrain,
+    waterNormals,
     groundMaterial: ground,
+    // Sky, sun, ambient, fog, clouds and sea for a weather preset (data/weather.js).
+    applyWeather(w) {
+      sunDirection(w.sun, sunDir);
+      aimLight();
+      sun.color.setHex(w.sun.color);
+      sun.intensity = w.sun.intensity;
+      hemi.color.setHex(w.hemi.sky);
+      hemi.groundColor.setHex(w.hemi.ground);
+      hemi.intensity = base.hemi = w.hemi.intensity;
+      skyU.top.value.setHex(w.sky.top);
+      skyU.horizon.value.setHex(w.sky.horizon);
+      skyU.sunColor.value.setHex(w.sky.sun);
+      skyU.glow.value = w.sky.glow;
+      skyU.cover.value = w.clouds.cover;
+      skyU.cloudLit.value.setHex(w.clouds.lit);
+      skyU.cloudShade.value.setHex(w.clouds.shade);
+      scene.fog.color.setHex(w.fog.color);
+      scene.fog.density = w.fog.density;
+      base.sky.setHex(w.fog.color);
+      oceanU.sunDir.value.copy(sunDir);
+      oceanU.sunColor.value.setHex(w.sky.sun).multiplyScalar(Math.min(1, w.sun.intensity / 2.2));
+      oceanU.deep.value.setHex(w.ocean.deep);
+      oceanU.shallow.value.setHex(w.ocean.shallow);
+      oceanU.skyTop.value.setHex(w.sky.top);
+      oceanU.skyHorizon.value.setHex(w.sky.horizon);
+      mountains.material.color.setHex(w.mountains);
+      envLight = Math.min(1, 0.35 + w.sun.intensity * 0.2 + w.hemi.intensity * 0.3);
+    },
+    // Lightning: 0..1 brightens the sky, the ambient light and the fog for a moment.
+    setFlash(k) {
+      if (k === base.flash) return;
+      base.flash = k;
+      skyU.flash.value = k * 0.9;
+      hemi.intensity = base.hemi + k * 2.6;
+      scene.fog.color.copy(base.sky).lerp(new THREE.Color(0xdfe6ff), k * 0.45);
+    },
     update(t, camera) {
       sky.position.copy(camera.position);
-      ocean.material.uniforms.time.value = t;
+      skyU.time.value = t;
+      oceanU.time.value = t;
       boats.userData.update(t);
     },
     // Keep the shadow frustum centred on the player.
@@ -812,21 +994,23 @@ export function buildScenery(scene, renderer, track, def, quality) {
       sun.target.position.copy(snapped);
       sun.position.copy(snapped).addScaledVector(sunDir, 120);
     },
-    // Renders the track world into a prefiltered cubemap once: cars and glass then reflect
-    // the real coast, sky and sun instead of a generic studio. The bake uses unlit proxies of
-    // the same geometry (pre-lit colours), which is cheap and keeps the half-float target
-    // free of specular hot spots.
+    // Renders the track world into a prefiltered cubemap: cars, glass and puddles then reflect
+    // the real coast, sky and sun instead of a generic studio. Re-baked whenever the weather
+    // changes. The bake uses unlit proxies of the same geometry (pre-lit colours), which is
+    // cheap and keeps the half-float target free of specular hot spots.
     bakeEnvironment(at) {
       const env = new THREE.Scene();
-      env.fog = scene.fog;
-      const envSky = new THREE.Mesh(sky.geometry, skyMaterial(sunDir));
+      // Linear haze for the reflections: the height-fog chunks (render/heightFog.js) produce
+      // NaNs in the PMREM cube passes, which blacken every lit material.
+      env.fog = new THREE.Fog(scene.fog.color, 250, 2600 - Math.min(2000, scene.fog.density * 6e5));
+      const envSky = new THREE.Mesh(sky.geometry, skyMaterial({ ...skyU, flash: { value: 0 } }));
       envSky.position.copy(at);
       env.add(envSky);
-      const basic = (color) => new THREE.MeshBasicMaterial({ color });
-      env.add(new THREE.Mesh(ocean.geometry, basic(0x0b4a68)));
+      const basic = (color) => new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(envLight) });
+      env.add(new THREE.Mesh(ocean.geometry, basic(oceanU.deep.value.clone().lerp(oceanU.shallow.value, 0.4))));
       const land = basic(0x587a3c);
       for (const m of terrain.meshes) env.add(new THREE.Mesh(m.geometry, land));
-      const leaves = new THREE.MeshBasicMaterial({ vertexColors: true });
+      const leaves = new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(envLight, envLight, envLight) });
       for (const m of vegetation.children) {
         const copy = new THREE.InstancedMesh(m.geometry, leaves, m.count);
         copy.instanceMatrix = m.instanceMatrix;
@@ -839,9 +1023,12 @@ export function buildScenery(scene, renderer, track, def, quality) {
       const rt = pmrem.fromScene(env, 0.02, 0.5, 4000, { size: 256, position: at });
       pmrem.dispose();
       envSky.material.dispose();
-      scene.environment?.dispose?.();
+      land.dispose();
+      leaves.dispose();
+      envTarget?.dispose();
+      envTarget = rt;
       scene.environment = rt.texture;
-      scene.environmentIntensity = 0.85;
+      scene.environmentIntensity = 0.85 * envLight;
       return rt.texture;
     },
   };

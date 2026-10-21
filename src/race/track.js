@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { VERGE } from './surface.js';
+import { Trail } from './trails.js';
 
 // Race spline: a closed Catmull-Rom loop resampled every ~2 m. All driving queries (lap
 // progress, lateral offset, road height, ramps, walls) run against these samples, which keeps
@@ -85,6 +86,103 @@ export class Track {
 
     this.ramps = (def.ramps ?? []).map((r) => ({ ...r, s0: r.at * this.length }));
     this.corners = this.findCorners();
+
+    // Biome set-pieces that change how the road drives: the timber bridge deck and the dirt
+    // trails. `forced` (the Redwood Loop route) closes the highway along every trail.
+    this.bridge = def.bridge ? { s0: def.bridge.from * this.length, s1: def.bridge.to * this.length } : null;
+    this.trails = (def.trails ?? []).map((t) => new Trail(this, t));
+    this.forced = false;
+    // Weather: `wet` 0..1 (grip, puddles), set per stage by the race.
+    this.wet = 0;
+    this.puddles = [];
+  }
+
+  onBridge(s) {
+    const b = this.bridge;
+    return !!b && s >= b.s0 && s <= b.s1;
+  }
+
+  // The trail whose stretch of highway contains s, if any.
+  trailAt(s) {
+    const ss = this.wrapS(s);
+    for (const t of this.trails) if (t.covers(ss)) return t;
+    return null;
+  }
+
+  // Puddles: [{ s, d, r }] in this track's metres, sorted by s (see race/routes.js).
+  setPuddles(list) {
+    this.puddles = [...list].sort((a, b) => a.s - b.s);
+  }
+
+  // 0..1: how deep in a puddle the point (s, d) is (0 when dry or outside every puddle).
+  puddleAt(s, d) {
+    if (this.wet <= 0 || !this.puddles.length) return 0;
+    const L = this.length;
+    let best = 0;
+    for (const p of this.puddles) {
+      let ds = s - p.s;
+      if (ds > L / 2) ds -= L;
+      else if (ds < -L / 2) ds += L;
+      if (Math.abs(ds) > p.r * 2) continue;
+      const q = (ds / (p.r * 2)) ** 2 + ((d - p.d) / p.r) ** 2;
+      if (q < 1) best = Math.max(best, 1 - q);
+    }
+    return best;
+  }
+
+  // Where the route actually runs at highway position s: on a closed (forced) stretch that is
+  // the trail. Gates, pylons and grid slots use this.
+  routeFrame(s, out = {}) {
+    const ss = this.wrapS(s);
+    const t = this.forced && this.trailAt(ss);
+    if (t) {
+      const f = t.frame(t.localS(ss), out);
+      f.trail = t;
+      f.ls = t.localS(ss);
+      return f;
+    }
+    this.frame(ss, out);
+    out.trail = null;
+    return out;
+  }
+
+  routeHeight(s, d) {
+    const ss = this.wrapS(s);
+    const t = this.forced && this.trailAt(ss);
+    return t ? t.heightAt(t.localS(ss)) : this.heightAt(ss, d);
+  }
+
+  // Look-ahead along the path a car is actually following (AI pure pursuit): along its trail,
+  // back onto the highway past the merge, or into a forced trail ahead.
+  pathFrame(proj, ahead, out = {}) {
+    const t = proj.trail;
+    if (t) {
+      const ls = proj.ls + ahead;
+      if (ls <= t.length) return t.frame(ls, out);
+      return this.frame(t.s1 + (ls - t.length), out);
+    }
+    return this.routeFrame(proj.s + ahead, out);
+  }
+
+  // Corner speed profile along that path.
+  pathSpeed(proj, ahead) {
+    const t = proj.trail;
+    if (t) {
+      const ls = proj.ls + ahead;
+      return ls <= t.length ? t.speedAt(ls) : this.speedAt(t.s1 + (ls - t.length));
+    }
+    const ss = this.wrapS(proj.s + ahead);
+    const f = this.forced && this.trailAt(ss);
+    return f ? f.speedAt(f.localS(ss)) : this.speedAt(ss);
+  }
+
+  pathCurvature(proj, ahead) {
+    const t = proj.trail;
+    if (t) {
+      const ls = proj.ls + ahead;
+      return ls <= t.length ? t.curvatureAt(ls) : this.curvatureAt(t.s1 + (ls - t.length));
+    }
+    return this.curvatureAt(proj.s + ahead);
   }
 
   // Driftable corners from the spline curvature: { s0, s1, apexS, dir (+1 right), radius }.
