@@ -9,7 +9,21 @@ Offline-first 3D arcade racer for Android by **Red Pen Studio**.
 | Stack | Three.js (WebGL2) + Vite, wrapped with Capacitor 8 |
 | Audience | 13+, no sign-up, no analytics; gameplay is offline, cloud save, ads and Play Billing use the network when available |
 
-## Phase 10: career shell, 3D world map and story (this release)
+## Phases 11-12: atmosphere pipeline, weather and Biome 1 (this release)
+
+Blueprint sections 03 and 04. Emerald Coast is now a complete biome with four weathers and four ways to drive it.
+
+- **Weather presets** (`src/data/weather.js`), chosen per stage: **Golden Hour Sunset** (low amber sun, long shadows, orange horizon), **Morning Coastal Fog** (cool maritime light, low mist banks), **Light Tropical Rain** (wet asphalt sheen, puddles, rain, damp grip) and the **Coastal Storm** finale (heavy rain, lightning and thunder). Each sets sun angle and colour, ambient, sky gradient and cloud cover, fog, sea colour, exposure, road wetness and bloom; the reflection cubemap is re-baked for every weather.
+- **Mist** (`src/render/heightFog.js`): the fog chunks gain an analytic height fog, densest at sea level and thinning with height, broken into banks by world-space noise. No extra draw calls.
+- **Wet road and puddles**: one shared `wet` uniform darkens and glosses the asphalt, kerbs, racing line, bridge planks and trail dirt. Puddles (`generatePuddles` in `src/race/routes.js`) are near-mirror discs with scrolling ripples; driving through one costs grip and drags at the tyres and throws spray. Wet tyres lose up to 16% grip, dirt turns to mud, and the AI brakes earlier.
+- **Rain and lightning** (`src/race/atmosphere.js`): world-fixed rain streaks that wrap around the camera (one draw, all motion on the GPU), drops beading and running on the lens (CSS overlay), lightning flickers that light the sky, ambient and fog, and thunder delayed by the strike distance. A rain bed and a thunder synth join the audio engine.
+- **Mobile bloom** (`src/render/bloom.js`): HDR scene target, soft-threshold bright pass, 9-tap Gaussian at quarter (Low) or half resolution plus a quarter-resolution halo (Medium). Nitro flames, brake lights, the low sun and its glare on the sea bloom. **Settings → Bloom: Off / Low / Medium** (default Low, per device). Auto quality drops the halo first, then resolution, then bloom.
+- **Set-pieces** (`src/race/setPieces.js`): the **Tidecutter Gorge timber suspension bridge** (plank deck, portal towers, main cables, hangers, rope handrails) over a sea gorge cut into the cliffs, with a hollow wooden tyre-roll in the engine mix and a TIMBER surface badge; a **waterfall** off the gorge head with foam mist; **seabird flocks** on the cliff tops that burst up and away when you pass fast and close; and two **red-dirt redwood trails** (Redwood Hollow cuts the summit hairpins, Sawmill Trail the valley esses) with log fences, dense groves and red dust.
+- **Routes** (`src/race/routes.js`, segments in `src/data/career.js`): **Full Circuit**, **Reverse** (the same road the other way, rebuilt on first use), **Point-to-Point** coastal sprints, and the **Redwood Loop**, which closes the highway with barriers and sends everyone down both trails. On other routes the trails are optional shortcuts (about 3 s and 1 s); bold AI drivers take them too.
+- **Chapter 1** (Emerald Coast 1-20) re-tabled across all four routes, the three weathers and all five modes; stage 20 is the **Boss Duel** against the coastal boss in the Storm. The briefing shows the route and a storm icon. Save: stage order and ids unchanged (append-only), `settings.bloom` added with a default; no Firestore change. Version 0.11.0.
+- Performance: 63-99 draw calls per frame across the Chapter 1 weathers and routes, bloom included (budget 120).
+
+## Phase 10: career shell, 3D world map and story
 
 Blueprint sections 01 and 02. The 60 career stages are now one campaign: **3D Garage → World Map → Stage Briefing → Race → 3-Star Results → World Map**.
 

@@ -158,9 +158,9 @@ test('every stage maps to a course on its track', () => {
 test('course progress and laps', () => {
   const stage = STAGES.find((s) => s.trackSegment === 'ec-cliffside-run');
   const c = courseFor(stage, 1000);
-  near(c.startS, 400);
-  near(c.distance, 550);
-  near(raceFraction(275, c, 1000), 0.5);
+  near(c.startS, 430);
+  near(c.distance, 520);
+  near(raceFraction(260, c, 1000), 0.5);
   assert.equal(raceFraction(-14, c, 1000), 0);
   assert.equal(lapIndex(-14, 1000), -1);
   assert.equal(lapIndex(1999, 1000), 1);

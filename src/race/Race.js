@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import { Track } from './track.js';
-import { buildTrackMeshes } from './trackMeshes.js';
+import { buildTrackMeshes, buildDirectional } from './trackMeshes.js';
 import { buildScenery } from './scenery.js';
 import { SmashProps } from './props.js';
 import { Vehicle, statsToParams, NITRO } from './vehicle.js';
 import { DriftChain } from './driftChain.js';
 import { AIDriver } from './ai.js';
-import { CarFactory } from './raceCars.js';
+import { CarFactory, FLAME } from './raceCars.js';
 import { createCar } from '../garage/carModel.js';
 import { loadCar } from '../assets/modelLoader.js';
 import { ChaseCamera } from './chaseCamera.js';
@@ -17,8 +17,14 @@ import { courseFor, raceFraction } from './course.js';
 import { createMode } from './modes/index.js';
 import { draftFactor, DRAFT } from './modes/rules.js';
 import { SMASH_COINS } from '../data/economy.js';
-import { raceSfx, raceMusic, createEngineSound } from '../core/audio.js';
+import { raceSfx, raceMusic, createEngineSound, createRainSound } from '../core/audio.js';
 import { BASE_STATS as BASE } from '../data/catalog.js';
+import { TRACK_SEGMENTS } from '../data/career.js';
+import { WEATHER } from '../data/weather.js';
+import { reverseTrackDef, generatePuddles, reversePuddles } from './routes.js';
+import { Rain, Lightning, LensDrops, buildPuddles } from './atmosphere.js';
+import { buildBridge, buildWaterfall, buildTrails, Seabirds } from './setPieces.js';
+import { MobileBloom } from '../render/bloom.js';
 
 // One race on a track: owns the 3D scene, the cars, the race state machine
 // (intro → countdown → racing → finished) and reports to the HUD every frame. What kind of
@@ -36,6 +42,8 @@ const COUNTDOWN_STEP = 0.9;
 const FIRE = new THREE.Color(0xff5a1a);
 const EMBER = new THREE.Color(0xffc23a);
 const SOOT = new THREE.Color(0x2a2b30);
+const RED_DIRT = new THREE.Color(0xb4532c);
+const SPRAY = new THREE.Color(0xd9e0e4);
 const COAST_INPUT = { steer: 0, throttle: 0, brake: false, brakePressed: false, nitroTaps: [] };
 const now = () => performance.now() / 1000;
 
@@ -60,14 +68,35 @@ export class Race {
     this.camera = new THREE.PerspectiveCamera(64, 1, 0.3, 3200);
     this.scene.add(this.camera);
     this.track = new Track(this.def);
+    // Route variations: the reversed road is built the first time a stage needs it.
+    this.tracks = { forward: this.track, reverse: null };
     this.scenery = buildScenery(this.scene, renderer, this.track, this.def, quality);
-    this.scene.add(buildTrackMeshes(this.track, renderer, { groundMaterial: this.scenery.groundMaterial }));
+    const meshes = buildTrackMeshes(this.track, renderer, { groundMaterial: this.scenery.groundMaterial });
+    this.scene.add(meshes);
+    this.wet = meshes.userData.wet; // shared rain uniform: asphalt, kerbs, bridge, trails
+    this.directional = { forward: meshes.getObjectByName('directional'), reverse: null };
     this.props = new SmashProps(this.track, this.def, this.scene);
+    this.propSets = { forward: this.props, reverse: null };
     this.modeProps = new ModeProps(this.scene, this.track);
-    // Cars and water reflect the real coastline: bake the finished world into a cubemap once,
-    // from just above the start line (before any car exists, so none reflects itself).
-    const f = this.track.frame(0, {});
-    this.scenery.bakeEnvironment(new THREE.Vector3(f.x, this.track.roadY(0) + 6, f.z));
+
+    // Biome set-pieces.
+    const ground = (x, z) => this.scenery.terrain.sample(x, z).h;
+    this.setPieces = [buildBridge(this.track, this.wet), buildWaterfall(this.scenery.terrain.gorge, ground), buildTrails(this.track, this.wet)].filter(Boolean);
+    this.scene.add(...this.setPieces);
+    this.waterfall = this.setPieces.find((o) => o.name === 'waterfall') ?? null;
+    this.trailBarriers = this.setPieces.find((o) => o.name === 'trails')?.userData.barriers ?? null;
+    this.seabirds = new Seabirds(this.track, this.def, ground);
+    if (this.seabirds.flocks.length) this.scene.add(this.seabirds.mesh);
+
+    // Weather in motion.
+    this.puddleList = generatePuddles(this.track);
+    this.puddles = buildPuddles(this.track, this.puddleList, this.scenery.waterNormals);
+    this.scene.add(this.puddles);
+    this.rain = new Rain(this.scene, quality);
+    this.lightning = new Lightning();
+    this.lens = new LensDrops();
+    this.bloom = new MobileBloom(renderer);
+    this.weather = null;
 
     // Rivals share the procedural coupe; the player's car comes from the spawner (.glb or procedural).
     this.rivalFactory = new CarFactory(createCar({ paintColor: paint.color, finish: paint.finish, detail: 0.6 }));
@@ -102,7 +131,10 @@ export class Race {
   // stage does not use are thrown away; new ones are baked from the shared coupe.
   async setStage(stage, { compile = true } = {}) {
     this.stage = stage;
+    const seg = TRACK_SEGMENTS[stage.trackSegment];
+    this.useRoute(Boolean(seg?.reverse), Boolean(seg?.forced));
     this.course = courseFor(stage, this.track.length);
+    this.applyWeather(WEATHER[stage.weatherPreset] ?? WEATHER.Midday);
     this.mode = createMode(stage, this);
     const rivals = this.mode.rivals;
     const keep = new Set(rivals.map((r) => r.id));
@@ -113,20 +145,70 @@ export class Race {
       r.visual.root.traverse((o) => o.isMesh && o.geometry.dispose());
       this.pool.delete(id);
     }
-    let built = false;
     for (const r of rivals) {
       if (this.pool.has(r.id)) continue;
       const racer = { ...r, isPlayer: false, visual: this.rivalFactory.build({ color: r.color, finish: r.finish }) };
       this.scene.add(racer.visual.root);
       this.pool.set(r.id, racer);
-      built = true;
     }
     this.racers = [this.player, ...rivals.map((r) => this.pool.get(r.id))];
     this.mode.layout();
-    if (compile && built) {
+    // Compile whatever this stage shows for the first time (new rivals, the reversed road,
+    // rain, puddles, barriers); programs already built are skipped quickly.
+    if (compile) {
       this.reset({ stats: null });
       await this.renderer.compileAsync(this.scene, this.camera);
     }
+  }
+
+  // Switches between the forward and the reversed road, and opens or closes the highway along
+  // the redwood trails.
+  useRoute(reverse, forced) {
+    const key = reverse ? 'reverse' : 'forward';
+    if (reverse && !this.tracks.reverse) {
+      const def = reverseTrackDef(this.def, this.tracks.forward.length);
+      const t = new Track(def);
+      t.setPuddles(reversePuddles(this.puddleList, t.length));
+      this.tracks.reverse = t;
+      this.directional.reverse = buildDirectional(t);
+      this.scene.add(this.directional.reverse);
+      this.propSets.reverse = new SmashProps(t, def, this.scene);
+    }
+    this.track = this.tracks[key];
+    this.track.forced = forced;
+    for (const k of ['forward', 'reverse']) {
+      if (this.directional[k]) this.directional[k].visible = k === key;
+      this.propSets[k]?.setVisible(k === key);
+    }
+    this.props = this.propSets[key];
+    this.modeProps.track = this.track;
+    for (const r of this.pool?.values() ?? []) if (r.vehicle) r.vehicle.track = this.track;
+    if (this.player?.vehicle) this.player.vehicle.track = this.track;
+    if (this.trailBarriers) this.trailBarriers.visible = forced;
+  }
+
+  // Sky, light, fog, sea, wet road, puddles, rain, lightning and bloom for a weather preset.
+  applyWeather(w) {
+    if (this.weather === w) return;
+    this.weather = w;
+    this.scenery.applyWeather(w);
+    this.wet.value = w.wet;
+    // Standing water only once the road is properly wet.
+    const puddles = w.wet >= 0.5;
+    this.puddles.visible = puddles;
+    const fwd = this.tracks.forward;
+    fwd.setPuddles(puddles ? this.puddleList : []);
+    this.tracks.reverse?.setPuddles(puddles ? reversePuddles(this.puddleList, this.tracks.reverse.length) : []);
+    for (const t of Object.values(this.tracks)) if (t) t.wet = w.wet;
+    this.rain.set(w.rain);
+    this.lightning.enabled = w.lightning;
+    this.lightning.reset();
+    this.scenery.setFlash(0);
+    this.bloom.setParams(w.bloom);
+    // Cars, glass and puddles reflect the coast under this sky: bake it into the environment
+    // cubemap from just above the start line (proxies only, so no car reflects itself).
+    const f = fwd.frame(0, {});
+    this.scenery.bakeEnvironment(new THREE.Vector3(f.x, fwd.roadY(0) + 6, f.z));
   }
 
   // Swaps the player's car between races (garage selection changed). Physics is untouched:
@@ -156,6 +238,8 @@ export class Race {
     const ph = h * this.renderer.getPixelRatio();
     this.smoke.setViewport(ph, this.camera.fov);
     this.sparks.setViewport(ph, this.camera.fov);
+    this.waterfall?.userData.setViewport(ph, this.camera.fov);
+    this.bloom?.resize();
   }
 
   // stats: player's effective stats (0..100) from the garage upgrades.
@@ -214,6 +298,9 @@ export class Race {
     });
     this.syncWheels();
     this.props.reset();
+    this.seabirds.reset();
+    this.lightning.reset();
+    this.scenery.setFlash(0);
     this.skids.clear();
     this.smoke.clear();
     this.sparks.clear();
@@ -240,8 +327,13 @@ export class Race {
 
   // earnedStars: the stage's stars already held, for the intro card's objective list.
   // `startNitro`: the briefing's rewarded "Fill Nitrous Tank" perk (100% nitro on the grid).
-  begin({ stats, paint, input, hud, onFinish, autoQuality = false, earnedStars = 0, startNitro = false }) {
+  begin({ stats, paint, input, hud, onFinish, autoQuality = false, earnedStars = 0, startNitro = false, bloom = 'low' }) {
     this.autoQuality = autoQuality;
+    this.bloom.setLevel(bloom);
+    FLAME.hdr = this.bloom.enabled ? 2.6 : 1;
+    // Each weather preset has its own exposure on top of the renderer's (restored on exit).
+    this.baseExposure ??= this.renderer.toneMappingExposure;
+    this.renderer.toneMappingExposure = this.baseExposure * this.weather.exposure;
     this.input = input;
     this.hud = hud;
     this.onFinish = onFinish;
@@ -258,6 +350,10 @@ export class Race {
     this.chase.intro(this.player.vehicle, 3.2);
     this.engine?.stop();
     this.engine = createEngineSound();
+    this.rainSound?.stop();
+    this.rainSound = this.weather.rain > 0 ? createRainSound() : null;
+    this.rainSound?.set(this.weather.rain);
+    this.lens.set(this.weather.rain);
     raceMusic.start();
     this.hud.intro(this.mode.intro(), this.course, { objectives: this.stage.objectives, earned: earnedStars });
     this.start();
@@ -284,12 +380,14 @@ export class Race {
     this.phase = 'paused';
     this.input.setEnabled(false);
     this.engine?.update({ dt: 0, throttle: 0, volume: 0 });
+    this.rainSound?.set(0);
     raceMusic.setPaused(true);
   }
 
   resume() {
     if (this.phase !== 'paused') return;
     this.phase = this.resumePhase;
+    this.rainSound?.set(this.weather.rain);
     raceMusic.setPaused(false);
     this.last = performance.now();
     this.input.setEnabled(this.phase === 'racing');
@@ -309,6 +407,12 @@ export class Race {
     this.input?.setEnabled(false);
     this.engine?.stop();
     this.engine = null;
+    this.rainSound?.stop();
+    this.rainSound = null;
+    this.lens.set(0);
+    this.bloom.dispose();
+    if (this.baseExposure != null) this.renderer.toneMappingExposure = this.baseExposure;
+    this.renderer.setRenderTarget(null);
     raceMusic.stop();
   }
 
@@ -317,7 +421,7 @@ export class Race {
     this.last = nowMs;
     this.trackPerformance(dt);
     if (this.phase !== 'paused') this.update(dt);
-    this.renderer.render(this.scene, this.camera);
+    this.bloom.render(this.scene, this.camera);
   }
 
   trackPerformance(dt) {
@@ -328,15 +432,21 @@ export class Race {
     this.fpsAcc = 0;
     this.fpsFrames = 0;
     this.onFps?.(fps);
-    // Auto quality: lower the render resolution if we cannot hold ~60 FPS.
+    // Auto quality: if we cannot hold ~60 FPS, drop the wide bloom halo first, then the
+    // render resolution, then bloom altogether.
     if (!this.autoQuality) return;
     this.slowSeconds = fps < 50 ? this.slowSeconds + 1 : 0;
+    if (this.slowSeconds < 3) return;
+    this.slowSeconds = 0;
     const pr = this.renderer.getPixelRatio();
-    if (this.slowSeconds >= 3 && pr > 1) {
+    if (this.bloom.level === 'medium') this.bloom.setLevel('low');
+    else if (pr > 1) {
       this.renderer.setPixelRatio(Math.max(1, pr - 0.25));
       this.renderer.setSize(window.innerWidth, window.innerHeight, false);
       this.resize();
-      this.slowSeconds = 0;
+    } else if (this.bloom.enabled) {
+      this.bloom.setLevel('off');
+      FLAME.hdr = 1;
     }
   }
 
@@ -393,6 +503,7 @@ export class Race {
     this.modeProps.update(dt, this.time);
     this.scenery.update(this.time, this.camera);
     this.scenery.follow(player.pos);
+    this.updateAtmosphere(dt, player, simulate);
 
     this.chase.update(dt, player, { boostTier: player.tier });
     const lineLevel = player.tier === 2 ? 1 : player.tier === 1 ? 0.5 : 0;
@@ -406,6 +517,20 @@ export class Race {
       this.resultShown = true;
       this.hud.results(this.result);
     }
+  }
+
+  // Lightning and thunder, rain around the camera and on the lens, puddle ripples, the
+  // waterfall, and the seabirds (which only scatter for a car that is racing).
+  updateAtmosphere(dt, player, racing) {
+    const { flash, thunder } = this.lightning.update(dt);
+    this.scenery.setFlash(flash);
+    this.bloom.flash = flash * 0.8;
+    if (thunder) raceSfx.thunder(thunder);
+    this.rain.update(this.time, this.camera, player, flash);
+    this.lens.update(dt, player.speed);
+    if (this.puddles.visible) this.puddles.userData.update(this.time, this.weather.wet);
+    this.waterfall?.userData.update(this.time);
+    this.seabirds.update(dt, this.time, racing ? player : null, player.speed);
   }
 
   syncWheels() {
@@ -873,6 +998,38 @@ export class Race {
         alpha: 0.9,
       });
     }
+    // Red dirt kicked up off the redwood trails (mud, in the rain, stays low and heavy).
+    const dirt = v.mix.dirt ?? 0;
+    if (dirt > 0.2 && v.speed > 6 && Math.random() < Math.min(1, dirt * (v.drifting ? 2.2 : 1.3))) {
+      const mud = this.track.wet > 0.5;
+      for (const side of [-1, 1]) {
+        const x = v.pos.x - fx * 1.4 + -fz * side * 0.8;
+        const z = v.pos.z - fz * 1.4 + fx * side * 0.8;
+        this.smoke.emit(x, v.pos.y + 0.2, z, v.vel.x * 0.15 + (Math.random() - 0.5) * 2, mud ? 0.4 : 1 + Math.random(), v.vel.y * 0.15 + (Math.random() - 0.5) * 2, {
+          color: RED_DIRT,
+          size: mud ? 0.5 : 0.85,
+          life: mud ? 0.5 : 1.1,
+          grow: mud ? 0.6 : 2.6,
+          alpha: mud ? 0.55 : v.drifting ? 0.5 : 0.36,
+        });
+      }
+    }
+    // Spray off a wet road: a fine mist behind the rear tyres, a burst through a puddle.
+    const wet = this.track.wet;
+    if (wet > 0.3 && v.speed > 14 && v.mix.asphalt > 0.4 && Math.random() < wet * (v.puddle ? 1 : 0.55)) {
+      const k = v.puddle ? 1.6 : 1;
+      for (const side of [-1, 1]) {
+        const x = v.pos.x - fx * 1.6 + -fz * side * 0.85;
+        const z = v.pos.z - fz * 1.6 + fx * side * 0.85;
+        this.smoke.emit(x, v.pos.y + 0.2, z, v.vel.x * 0.6 + -fz * side * 1.5 * k, 0.6 * k + Math.random() * 0.6, v.vel.y * 0.6 + fx * side * 1.5 * k, {
+          color: SPRAY,
+          size: 0.4 * k,
+          life: 0.4,
+          grow: 1.4,
+          alpha: (v.puddle ? 0.28 : 0.12) * wet,
+        });
+      }
+    }
     // Loose surfaces: a gravel dust plume, or torn-up turf off the grass.
     const loose = v.mix.gravel + v.mix.grass;
     if (loose > 0.1 && v.speed > 8 && Math.random() < Math.min(1, loose * (v.drifting ? 1.6 : 0.9))) {
@@ -909,6 +1066,9 @@ export class Race {
       slip: v.slip ?? 0,
       gravel: v.airborne ? 0 : v.mix.gravel,
       grass: v.airborne ? 0 : v.mix.grass,
+      // Hollow tyre roll over the bridge planks.
+      wood: !v.airborne && v.onWood ? 1 : 0,
+      mps: v.speed,
     });
   }
 

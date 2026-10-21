@@ -17,6 +17,7 @@ const CONTROL_HINTS = {
 export function createSettings(garage, { onFpsToggle, onEntitlementsChanged, onCrateReset }) {
   const dialog = document.getElementById('settings');
   const qualityButtons = [...dialog.querySelectorAll('[data-quality]')];
+  const bloomButtons = [...dialog.querySelectorAll('[data-bloom]')];
   const sound = dialog.querySelector('#opt-sound');
   const music = dialog.querySelector('#opt-music');
   const auto = dialog.querySelector('#opt-auto');
@@ -77,6 +78,7 @@ export function createSettings(garage, { onFpsToggle, onEntitlementsChanged, onC
   function render() {
     renderAbout();
     qualityButtons.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.quality === state.settings.quality)));
+    bloomButtons.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.bloom === state.settings.bloom)));
     controlButtons.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.controls === state.settings.controls)));
     controlsHint.textContent = CONTROL_HINTS[state.settings.controls] ?? CONTROL_HINTS.touch;
     sound.checked = state.settings.sound;
@@ -93,6 +95,16 @@ export function createSettings(garage, { onFpsToggle, onEntitlementsChanged, onC
     btn.addEventListener('click', () => {
       state.settings.quality = btn.dataset.quality;
       garage.setQuality(state.settings.quality);
+      save();
+      render();
+      sfx.tap();
+    })
+  );
+  // Bloom on nitro flames, brake lights and the sun's glare (render/bloom.js); applied from
+  // the next race.
+  bloomButtons.forEach((btn) =>
+    btn.addEventListener('click', () => {
+      state.settings.bloom = btn.dataset.bloom;
       save();
       render();
       sfx.tap();

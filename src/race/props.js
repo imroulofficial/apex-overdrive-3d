@@ -337,6 +337,12 @@ export class SmashProps {
     this.shards.clear();
   }
 
+  // The reversed route has its own set (same places, laid out for the other direction).
+  setVisible(v) {
+    for (const m of this.meshes) m.visible = v;
+    for (const d of [this.planks, this.fruit, this.shards]) d.mesh.visible = v;
+  }
+
   write(p) {
     this._m.compose(p.pos, p.quat, p.state === 'broken' ? this._zero : this._one);
     for (const mesh of p.meshes) mesh.setMatrixAt(p.slot, this._m);

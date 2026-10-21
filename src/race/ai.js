@@ -1,4 +1,5 @@
 import { wrapAngle } from './noise.js';
+import { wetGrip } from '../data/weather.js';
 
 // Waypoint AI. Each driver follows the race spline with a pure-pursuit look-ahead toward a
 // chosen lane, slows for corners using the track's speed profile, changes lanes to pass or to
@@ -7,6 +8,9 @@ import { wrapAngle } from './noise.js';
 // A `duel` driver (Boss Duel) races the player alone: it tucks into the player's slipstream,
 // pulls out to pass once it is on the bumper, blocks the player's line when leading, rubber-
 // bands harder and fires nitro more often.
+// Redwood trails: on the Redwood Loop everyone follows them; elsewhere only the boldest
+// drivers dive down an open trail, the rest keep to the highway past the fork. In the wet,
+// drivers brake earlier for corners (less grip).
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
@@ -31,6 +35,13 @@ export class AIDriver {
     this.pendingPulse = -1;
     this.rubber = 1;
     this.avoid = 0;
+    this.trailPicks = new Map();
+  }
+
+  // Whether this driver takes an open trail (decided once per trail per race).
+  takesTrail(t) {
+    if (!this.trailPicks.has(t.id)) this.trailPicks.set(t.id, this.rand() < (this.aggression - 0.6) * 1.6);
+    return this.trailPicks.get(t.id);
   }
 
   // ctx: { time, cars: [{ vehicle, progress }], props: SmashProps, leaderGap (m, + = player ahead) }
@@ -41,21 +52,40 @@ export class AIDriver {
     const input = this.input;
     input.nitroTaps.length = 0;
     input.brakePressed = false;
-    const limit = track.halfWidth - 1.6;
+    const onTrail = !!pr.trail;
+    const limit = onTrail ? Math.max(1.2, pr.trail.halfWidthAt(pr.ls) - 1.8) : track.halfWidth - 1.6;
     const speed = Math.max(0, v.forward);
 
     // Lane planning.
     this.laneTimer -= dt;
     if (this.laneTimer <= 0) {
       this.laneTimer = 2.5 + this.rand() * (5 - this.aggression * 3);
-      const k = track.curvatureAt(pr.s + 60);
+      const k = track.pathCurvature(pr, 60);
       // Aggressive drivers favour the inside line of the next corner.
       const inside = Math.abs(k) > 1 / 300 ? Math.sign(k) * limit * 0.6 * this.aggression : 0;
       this.lane = clamp(this.laneBias * limit + inside + (this.rand() - 0.5) * 6, -limit, limit);
     }
 
+    // An open trail fork ahead: keep to the side that leads where we want to go, and aim the
+    // look-ahead down that branch (`via`) so a car never drifts onto the wrong one.
+    let via = null; // 'trail' | 'main' while choosing at a fork
+    let viaTrail = null;
+    if (!track.forced) {
+      for (const t of track.trails) {
+        const ahead = track.delta(pr.s, t.s0);
+        if (ahead > 110 || ahead < -t.length) continue;
+        const ls = t.localS(pr.s);
+        if (onTrail ? pr.trail !== t || pr.ls > t.forkEnd : ls > t.forkEnd) continue;
+        viaTrail = t;
+        via = this.takesTrail(t) ? 'trail' : 'main';
+        if (!onTrail) this.lane = via === 'trail' ? t.side * limit : -t.side * limit * 0.35;
+        this.laneTimer = Math.max(this.laneTimer, 0.5);
+      }
+    }
+    if (onTrail) this.lane = clamp(this.lane, -limit, limit);
+
     // Ramps: the bold go for them, the cautious steer around partial ones.
-    for (const r of track.ramps) {
+    for (const r of onTrail ? [] : track.ramps) {
       const ahead = track.delta(pr.s, r.s0);
       if (ahead < 0 || ahead > 110) continue;
       const centre = (r.from + r.to) / 2;
@@ -106,7 +136,7 @@ export class AIDriver {
     }
 
     // Swerve around props unless we enjoy smashing them.
-    if (this.aggression < 0.7 && ctx.props) {
+    if (this.aggression < 0.7 && ctx.props && !onTrail) {
       for (const p of ctx.props.items) {
         if (p.state !== 'idle') continue;
         const ahead = track.delta(pr.s, p.s);
@@ -118,7 +148,10 @@ export class AIDriver {
 
     // Pure pursuit toward the look-ahead point.
     const look = 9 + speed * 0.5;
-    const f = track.frame(pr.s + look, this._f || (this._f = {}));
+    const f = this._f || (this._f = {});
+    if (via === 'trail' && !onTrail) viaTrail.frame(Math.max(0, viaTrail.localS(pr.s)) + look, f);
+    else if (via === 'main' && onTrail) track.frame(pr.s + look, f);
+    else track.pathFrame(pr, look, f);
     const tx = f.x + f.rx * this.avoid - v.pos.x;
     const tz = f.z + f.rz * this.avoid - v.pos.z;
     const desired = Math.atan2(-tz, tx);
@@ -128,7 +161,8 @@ export class AIDriver {
 
     // Speed: corner profile ahead, skill, rubber banding and traffic.
     let profile = Infinity;
-    for (let d = 0; d <= 60; d += 10) profile = Math.min(profile, track.speedAt(pr.s + d));
+    for (let d = 0; d <= 60; d += 10) profile = Math.min(profile, track.pathSpeed(pr, d));
+    if (track.wet > 0) profile *= Math.sqrt(wetGrip(track.wet).grip);
     const gapToPlayer = ctx.playerGap ?? 0; // + means the player is ahead of us
     const band = this.duel
       ? gapToPlayer > 40 ? 1.09 : gapToPlayer > 10 ? 1.04 : gapToPlayer < -140 ? 0.95 : 1
@@ -149,7 +183,7 @@ export class AIDriver {
     }
     if (this.nitroCooldown <= 0 && v.tier === 0 && v.nitro >= 32 && !v.airborne) {
       let straight = true;
-      for (let d = 0; d <= 180; d += 30) if (Math.abs(track.curvatureAt(pr.s + d)) > 1 / 260) straight = false;
+      for (let d = 0; d <= 180; d += 30) if (Math.abs(track.pathCurvature(pr, d)) > 1 / 260) straight = false;
       if (straight && speed > 25) {
         input.nitroTaps.push(ctx.time);
         if (v.nitro >= 58 && this.rand() < this.aggression) this.pendingPulse = ctx.time + 0.26;

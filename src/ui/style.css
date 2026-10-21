@@ -793,6 +793,18 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rh-callout.combo.l3 { color: #ff7af0; text-shadow: 0 0 18px rgba(255, 43, 214, 0.8); }
 .rh-surface { position: absolute; right: 12px; top: 8px; transform: skewX(-10deg); padding: 2px 8px; font-size: 9px; font-weight: 900; letter-spacing: 0.25em; color: #1b1406; background: #d9b878; }
 .rh-surface[data-surface='grass'] { background: #9ccf5a; }
+.rh-surface[data-surface='dirt'] { background: #c8643c; color: #fff4ea; }
+.rh-surface[data-surface='wood'] { background: #9a7350; color: #fff7ec; }
+
+/* Rain on the lens (race/atmosphere.js LensDrops): above the 3D view, below the race HUD. */
+.rain-lens { position: fixed; inset: 0; pointer-events: none; z-index: 4; overflow: hidden; }
+.rain-lens i {
+  position: absolute;
+  border-radius: 50% 50% 46% 46%;
+  background: radial-gradient(circle at 38% 32%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.08) 45%, rgba(180, 200, 215, 0.18) 70%, rgba(255, 255, 255, 0.35));
+  box-shadow: inset 0 -1px 2px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(1.5px);
+}
 .rh-wrong {
   position: fixed;
   left: 50%;

@@ -160,18 +160,73 @@ function fixUpNormals(geo) {
   return geo;
 }
 
+// Stretches of highway (in metres) that have no road of their own: the timber bridge (its
+// deck is a set-piece, race/setPieces.js) and, on one side only, the openings where a redwood
+// trail forks off or merges back (no rail there).
+function gaps(track, side = 0) {
+  const out = track.bridge ? [[track.bridge.s0, track.bridge.s1]] : [];
+  if (side) {
+    for (const t of track.trails) {
+      if (t.side !== side) continue;
+      out.push([t.s0, t.forkEndS], [t.mergeStartS, t.s1]);
+    }
+  }
+  return out;
+}
+const inGaps = (list, s) => list.some(([a, b]) => s >= a && s <= b);
+
+// Sample-index ranges [from, to] of the closed loop that avoid the gaps.
+function spans(track, list) {
+  if (!list.length) return [[0, track.n]];
+  const out = [];
+  let from = -1;
+  for (let k = 0; k <= track.n; k++) {
+    const s = k >= track.n ? track.length : track.s[k];
+    const open = !inGaps(list, s) && k < track.n;
+    if (open && from < 0) from = k;
+    if ((!open || k === track.n) && from >= 0) {
+      if (k - from >= 1) out.push([from, k]);
+      from = -1;
+    }
+  }
+  if (out.length && out[out.length - 1][1] === track.n - 1) out[out.length - 1][1] = track.n;
+  return out;
+}
+
+const ribbons = (track, cols, list, opts) => {
+  const geos = spans(track, list).map(([from, to]) => fixUpNormals(ribbon(track, cols, { ...opts, from, to })));
+  return geos.length === 1 ? geos[0] : mergeGeometries(geos);
+};
+
+// Rain on the road: `wet` (shared uniform, 0..1) darkens the surface and turns it glossy, so
+// it mirrors the sky and the lights through the baked environment map.
+export function wettable(material, wet, { darken = 0.45, key }) {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uWet = wet;
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uWet;')
+      .replace('#include <map_fragment>', `#include <map_fragment>\n diffuseColor.rgb *= 1.0 - ${darken.toFixed(3)} * uWet;`)
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n roughnessFactor = mix(roughnessFactor, 0.07 + roughnessFactor * 0.22, uWet);');
+  };
+  material.customProgramCacheKey = () => `wet-${key}`;
+  return material;
+}
+
 export function buildTrackMeshes(track, renderer, { groundMaterial } = {}) {
   const group = new THREE.Group();
   group.name = 'track';
   const hw = track.halfWidth;
   const sh = track.shoulder;
   const maxAniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  const wet = { value: 0 };
+  group.userData.wet = wet;
+  const noRoad = gaps(track);
 
   // Asphalt: albedo with painted lines, tyre-polished wheel tracks, cracks and patches, plus
   // matching normal and roughness maps so the sun glints off the smooth lines.
   const asphalt = asphaltTextures({ widthM: hw * 2, tileM: ROAD_TILE, lanes: 3, maxAniso });
   const road = new THREE.Mesh(
-    fixUpNormals(ribbon(track, [[-hw, 0, 0], [0, 0, 0.5], [hw, 0, 1]])),
+    ribbons(track, [[-hw, 0, 0], [0, 0, 0.5], [hw, 0, 1]], noRoad),
     new THREE.MeshStandardMaterial({
       map: asphalt.map,
       normalMap: asphalt.normalMap,
@@ -182,25 +237,26 @@ export function buildTrackMeshes(track, renderer, { groundMaterial } = {}) {
       envMapIntensity: 0.6,
     })
   );
+  wettable(road.material, wet, { darken: 0.5, key: 'road' });
   road.receiveShadow = true;
   group.add(road);
-  group.add(buildRacingLine(track));
+  group.add(buildRacingLine(track, noRoad, wet));
 
   // Gravel shoulders, then the grass verge up to the rail and the embankment falling away to
   // the terrain, both in the terrain's layered ground shader (grass on the flat).
   const gv = LAYOUT.gravel;
-  const gravel = new THREE.MeshStandardMaterial({ map: gravelTexture(), roughness: 1 });
+  const gravel = wettable(new THREE.MeshStandardMaterial({ map: gravelTexture(), roughness: 1 }), wet, { darken: 0.4, key: 'gravel' });
   const shoulders = mergeGeometries([
-    fixUpNormals(ribbon(track, [[hw, 0, 0], [hw + gv, -0.02, 1]], { vScale: 8 })),
-    fixUpNormals(ribbon(track, [[-hw - gv, -0.02, 1], [-hw, 0, 0]], { vScale: 8 })),
+    ribbons(track, [[hw, 0, 0], [hw + gv, -0.02, 1]], noRoad, { vScale: 8 }),
+    ribbons(track, [[-hw - gv, -0.02, 1], [-hw, 0, 0]], noRoad, { vScale: 8 }),
   ]);
   const shoulderMesh = new THREE.Mesh(shoulders, gravel);
   shoulderMesh.receiveShadow = true;
   group.add(shoulderMesh);
 
   const bank = mergeGeometries([
-    fixUpNormals(ribbon(track, [[hw + gv, -0.02, 0], [hw + sh, -0.05, 0.2], [hw + sh + 2, -0.6, 0.5], [hw + sh + 6.5, -4.2, 1]], { step: 2, vScale: 10 })),
-    fixUpNormals(ribbon(track, [[-hw - sh - 6.5, -4.2, 0], [-hw - sh - 2, -0.6, 0.5], [-hw - sh, -0.05, 0.8], [-hw - gv, -0.02, 1]], { step: 2, vScale: 10 })),
+    ribbons(track, [[hw + gv, -0.02, 0], [hw + sh, -0.05, 0.2], [hw + sh + 2, -0.6, 0.5], [hw + sh + 6.5, -4.2, 1]], noRoad, { step: 2, vScale: 10 }),
+    ribbons(track, [[-hw - sh - 6.5, -4.2, 0], [-hw - sh - 2, -0.6, 0.5], [-hw - sh, -0.05, 0.8], [-hw - gv, -0.02, 1]], noRoad, { step: 2, vScale: 10 }),
   ]);
   const bankMesh = new THREE.Mesh(bank, groundMaterial ?? new THREE.MeshLambertMaterial({ color: 0x5f7f3a }));
   bankMesh.receiveShadow = true;
@@ -215,7 +271,7 @@ export function buildTrackMeshes(track, renderer, { groundMaterial } = {}) {
     return side > 0 ? cols : cols.map(([d, dy, u]) => [-d, dy, 1 - u]).reverse();
   };
   for (let i = 0; i <= track.n; i++) {
-    const on = i < track.n && sharp(i);
+    const on = i < track.n && sharp(i) && !inGaps(noRoad, track.s[i]);
     if (on && start < 0) start = i;
     if (!on && start >= 0) {
       const from = Math.max(0, start - 8);
@@ -227,7 +283,7 @@ export function buildTrackMeshes(track, renderer, { groundMaterial } = {}) {
   if (kerbGeos.length) {
     const kerbs = new THREE.Mesh(
       mergeGeometries(kerbGeos),
-      new THREE.MeshStandardMaterial({ map: stripeTexture('#c8102e', '#f2f2ee'), roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -2 })
+      wettable(new THREE.MeshStandardMaterial({ map: stripeTexture('#c8102e', '#f2f2ee'), roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -2 }), wet, { darken: 0.3, key: 'kerb' })
     );
     kerbs.receiveShadow = true;
     group.add(kerbs);
@@ -244,15 +300,24 @@ export function buildTrackMeshes(track, renderer, { groundMaterial } = {}) {
   side.receiveShadow = true;
   group.add(side);
   group.add(...start0.meshes);
-  group.add(buildChevrons(track));
-  group.add(buildRamps(track));
+  group.add(buildDirectional(track));
+  return group;
+}
+
+// Direction-dependent furniture, rebuilt for a reversed track: chevrons face oncoming traffic
+// and ramps rise in the direction of travel. The track group holds the forward set under the
+// name 'directional'; the race swaps in a reversed set for reverse routes.
+export function buildDirectional(track) {
+  const group = new THREE.Group();
+  group.name = 'directional';
+  group.add(buildChevrons(track), buildRamps(track));
   return group;
 }
 
 // Rubbered-in racing line: dark tyre rubber along the classic outside-inside-outside line.
 // The lateral offset is a "Mexican hat" filter of the track curvature: inside at the apex
 // (narrow lobe) and outside on entry and exit (wide negative lobe).
-function buildRacingLine(track) {
+function buildRacingLine(track, skip, wet) {
   const n = track.n;
   const hw = track.halfWidth;
   const blur = (src, sigmaM) => {
@@ -293,7 +358,7 @@ function buildRacingLine(track) {
       pos.push(f.x + f.rx * (d + dd), f.y + 0.012, f.z + f.rz * (d + dd));
       uv.push(u, s / 6);
     }
-    if (k < n) {
+    if (k < n && !inGaps(skip, s) && !inGaps(skip, k + 1 >= n ? track.length : track.s[k + 1])) {
       const a = k * 2;
       index.push(a, a + 1, a + 2, a + 2, a + 1, a + 3);
     }
@@ -319,7 +384,7 @@ function buildRacingLine(track) {
   tex.wrapT = THREE.RepeatWrapping;
   const mesh = new THREE.Mesh(
     geo,
-    new THREE.MeshStandardMaterial({
+    wettable(new THREE.MeshStandardMaterial({
       map: tex,
       transparent: true,
       opacity: 0.55,
@@ -329,7 +394,7 @@ function buildRacingLine(track) {
       polygonOffset: true,
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -1,
-    })
+    }), wet, { darken: 0.2, key: 'line' })
   );
   mesh.receiveShadow = true;
   mesh.renderOrder = 1;
@@ -346,8 +411,10 @@ function buildGuardrails(track) {
   const out = [];
   for (const side of [1, -1]) {
     const cols = profile.map(([o, y], k) => [side * (track.fenceOffset + o), y - 0.15, k / (profile.length - 1)]);
-    const rail = ribbon(track, cols, { vScale: 4 });
-    for (const g of bothFaces(rail)) out.push(paintVertices(g, steel));
+    for (const [from, to] of spans(track, gaps(track, side))) {
+      const rail = ribbon(track, cols, { vScale: 4, from, to });
+      for (const g of bothFaces(rail)) out.push(paintVertices(g, steel));
+    }
   }
   const postGeo = paintVertices(new THREE.BoxGeometry(0.12, 0.95, 0.16).translate(0, 0.32, 0).toNonIndexed(), post);
   const matrices = [];
@@ -356,8 +423,10 @@ function buildGuardrails(track) {
   const a = new THREE.Vector3();
   const f = {};
   for (const side of [1, -1]) {
+    const skip = gaps(track, side);
     for (let k = 0; k < count; k++) {
       const s = k * spacing;
+      if (inGaps(skip, s)) continue;
       track.frame(s, f);
       const d = side * (track.fenceOffset + 0.12);
       a.set(f.x + f.rx * d, track.roadY(s) - 0.15, f.z + f.rz * d);
@@ -390,8 +459,9 @@ function buildLampPosts(track) {
   const count = Math.floor(track.length / spacing);
   for (let k = 0; k < count; k++) {
     const s = k * spacing + 20;
-    track.frame(s, f);
     const side = k % 2 ? 1 : -1;
+    if (inGaps(gaps(track, side), s)) continue;
+    track.frame(s, f);
     const d = side * (track.fenceOffset + 0.9);
     // Local -x (the arm) points across the road, toward the centre line.
     const yaw = Math.atan2(-side * f.rz, side * f.rx);
@@ -409,6 +479,7 @@ function buildChevrons(track) {
   for (let i = 0; i < track.n; i += 9) {
     const k = track.curv[i];
     if (Math.abs(k) < 1 / 95) continue;
+    if (inGaps(gaps(track, -Math.sign(k)), track.s[i])) continue;
     placements.push({ s: track.s[i], dir: Math.sign(k) });
   }
   const mesh = new THREE.InstancedMesh(geo, mat, placements.length);

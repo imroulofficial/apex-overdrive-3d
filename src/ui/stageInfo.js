@@ -1,5 +1,6 @@
 import { STAGES, GAME_MODES, TRACK_SEGMENTS, WEATHER } from '../data/career.js';
 import { TRACKS } from '../data/tracks.js';
+import { ROUTES } from '../race/routes.js';
 import { isStageUnlocked } from '../core/career.js';
 
 // Shared stage helpers for the world map, the briefing, the garage stage chip and the results
@@ -46,6 +47,8 @@ export function layoutLabel(stage) {
   return seg.layout === 'circuit' ? `${seg.laps} lap${seg.laps > 1 ? 's' : ''} · ${km}` : `Sprint · ${km}`;
 }
 export const weatherName = (stage) => WEATHER[stage.weatherPreset].name;
+// "Full Circuit", "Reverse", "Point-to-Point Sprint" or "Redwood Loop" (race/routes.js).
+export const routeName = (stage) => ROUTES[TRACK_SEGMENTS[stage.trackSegment].route]?.name ?? ROUTES.circuit.name;
 
 const STAR = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2.5 2.9 6 6.6.8-4.9 4.5 1.3 6.5L12 17l-5.9 3.3 1.3-6.5-4.9-4.5 6.6-.8z" /></svg>';
 export const STAR_ICON = STAR;

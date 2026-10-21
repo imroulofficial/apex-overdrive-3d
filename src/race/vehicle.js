@@ -1,6 +1,8 @@
 import * as THREE from 'three';
-import { surfaceMix, blendSurface, dominantSurface } from './surface.js';
+import { surfaceMix, blendSurface, dominantSurface, trailMix, deckMix } from './surface.js';
 import { proximityFactor, PROXIMITY } from './modes/rules.js';
+import { TRAIL } from './trails.js';
+import { wetGrip, PUDDLE } from '../data/weather.js';
 
 // Arcade vehicle model. Velocity lives in world space; each step it is split into forward and
 // lateral parts relative to the heading. Grip bleeds off the lateral part (fast when gripping,
@@ -50,6 +52,9 @@ export function statsToParams({ speed, accel, handling, nitro }) {
 }
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+// At a fork the car follows whichever centre line is closer, once it is closer by this much
+// (metres), so it does not flicker between two lines that still overlap.
+const SWITCH_MARGIN = 0.6;
 
 export class Vehicle {
   // skills: the player's car, which can earn Perfect Exits.
@@ -62,14 +67,20 @@ export class Vehicle {
     this.surf = {};
     this.pos = new THREE.Vector3();
     this.vel = new THREE.Vector2(); // (x, z)
-    this.proj = {};
+    // Where the car is on the highway and, on a redwood trail, on the trail. `proj` is the one
+    // the car is following (same fields either way; `trail` set on a trail).
+    this.mainProj = { trail: null };
+    this.trailProj = {};
+    this.proj = this.mainProj;
+    this.trail = null;
+    this.zone = null; // the trail whose fork or merge zone the car is in (both walls of the Y)
     this.events = [];
     this.reset(0, 0);
   }
 
   reset(s, d) {
-    const f = this.track.frame(s, {});
-    this.pos.set(f.x + f.rx * d, this.track.heightAt(s, d), f.z + f.rz * d);
+    const f = this.track.routeFrame(s, {});
+    this.pos.set(f.x + f.rx * d, this.track.routeHeight(s, d), f.z + f.rz * d);
     this.heading = Math.atan2(-f.tz, f.tx);
     this.vel.set(0, 0);
     this.vy = 0;
@@ -98,20 +109,128 @@ export class Vehicle {
     this.wrongWay = 0;
     this.wallScrape = 0;
     this.hint = -1;
-    this.track.project(this.pos.x, this.pos.z, -1, this.proj);
-    this.hint = this.proj.i;
-    this.updateSurface(this.proj.d);
+    this.trailHint = -1;
+    this.trail = f.trail ?? null;
+    if (this.trail) this.trailHint = f.i;
+    this.puddle = 0;
+    this.onWood = false;
+    this.locate();
+    this.updateSurface();
     this.events.length = 0;
+  }
+
+  // Projects the car onto the highway and, near or on a trail, onto the trail; decides which
+  // one it is following. Returns that projection.
+  locate() {
+    const track = this.track;
+    const mp = this.mainProj;
+    const tp = this.trailProj;
+    const x = this.pos.x;
+    const z = this.pos.z;
+    this.zone = null;
+    this.overlap = false; // the highway projection is fresh too (fork and merge zones)
+    let t = this.trail;
+    if (t) {
+      t.project(x, z, this.trailHint, tp);
+      this.trailHint = tp.i;
+      if (tp.ls >= t.length || tp.ls <= 0) t = null;
+      else if (tp.ls <= t.forkEnd || tp.ls >= t.mergeStart) {
+        this.projectMain(tp.s);
+        this.overlap = true;
+        if (!track.forced) {
+          this.zone = t;
+          if (Math.abs(mp.d) < Math.abs(tp.d) - SWITCH_MARGIN) t = null;
+        }
+      }
+      if (!t && !this.overlap) this.projectMain(tp.s);
+    } else {
+      this.projectMain(-1);
+      const c = track.trailAt(mp.s);
+      if (c && (track.forced || c.inZone(mp.s))) {
+        c.project(x, z, Math.round(c.localS(mp.s) / c.spacing), tp);
+        this.trailHint = tp.i;
+        if (tp.ls > 0 && tp.ls < c.length) {
+          this.overlap = true;
+          if (track.forced) t = c;
+          else {
+            this.zone = c;
+            if (Math.abs(tp.d) < Math.abs(mp.d) - SWITCH_MARGIN) t = c;
+          }
+        }
+      }
+    }
+    this.trail = t;
+    this.proj = t ? tp : mp;
+    return this.proj;
+  }
+
+  // Highway projection; `nearS` seeds the search when coming off a trail.
+  projectMain(nearS) {
+    if (nearS >= 0) this.hint = this.track.index(nearS).i;
+    this.track.project(this.pos.x, this.pos.z, this.hint, this.mainProj);
+    this.hint = this.mainProj.i;
   }
 
   get speed() {
     return this.vel.length();
   }
 
-  updateSurface(d) {
-    surfaceMix(this.track.halfWidth, d, this.mix);
-    blendSurface(this.mix, this.surf);
-    this.surface = dominantSurface(this.mix);
+  // Surface under the tyres, then the weather on top: a wet road loses grip, dirt turns to mud,
+  // standing water in a puddle drags and slides.
+  updateSurface() {
+    const track = this.track;
+    const pr = this.proj;
+    this.onWood = false;
+    if (pr.trail) trailMix(track.halfWidth, this.overlap ? this.mainProj.d : null, pr.d, TRAIL.core, this.mix);
+    else if (track.onBridge(pr.s)) {
+      deckMix(this.mix);
+      this.onWood = true;
+    } else surfaceMix(track.halfWidth, pr.d, this.mix);
+    const S = blendSurface(this.mix, this.surf);
+    this.surface = this.onWood ? 'wood' : dominantSurface(this.mix);
+    this.puddle = 0;
+    if (track.wet > 0) {
+      const m = this.mix;
+      const wg = wetGrip(track.wet);
+      const loose = 1 - 0.08 * track.wet;
+      const k = m.asphalt * wg.grip + m.dirt * wg.mud + (m.gravel + m.grass) * loose;
+      S.grip *= k;
+      S.driftGrip *= m.asphalt * wg.driftGrip + m.dirt * wg.mud + (m.gravel + m.grass) * loose;
+      S.steer *= wg.steer;
+      if (!pr.trail && !this.onWood && m.asphalt > 0.5) {
+        const p = track.puddleAt(pr.s, pr.d);
+        if (p > 0.1) {
+          this.puddle = p;
+          S.grip *= 1 + (PUDDLE.grip - 1) * p;
+          S.driftGrip *= 1 + (PUDDLE.grip - 1) * p * 0.5;
+          S.steer *= 1 + (PUDDLE.steer - 1) * p;
+          S.drag += PUDDLE.drag * p;
+        }
+      }
+    }
+  }
+
+  // Keeps the car inside one wall: `side` +1 = the right of projection p, -1 = the left.
+  wall(p, side, limit) {
+    const over = p.d * side - limit;
+    if (over <= 0) return;
+    this.pos.x -= p.rx * side * over;
+    this.pos.z -= p.rz * side * over;
+    const vn = (this.vel.x * p.rx + this.vel.y * p.rz) * side;
+    if (vn > 0) {
+      this.vel.x -= p.rx * side * vn * 1.25;
+      this.vel.y -= p.rz * side * vn * 1.25;
+      const loss = Math.min(0.3, vn * 0.018);
+      this.vel.multiplyScalar(1 - loss);
+      // Glance off: turn the nose back toward the road direction.
+      const roadHeading = Math.atan2(-p.tz, p.tx);
+      let diff = roadHeading - this.heading;
+      diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+      if (Math.abs(diff) < Math.PI / 2) this.heading += diff * Math.min(1, 0.04 * vn);
+      if (vn > 9 && this.drifting) this.endDrift('wall');
+      this.emit('wall', vn);
+      this.wallScrape = 0.15;
+    }
   }
 
   // Letting go of the drift now would land a Perfect Exit (HUD hint).
@@ -204,9 +323,8 @@ export class Vehicle {
   step(dt, input, time) {
     const P = this.params;
     const track = this.track;
-    const pr = track.project(this.pos.x, this.pos.z, this.hint, this.proj);
-    this.hint = pr.i;
-    this.updateSurface(pr.d);
+    let pr = this.locate();
+    this.updateSurface();
     const S = this.surf;
     if (this.perfectT > 0) this.perfectT = Math.max(0, this.perfectT - dt);
 
@@ -299,7 +417,7 @@ export class Vehicle {
         const points = q * mag * dt * 12;
         this.driftScore += points;
         // Drift Touge (`proximity` on): hugging the guardrail pays extra.
-        this.nearRail = this.proximity ? proximityFactor(pr.d, track.wallLimit) : 0;
+        this.nearRail = this.proximity ? proximityFactor(pr.d, pr.trail ? pr.trail.wallLimitAt(pr.ls) : track.wallLimit) : 0;
         if (this.nearRail > 0 && q > 0) {
           const bonus = points * PROXIMITY.bonus * this.nearRail;
           this.driftScore += bonus;
@@ -330,8 +448,7 @@ export class Vehicle {
     // Integrate horizontal motion.
     this.pos.x += this.vel.x * dt;
     this.pos.z += this.vel.y * dt;
-    track.project(this.pos.x, this.pos.z, this.hint, pr);
-    this.hint = pr.i;
+    pr = this.locate();
 
     // Vertical: follow the ground or fly.
     const ground = pr.y;
@@ -361,29 +478,19 @@ export class Vehicle {
       }
     }
 
-    // Barrier fences.
+    // Barrier fences. In a fork or merge zone only the two outer walls of the Y hold the car.
     this.wallScrape = Math.max(0, this.wallScrape - dt);
-    const limit = track.wallLimit;
-    if (Math.abs(pr.d) > limit) {
-      const side = Math.sign(pr.d);
-      const pen = Math.abs(pr.d) - limit;
-      this.pos.x -= pr.rx * side * pen;
-      this.pos.z -= pr.rz * side * pen;
-      const vn = (this.vel.x * pr.rx + this.vel.y * pr.rz) * side;
-      if (vn > 0) {
-        this.vel.x -= pr.rx * side * vn * 1.25;
-        this.vel.y -= pr.rz * side * vn * 1.25;
-        const loss = Math.min(0.3, vn * 0.018);
-        this.vel.multiplyScalar(1 - loss);
-        // Glance off: turn the nose back toward the road direction.
-        const roadHeading = Math.atan2(-pr.tz, pr.tx);
-        let diff = roadHeading - this.heading;
-        diff = Math.atan2(Math.sin(diff), Math.cos(diff));
-        if (Math.abs(diff) < Math.PI / 2) this.heading += diff * Math.min(1, 0.04 * vn);
-        if (vn > 9 && this.drifting) this.endDrift('wall');
-        this.emit('wall', vn);
-        this.wallScrape = 0.15;
-      }
+    const zone = this.zone;
+    if (zone) {
+      this.wall(this.mainProj, -zone.side, track.wallLimit);
+      this.wall(this.trailProj, zone.side, zone.wallLimitAt(this.trailProj.ls));
+    } else if (this.trail) {
+      const limit = this.trail.wallLimitAt(pr.ls);
+      this.wall(pr, 1, limit);
+      this.wall(pr, -1, limit);
+    } else {
+      this.wall(pr, 1, track.wallLimit);
+      this.wall(pr, -1, track.wallLimit);
     }
 
     // Wrong way?
@@ -397,8 +504,9 @@ export class Vehicle {
     } else {
       const fa = fx * pr.tx + fz * pr.tz;
       const fr = fx * pr.rx + fz * pr.rz;
-      const front = track.heightAt(pr.s + 1.3 * fa, pr.d + 1.3 * fr);
-      const back = track.heightAt(pr.s - 1.3 * fa, pr.d - 1.3 * fr);
+      const t = pr.trail;
+      const front = t ? t.heightAt(pr.ls + 1.3 * fa) : track.heightAt(pr.s + 1.3 * fa, pr.d + 1.3 * fr);
+      const back = t ? t.heightAt(pr.ls - 1.3 * fa) : track.heightAt(pr.s - 1.3 * fa, pr.d - 1.3 * fr);
       targetPitch = Math.atan2(front - back, 2.6);
     }
     this.pitch += (targetPitch - this.pitch) * Math.min(1, dt * (this.airborne ? 3 : 14));

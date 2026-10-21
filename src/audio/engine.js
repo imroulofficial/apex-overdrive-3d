@@ -348,6 +348,21 @@ export class EngineVoice {
     src(noiseSource(mix, { buffer: mix.wobble, rate: 1.6 })).connect(gain(ac, 0.4)).connect(swish.gain);
     this.grassLp = filter(ac, 'lowpass', 900, 0.5);
     src(noiseSource(mix, { buffer: mix.pink })).connect(this.grassLp).connect(swish).connect(this.grassGain);
+
+    // Timber bridge deck: every plank seam knocks the tyres (a chopped, hollow low-mid knock at
+    // speed / plank pitch) over the boom of the empty span underneath.
+    this.woodGain = gain(ac, 0);
+    this.woodGain.connect(dest);
+    this.woodGain.connect(gain(ac, 0.4)).connect(mix.space);
+    const knock = src(noiseSource(mix, { buffer: mix.pink }));
+    this.woodBp = filter(ac, 'bandpass', 210, 2.2);
+    const seams = gain(ac, 0.5);
+    this.woodSeams = src(ac.createOscillator());
+    this.woodSeams.type = 'square';
+    this.woodSeams.connect(gain(ac, 0.5)).connect(seams.gain);
+    knock.connect(this.woodBp).connect(seams).connect(gain(ac, 5)).connect(this.woodGain);
+    const boom = filter(ac, 'lowpass', 95, 7);
+    src(noiseSource(mix, { buffer: mix.pink })).connect(boom).connect(gain(ac, 2.6)).connect(this.woodGain);
   }
 
   start(t = this.ac.currentTime) {
@@ -358,7 +373,7 @@ export class EngineVoice {
   stop(t = this.ac.currentTime, fade = 0.12) {
     this.out.gain.cancelScheduledValues(t);
     this.out.gain.setTargetAtTime(0, t, fade / 3);
-    for (const g of [this.airGain, this.howlGain, this.windGain, this.skidGain, this.gravelGain, this.grassGain]) {
+    for (const g of [this.airGain, this.howlGain, this.windGain, this.skidGain, this.gravelGain, this.grassGain, this.woodGain]) {
       g.gain.cancelScheduledValues(t);
       g.gain.setTargetAtTime(0, t, fade / 3);
     }
@@ -374,9 +389,10 @@ export class EngineVoice {
   }
 
   // s: { rpm, load 0..1, boost 0..1, tier 0..2, speed 0..1, skid 0..1, slip (rad), cut 0..1,
-  //      gravel 0..1, grass 0..1 (share of the tyres on each), volume 0..1 }
+  //      gravel 0..1, grass 0..1 (share of the tyres on each), wood 0..1 (on the bridge deck),
+  //      mps (road speed, m/s, for the plank seams), volume 0..1 }
   set(s, t, tc = 0.035) {
-    const { rpm, load = 1, boost = 0, tier = 0, speed = 0, skid = 0, slip = 0, cut = 0, gravel = 0, grass = 0, volume = 1 } = s;
+    const { rpm, load = 1, boost = 0, tier = 0, speed = 0, skid = 0, slip = 0, cut = 0, gravel = 0, grass = 0, wood = 0, mps = 0, volume = 1 } = s;
     const r = clamp((rpm - IDLE) / (REDLINE - IDLE), 0, 1.1);
     for (const { src, g, L } of this.loops) {
       this.p(src.playbackRate, rpm / L.rpm, t, tc);
@@ -415,6 +431,9 @@ export class EngineVoice {
     this.p(this.gravelRumble.frequency, 90 + speed * 220, t, 0.1);
     this.p(this.grassGain.gain, grass * roll * 0.42 * volume, t, 0.08);
     this.p(this.grassLp.frequency, 500 + speed * 1400, t, 0.1);
+    this.p(this.woodGain.gain, wood * Math.min(1, speed * 3) * 0.55 * volume, t, 0.04);
+    this.p(this.woodSeams.frequency, Math.max(4, mps / 0.6), t, 0.05);
+    this.p(this.woodBp.frequency, 180 + speed * 140, t, 0.1);
     this.p(this.out.gain, volume * (0.1 + 0.055 * load) * (1 - 0.55 * cut), t, cut ? 0.02 : tc);
   }
 }

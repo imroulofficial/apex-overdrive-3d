@@ -13,6 +13,7 @@
 // scores are provisional until each chapter's tracks are tuned.
 import { stageCoinReward } from './economy.js';
 import { RIVAL_SETS } from './rivals.js';
+import { WEATHER } from './weather.js';
 
 export const GAME_MODES = {
   Classic: { id: 'Classic', name: 'Classic Expedition', blurb: 'Outrun 5 rivals to the line', solo: false },
@@ -22,36 +23,40 @@ export const GAME_MODES = {
   BossDuel: { id: 'BossDuel', name: 'Boss Duel', blurb: '1v1 against the regional champion', solo: false },
 };
 
-export const WEATHER = {
-  GoldenHour: { id: 'GoldenHour', name: 'Golden Hour' },
-  Fog: { id: 'Fog', name: 'Coastal Fog' },
-  Rain: { id: 'Rain', name: 'Light Rain' },
-  Midday: { id: 'Midday', name: 'Crisp Midday' },
-  Dusk: { id: 'Dusk', name: 'Overcast Dusk' },
-};
+// Weather presets live in data/weather.js (sky, sun, fog, wet road, rain, bloom).
+export { WEATHER } from './weather.js';
 
 // Stretches of a chapter's track that stages race on. `from`/`to` are lap fractions of the
-// track spline; a circuit runs `laps` full laps, a sprint runs from `from` to `to` once.
-// `length` is an estimate in metres used to set target times until the track is tuned.
+// track spline (of the reversed spline on a `reverse` route); a circuit runs `laps` full laps,
+// a sprint runs from `from` to `to` once. `route` is the variation (race/routes.js ROUTES):
+// circuit, reverse, sprint, or redwood (the highway is closed along every redwood trail).
+// `length` is metres actually driven, used to set target times (tests check it against the
+// built track).
 export const TRACK_SEGMENTS = {
-  // Chapter 1 · Emerald Coast (src/data/tracks.js EMERALD_COAST, ~2.9 km per lap)
-  'ec-coastal-loop': { id: 'ec-coastal-loop', trackId: 'emerald-coast', name: 'Coastal Loop', layout: 'circuit', laps: 2, from: 0, to: 1, length: 5800 },
-  'ec-harbour-hotlap': { id: 'ec-harbour-hotlap', trackId: 'emerald-coast', name: 'Harbour Hot Lap', layout: 'circuit', laps: 1, from: 0, to: 1, length: 2900 },
-  'ec-lighthouse-sprint': { id: 'ec-lighthouse-sprint', trackId: 'emerald-coast', name: 'Lighthouse Sprint', layout: 'sprint', laps: 1, from: 0, to: 0.45, length: 1300 },
-  'ec-cliffside-run': { id: 'ec-cliffside-run', trackId: 'emerald-coast', name: 'Cliffside Run', layout: 'sprint', laps: 1, from: 0.4, to: 0.95, length: 1600 },
-  'ec-grand-tour': { id: 'ec-grand-tour', trackId: 'emerald-coast', name: 'Grand Coastal Tour', layout: 'circuit', laps: 3, from: 0, to: 1, length: 8700 },
+  // Chapter 1 · Emerald Coast (src/data/tracks.js EMERALD_COAST, 2.8 km per lap)
+  'ec-coastal-loop': { id: 'ec-coastal-loop', trackId: 'emerald-coast', name: 'Coastal Loop', route: 'circuit', layout: 'circuit', laps: 2, from: 0, to: 1, length: 5600 },
+  'ec-harbour-hotlap': { id: 'ec-harbour-hotlap', trackId: 'emerald-coast', name: 'Harbour Hot Lap', route: 'circuit', layout: 'circuit', laps: 1, from: 0, to: 1, length: 2800 },
+  'ec-lighthouse-sprint': { id: 'ec-lighthouse-sprint', trackId: 'emerald-coast', name: 'Lighthouse Sprint', route: 'sprint', layout: 'sprint', laps: 1, from: 0, to: 0.45, length: 1260 },
+  'ec-cliffside-run': { id: 'ec-cliffside-run', trackId: 'emerald-coast', name: 'Cliffside Run', route: 'sprint', layout: 'sprint', laps: 1, from: 0.43, to: 0.95, length: 1460 },
+  'ec-grand-tour': { id: 'ec-grand-tour', trackId: 'emerald-coast', name: 'Grand Coastal Tour', route: 'circuit', layout: 'circuit', laps: 3, from: 0, to: 1, length: 8400 },
+  // Phase 12 route variations.
+  'ec-reverse-loop': { id: 'ec-reverse-loop', trackId: 'emerald-coast', name: 'Coastal Loop Reverse', route: 'reverse', reverse: true, layout: 'circuit', laps: 2, from: 0, to: 1, length: 5600 },
+  'ec-reverse-hotlap': { id: 'ec-reverse-hotlap', trackId: 'emerald-coast', name: 'Reverse Hot Lap', route: 'reverse', reverse: true, layout: 'circuit', laps: 1, from: 0, to: 1, length: 2800 },
+  'ec-gorge-sprint': { id: 'ec-gorge-sprint', trackId: 'emerald-coast', name: 'Gorge Bridge Sprint', route: 'sprint', reverse: true, layout: 'sprint', laps: 1, from: 0, to: 0.39, length: 1090 },
+  'ec-redwood-loop': { id: 'ec-redwood-loop', trackId: 'emerald-coast', name: 'Redwood Loop', route: 'redwood', forced: true, layout: 'circuit', laps: 2, from: 0, to: 1, length: 5270 },
+  'ec-redwood-hotlap': { id: 'ec-redwood-hotlap', trackId: 'emerald-coast', name: 'Redwood Hot Lap', route: 'redwood', forced: true, layout: 'circuit', laps: 1, from: 0, to: 1, length: 2640 },
   // Chapter 2 · Alpine Summit (track planned)
-  'as-summit-loop': { id: 'as-summit-loop', trackId: 'alpine-summit', name: 'Summit Loop', layout: 'circuit', laps: 2, from: 0, to: 1, length: 6400 },
-  'as-village-sector': { id: 'as-village-sector', trackId: 'alpine-summit', name: 'Cobblestone Village', layout: 'circuit', laps: 1, from: 0, to: 1, length: 3200 },
-  'as-hairpin-ascent': { id: 'as-hairpin-ascent', trackId: 'alpine-summit', name: 'Hairpin Ascent', layout: 'sprint', laps: 1, from: 0, to: 0.5, length: 1600 },
-  'as-glacier-descent': { id: 'as-glacier-descent', trackId: 'alpine-summit', name: 'Glacier Descent', layout: 'sprint', laps: 1, from: 0.5, to: 1, length: 1600 },
-  'as-canyon-pass': { id: 'as-canyon-pass', trackId: 'alpine-summit', name: 'Canyon Pass', layout: 'sprint', laps: 1, from: 0.2, to: 0.8, length: 1900 },
+  'as-summit-loop': { id: 'as-summit-loop', trackId: 'alpine-summit', name: 'Summit Loop', route: 'circuit', layout: 'circuit', laps: 2, from: 0, to: 1, length: 6400 },
+  'as-village-sector': { id: 'as-village-sector', trackId: 'alpine-summit', name: 'Cobblestone Village', route: 'circuit', layout: 'circuit', laps: 1, from: 0, to: 1, length: 3200 },
+  'as-hairpin-ascent': { id: 'as-hairpin-ascent', trackId: 'alpine-summit', name: 'Hairpin Ascent', route: 'sprint', layout: 'sprint', laps: 1, from: 0, to: 0.5, length: 1600 },
+  'as-glacier-descent': { id: 'as-glacier-descent', trackId: 'alpine-summit', name: 'Glacier Descent', route: 'sprint', layout: 'sprint', laps: 1, from: 0.5, to: 1, length: 1600 },
+  'as-canyon-pass': { id: 'as-canyon-pass', trackId: 'alpine-summit', name: 'Canyon Pass', route: 'sprint', layout: 'sprint', laps: 1, from: 0.2, to: 0.8, length: 1900 },
   // Chapter 3 · Neon City (track planned)
-  'nc-downtown-loop': { id: 'nc-downtown-loop', trackId: 'neon-city', name: 'Downtown Loop', layout: 'circuit', laps: 2, from: 0, to: 1, length: 6000 },
-  'nc-arcade-district': { id: 'nc-arcade-district', trackId: 'neon-city', name: 'Arcade District', layout: 'circuit', laps: 1, from: 0, to: 1, length: 3000 },
-  'nc-harbour-bridge': { id: 'nc-harbour-bridge', trackId: 'neon-city', name: 'Harbour Bridge', layout: 'sprint', laps: 1, from: 0, to: 0.5, length: 1500 },
-  'nc-skyline-drift': { id: 'nc-skyline-drift', trackId: 'neon-city', name: 'Skyline Switchbacks', layout: 'sprint', laps: 1, from: 0.45, to: 1, length: 1650 },
-  'nc-grand-prix': { id: 'nc-grand-prix', trackId: 'neon-city', name: 'Neon Grand Prix', layout: 'circuit', laps: 3, from: 0, to: 1, length: 9000 },
+  'nc-downtown-loop': { id: 'nc-downtown-loop', trackId: 'neon-city', name: 'Downtown Loop', route: 'circuit', layout: 'circuit', laps: 2, from: 0, to: 1, length: 6000 },
+  'nc-arcade-district': { id: 'nc-arcade-district', trackId: 'neon-city', name: 'Arcade District', route: 'circuit', layout: 'circuit', laps: 1, from: 0, to: 1, length: 3000 },
+  'nc-harbour-bridge': { id: 'nc-harbour-bridge', trackId: 'neon-city', name: 'Harbour Bridge', route: 'sprint', layout: 'sprint', laps: 1, from: 0, to: 0.5, length: 1500 },
+  'nc-skyline-drift': { id: 'nc-skyline-drift', trackId: 'neon-city', name: 'Skyline Switchbacks', route: 'sprint', layout: 'sprint', laps: 1, from: 0.45, to: 1, length: 1650 },
+  'nc-grand-prix': { id: 'nc-grand-prix', trackId: 'neon-city', name: 'Neon Grand Prix', route: 'circuit', layout: 'circuit', laps: 3, from: 0, to: 1, length: 9000 },
 };
 
 // `starGate`: total career stars needed to enter the chapter (on top of clearing the previous
@@ -147,8 +152,9 @@ export function describeObjective(o) {
 
 // Finish and mastery objectives follow from the mode, the segment and how far into the
 // chapter the stage is (`k`, 0-1): targets tighten by up to 6% across a chapter.
-function finishAndMastery(mode, seg, chapter, k) {
-  const pace = chapter.pace * (1 + 0.06 * k);
+function finishAndMastery(mode, seg, chapter, k, weather) {
+  // Wet roads and fog are slower: the clock allows for them.
+  const pace = chapter.pace * (1 + 0.06 * k) * WEATHER[weather].pace;
   const run = seg.length / pace; // par time for the whole run
   const lapTime = seg.length / seg.laps / (pace * 1.08);
   const mastery = seg.layout === 'circuit' && seg.laps > 1 ? lap(lapTime) : time(run / 1.08);
@@ -170,27 +176,30 @@ function finishAndMastery(mode, seg, chapter, k) {
 
 // [mode, segment, weather, rivalSet, [skill, amount]]
 const CHAPTER_STAGES = {
+  // Every Chapter 1 stage on one of the four route variations: full circuit, reverse,
+  // point-to-point sprint, and the Redwood Loop through the trails.
   'emerald-coast': [
     ['Classic', 'ec-coastal-loop', 'GoldenHour', 'coast-rookie', ['smash', 5]],
     ['Classic', 'ec-lighthouse-sprint', 'GoldenHour', 'coast-rookie', ['drift', 200]],
     ['TimeTrial', 'ec-harbour-hotlap', 'GoldenHour', 'solo', ['smash', 4]],
-    ['Classic', 'ec-cliffside-run', 'Fog', 'coast-rookie', ['air', 2]],
+    ['Classic', 'ec-redwood-loop', 'Fog', 'coast-rookie', ['air', 2]],
     ['DriftTouge', 'ec-cliffside-run', 'GoldenHour', 'solo', ['drift', 350]],
-    ['Classic', 'ec-coastal-loop', 'Fog', 'coast-rookie', ['pulse', 1]],
+    ['Classic', 'ec-reverse-loop', 'Fog', 'coast-rookie', ['pulse', 1]],
     ['Elimination', 'ec-coastal-loop', 'GoldenHour', 'coast-rookie', ['smash', 8]],
-    ['TimeTrial', 'ec-lighthouse-sprint', 'Rain', 'solo', ['air', 3]],
-    ['Classic', 'ec-harbour-hotlap', 'Rain', 'coast-pro', ['drift', 300]],
-    ['DriftTouge', 'ec-lighthouse-sprint', 'Fog', 'solo', ['smash', 6]],
+    ['TimeTrial', 'ec-gorge-sprint', 'Rain', 'solo', ['smash', 6]],
+    ['Classic', 'ec-reverse-hotlap', 'Rain', 'coast-pro', ['drift', 300]],
+    ['DriftTouge', 'ec-redwood-hotlap', 'Fog', 'solo', ['smash', 6]],
     ['Classic', 'ec-cliffside-run', 'GoldenHour', 'coast-pro', ['pulse', 2]],
-    ['Elimination', 'ec-harbour-hotlap', 'Rain', 'coast-pro', ['drift', 350]],
-    ['TimeTrial', 'ec-cliffside-run', 'Fog', 'solo', ['smash', 8]],
+    ['Elimination', 'ec-redwood-loop', 'Rain', 'coast-pro', ['drift', 350]],
+    ['TimeTrial', 'ec-reverse-hotlap', 'Fog', 'solo', ['smash', 8]],
     ['Classic', 'ec-coastal-loop', 'Rain', 'coast-pro', ['air', 4]],
-    ['DriftTouge', 'ec-harbour-hotlap', 'Rain', 'solo', ['drift', 450]],
+    ['DriftTouge', 'ec-reverse-hotlap', 'Rain', 'solo', ['drift', 450]],
     ['Classic', 'ec-lighthouse-sprint', 'Fog', 'coast-pro', ['smash', 10]],
-    ['Elimination', 'ec-coastal-loop', 'Fog', 'coast-pro', ['pulse', 2]],
-    ['TimeTrial', 'ec-coastal-loop', 'GoldenHour', 'solo', ['drift', 400]],
+    ['Elimination', 'ec-reverse-loop', 'Fog', 'coast-pro', ['pulse', 2]],
+    ['TimeTrial', 'ec-redwood-loop', 'GoldenHour', 'solo', ['drift', 400]],
     ['Classic', 'ec-grand-tour', 'GoldenHour', 'coast-pro', ['air', 5]],
-    ['BossDuel', 'ec-grand-tour', 'Rain', 'coast-boss', ['drift', 500]],
+    // Finale: the Coastal Champion, three laps, in a storm off the sea.
+    ['BossDuel', 'ec-grand-tour', 'Storm', 'coast-boss', ['drift', 500]],
   ],
   'alpine-summit': [
     ['Classic', 'as-summit-loop', 'Midday', 'alpine-club', ['drift', 350]],
@@ -248,7 +257,7 @@ function buildStages() {
       const index = stages.length;
       const seg = TRACK_SEGMENTS[segmentId];
       const k = rows.length > 1 ? i / (rows.length - 1) : 0;
-      const [finish, mastery] = finishAndMastery(mode, seg, chapter, k);
+      const [finish, mastery] = finishAndMastery(mode, seg, chapter, k, weather);
       stages.push({
         stageId: `${chapter.id.split('-').map((w) => w[0]).join('')}-${String(i + 1).padStart(2, '0')}`,
         index, // position in career.stageStars

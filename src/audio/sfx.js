@@ -348,4 +348,44 @@ export const race = {
     const t = now(mix, at);
     tone(mix, mix.ui, { t, type: 'triangle', freq: 1500 + i * 40, to: 2400, glide: 0.05, peak: 0.12, decay: 0.08 });
   },
+  // Thunder: close strikes crack first; every strike rolls on in a long, wandering low rumble.
+  thunder(mix, distance = 0.5, at) {
+    const t = now(mix, at);
+    const near = 1 - Math.min(1, Math.max(0, distance));
+    if (near > 0.4) burst(mix, mix.sfx, { t, type: 'highpass', freq: 1800, to: 500, peak: 0.5 * near, decay: 0.35, glide: 0.3 });
+    burst(mix, mix.space, { t, buffer: mix.pink, type: 'lowpass', freq: 320 + near * 300, to: 70, q: 0.6, attack: 0.08, peak: 0.9, hold: 0.4, decay: 3.2, glide: 3 });
+    for (let i = 0; i < 4; i++) {
+      burst(mix, mix.sfx, { t: t + 0.2 + Math.random() * 1.8, buffer: mix.pink, type: 'lowpass', freq: 160 + Math.random() * 120, q: 1.5, attack: 0.1, peak: 0.5 + near * 0.3, decay: 0.9 });
+    }
+  },
 };
+
+// Continuous rain hiss (see core/audio.js createRainSound).
+export function rainBed(mix) {
+  const ac = mix.ac;
+  const out = gain(ac, 0);
+  out.connect(mix.sfx);
+  const hiss = noiseSource(mix);
+  const hp = filter(ac, 'highpass', 1400, 0.5);
+  const lp = filter(ac, 'lowpass', 7500, 0.5);
+  hiss.connect(hp).connect(lp).connect(out);
+  // Heavy drops on the roof: sparse low patter.
+  const patter = noiseSource(mix, { buffer: mix.wobble, rate: 23 });
+  const pat = filter(ac, 'bandpass', 900, 1.2);
+  patter.connect(pat).connect(gain(ac, 0.6)).connect(out);
+  hiss.start(ac.currentTime, Math.random());
+  patter.start(ac.currentTime, Math.random());
+  let level = -1;
+  return {
+    set(v) {
+      if (Math.abs(v - level) < 0.01) return;
+      level = v;
+      out.gain.setTargetAtTime(v * 0.16, ac.currentTime, 0.4);
+    },
+    stop() {
+      out.gain.setTargetAtTime(0, ac.currentTime, 0.15);
+      hiss.stop(ac.currentTime + 0.8);
+      patter.stop(ac.currentTime + 0.8);
+    },
+  };
+}
