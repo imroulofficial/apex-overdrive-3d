@@ -55,10 +55,11 @@ export const CARS = [
   car('mz-monza', 'Monza R', 'B', 'Super GT', { speed: 72, accel: 70, handling: 70, nitro: 62 }, 'hyper', { type: 'stars', stars: 75, price: 45000 }),
 
   // ---- Tier A · Hyper & Supercars ----
-  // Blueprint name for the Supercar Bundle hypercar is "Valkyrie GT-R"; the shipped car is
-  // still RP-X Hyperion. The id stays stable either way (saves and Play grants use it).
-  car('rpx-hyperion', 'RP-X Hyperion', 'A', 'Hypercar', { speed: 74, accel: 72, handling: 70, nitro: 66 }, 'hyper', { type: 'iap', product: 'supercar_bundle' }, {
-    model: { url: 'assets/models/rpx_hyperion.glb', length: 4.7 },
+  // The Supercar Bundle hypercar, Valkyrie GT-R (blueprint name; shipped as "RP-X Hyperion"
+  // up to 0.7.0). Its id keeps the old name on purpose: saves, Firestore documents and the
+  // Play grant all refer to 'rpx-hyperion', so renaming the car never needs a migration.
+  car('rpx-hyperion', 'Valkyrie GT-R', 'A', 'Hypercar', { speed: 74, accel: 72, handling: 70, nitro: 66 }, 'hyper', { type: 'iap', product: 'supercar_bundle' }, {
+    model: { url: 'assets/models/valkyrie_gtr.glb', length: 4.7 },
     released: true,
   }),
   car('tm-tempesta', 'Tempesta V12', 'A', 'Hypercar', { speed: 78, accel: 74, handling: 72, nitro: 70 }, 'hyper', { type: 'stars', stars: 120, price: 60000 }, { length: 4.7 }),

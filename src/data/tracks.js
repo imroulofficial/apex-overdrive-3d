@@ -40,6 +40,10 @@ export const EMERALD_COAST = {
   // Smashable props: cone slaloms and wooden barricades, as lap fractions.
   slaloms: [0.035, 0.45, 0.6, 0.92],
   barricades: [0.175, 0.275, 0.5, 0.75, 0.8],
+  // Breakables on the shoulder: fruit stalls along the straights, neon signposts on the
+  // outside of corner entries (lap fractions).
+  fruitStalls: [0.06, 0.13, 0.66, 0.69, 0.88, 0.97],
+  neonSigns: [0.21, 0.305, 0.395, 0.47, 0.565, 0.735],
   // Coastline (sea begins south of this z) used by the terrain and scenery.
   coastZ: (x) => 254 + 16 * Math.sin(x / 150 + 0.6) + 9 * Math.sin(x / 47) + 46 * Math.exp(-(((x - 250) / 85) ** 2)),
   lighthouseX: 255,

@@ -331,6 +331,23 @@ export class EngineVoice {
     const sawBp = filter(ac, 'bandpass', 900, 5);
     this.skidSawBp = sawBp;
     this.skidSaw.connect(sawBp).connect(gain(ac, 0.15)).connect(this.skidGain);
+
+    // Off the asphalt. Gravel: stones crunching and pinging off the floor pan (bright noise,
+    // chopped by a fast random wander) over a low rumble. Grass: a soft, swishing hiss.
+    this.gravelGain = gain(ac, 0);
+    this.gravelGain.connect(dest);
+    const grit = src(noiseSource(mix));
+    const chop = gain(ac, 0.55);
+    src(noiseSource(mix, { buffer: mix.wobble, rate: 7 })).connect(gain(ac, 0.6)).connect(chop.gain);
+    grit.connect(filter(ac, 'highpass', 900, 0.7)).connect(filter(ac, 'peaking', 2600, 0.9)).connect(chop).connect(this.gravelGain);
+    this.gravelRumble = filter(ac, 'lowpass', 160, 0.9);
+    src(noiseSource(mix, { buffer: mix.pink })).connect(this.gravelRumble).connect(gain(ac, 2.2)).connect(this.gravelGain);
+    this.grassGain = gain(ac, 0);
+    this.grassGain.connect(dest);
+    const swish = gain(ac, 0.6);
+    src(noiseSource(mix, { buffer: mix.wobble, rate: 1.6 })).connect(gain(ac, 0.4)).connect(swish.gain);
+    this.grassLp = filter(ac, 'lowpass', 900, 0.5);
+    src(noiseSource(mix, { buffer: mix.pink })).connect(this.grassLp).connect(swish).connect(this.grassGain);
   }
 
   start(t = this.ac.currentTime) {
@@ -341,7 +358,7 @@ export class EngineVoice {
   stop(t = this.ac.currentTime, fade = 0.12) {
     this.out.gain.cancelScheduledValues(t);
     this.out.gain.setTargetAtTime(0, t, fade / 3);
-    for (const g of [this.airGain, this.howlGain, this.windGain, this.skidGain]) {
+    for (const g of [this.airGain, this.howlGain, this.windGain, this.skidGain, this.gravelGain, this.grassGain]) {
       g.gain.cancelScheduledValues(t);
       g.gain.setTargetAtTime(0, t, fade / 3);
     }
@@ -357,9 +374,9 @@ export class EngineVoice {
   }
 
   // s: { rpm, load 0..1, boost 0..1, tier 0..2, speed 0..1, skid 0..1, slip (rad), cut 0..1,
-  //      volume 0..1 }
+  //      gravel 0..1, grass 0..1 (share of the tyres on each), volume 0..1 }
   set(s, t, tc = 0.035) {
-    const { rpm, load = 1, boost = 0, tier = 0, speed = 0, skid = 0, slip = 0, cut = 0, volume = 1 } = s;
+    const { rpm, load = 1, boost = 0, tier = 0, speed = 0, skid = 0, slip = 0, cut = 0, gravel = 0, grass = 0, volume = 1 } = s;
     const r = clamp((rpm - IDLE) / (REDLINE - IDLE), 0, 1.1);
     for (const { src, g, L } of this.loops) {
       this.p(src.playbackRate, rpm / L.rpm, t, tc);
@@ -393,6 +410,11 @@ export class EngineVoice {
     this.p(this.skidSaw.frequency, sf * 0.5, t, 0.06);
     this.p(this.skidSawBp.frequency, sf, t, 0.06);
     this.p(this.skidGain.gain, skid * 0.7 * volume, t, skid > 0 ? 0.04 : 0.09);
+    const roll = Math.min(1, speed * 2.2) * (1 + Math.min(1, Math.abs(slip) * 2));
+    this.p(this.gravelGain.gain, gravel * roll * 0.32 * volume, t, 0.05);
+    this.p(this.gravelRumble.frequency, 90 + speed * 220, t, 0.1);
+    this.p(this.grassGain.gain, grass * roll * 0.42 * volume, t, 0.08);
+    this.p(this.grassLp.frequency, 500 + speed * 1400, t, 0.1);
     this.p(this.out.gain, volume * (0.1 + 0.055 * load) * (1 - 0.55 * cut), t, cut ? 0.02 : tc);
   }
 }

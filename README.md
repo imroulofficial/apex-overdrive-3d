@@ -9,7 +9,23 @@ Offline-first 3D arcade racer for Android by **Red Pen Studio**.
 | Stack | Three.js (WebGL2) + Vite, wrapped with Capacitor 8 |
 | Audience | 13+, no sign-up, no analytics; gameplay is offline, cloud save, ads and Play Billing use the network when available |
 
-## Phase 7: career data model and save schema v2 (this release)
+## Phase 8: driving feel and control schemes (this release)
+
+Blueprint sections 2.2 and 2.3.
+
+- **Drift chaining** (`src/race/driftChain.js`): starting a new drift within 1.6 s of the last one links it and steps the combo up x1.0 → x1.5 → x2.0 → x3.0 (holding one drift for 2.5 s counts as a link too). Each drift banks its points at the current multiplier; the chain pays out when the link window runs out, with a `COMBO x2.0 +N` callout. Every step up adds nitro (+6 / +9 / +14). The drift panel shows live points, the multiplier badge (hotter colour per level), the chain total and a shrinking link timer. A hard wall hit ends the chain early (banked points are kept).
+- **Perfect Exit** (`Track.findCorners` / `Vehicle.endDrift`): corners tighter than 200 m radius are found from the spline curvature, apex at the tightest point. Letting go of a drift (of at least 0.6 s) from 6 m before to 22 m after the apex fires a +7 m/s kick, 1.2 s of extra pull and top speed, +8 nitro, a "PERFECT!" callout, a cyan flash and spark burst. While a release would count, the HUD shows **APEX · RELEASE** and the drift/brake buttons glow. Player only; rivals do not get it.
+- **Control schemes** (Settings → Controls, `src/race/input.js`, stored per device as `settings.controls`):
+  - *Touch Drive* (default): the split left/right steering pad, unchanged.
+  - *Tilt-to-Steer*: roll the phone like a wheel. Gravity gives the absolute angle (24° = full lock, 1.5° dead zone) and the gyroscope rate is blended in (complementary filter) for quick, steady steering. GAS and a big BRAKE pedal on screen. Uses `devicemotion`, which needs **no Android permission or manifest change** (the WebView serves the game from a secure origin; iOS would prompt on selecting Tilt). If no sensor answers, the game says so and the keyboard still steers.
+  - *Virtual Steering Wheel*: an analog wheel on the left (grab it anywhere, 95° = full lock, springs back when released), pedals on the right.
+  - Pedal schemes always drive with the GAS pedal; Auto-accelerate now applies to Touch Drive only.
+- **Surfaces** (`src/race/surface.js`): the concrete shoulder became a 1.8 m gravel/dirt shoulder plus a 2.2 m grass verge up to the guardrail (the rail moved out 2.6 m). Handling blends by how much of the car's width is on each surface: gravel 62% grip, 86% top speed, a little rolling drag and a tug on the wheel; grass 48% grip and 74% top speed. Tyres squeal only on asphalt; gravel crunches over a low rumble and grass swishes (procedural, `src/audio/engine.js`); dust plumes or torn turf behind the car. A small GRAVEL / GRASS tag shows on the speedometer.
+- **Breakable props** (`src/race/props.js`): six fruit stalls on the straights and six neon signposts on the outside of corner entries. They shatter on contact into pooled debris (planks, awning, fruit, glowing glass and sparks) without slowing the car, and count as smashes (nitro and the smash coin bonus).
+- **Valkyrie GT-R**: the Tier A Supercar Bundle hypercar now carries its blueprint name (was RP-X Hyperion). Its id stays `rpx-hyperion`, so existing saves, cloud documents and Play grants keep working with no migration and no Firestore rules change. A drop-in model is now `public/assets/models/valkyrie_gtr.glb`.
+- Race results also report `perfectExits` and `bestCombo`. Version 0.8.0.
+
+## Phase 7: career data model and save schema v2
 
 The data that the stage map, game modes and the full car roster will be built on. Gameplay is unchanged for now: every race is career stage 1 until the stage map arrives, and the garage still shows the two cars that have art.
 
@@ -52,7 +68,7 @@ Fixes from the first device test (22 FPS, white bars, cartoon look, stock icon).
 - **Lighting**: exactly one directional sun with a 512² shadow map (texel-snapped, following the player) plus hemisphere ambient, in the race and in the garage. The garage spotlights and the car's head/tail light sources are now additive floor decals.
 - **Render loop**: pixel ratio capped at 1.5 (1.25 Medium, 1 Low); Auto starts at Medium on phones; the garage planar mirror (a second full render each frame) is High-only; the terrain is split into chunks so it frustum-culls; distant trees and trackside rails do not render into the shadow map.
 - **Look**: procedural asphalt with normal + roughness maps, painted edge and lane lines, cracks and patches; rubbered-in racing line; raised red/white rumble strips; tyre skid marks (one ring-buffer mesh); layered terrain shader (coastal grass, triplanar stratified cliff rock, wet/dry sand); ocean shader with Fresnel sky reflection and sun glint; coast redwoods, palms and undergrowth; clear-coat rival paint, smoked glass and polished alloy rims, all reflecting a cubemap baked from the actual coast at load.
-- **Icons**: adaptive launcher icon (crimson RP-X Hyperion over carbon fibre with a cyan nitro trail), legacy/round icons for every density, a dark launch splash and `tools/icon/out/play-store-512.png`. Regenerate with `node tools/icon/render.mjs` (needs Playwright; see the header of that file).
+- **Icons**: adaptive launcher icon (crimson Valkyrie GT-R over carbon fibre with a cyan nitro trail), legacy/round icons for every density, a dark launch splash and `tools/icon/out/play-store-512.png`. Regenerate with `node tools/icon/render.mjs` (needs Playwright; see the header of that file).
 
 ## Phase 4: zero-cost Firebase cloud save
 
@@ -89,12 +105,12 @@ Fixes from the first device test (22 FPS, white bars, cartoon look, stock icon).
   - Desktop browser: the same calls drive an on-page simulator (striped test banner, skippable interstitial, 3 s rewarded countdown).
 - **Google Play Billing** (`src/monetization/billing.js`, `@capgo/native-purchases`, Play Billing 9):
   - `remove_ads` ($2.99, shown as the No Ads Pack): removes banner and interstitial ads permanently, +5,000 coins and the Red Pen Studio Founder paint.
-  - `supercar_bundle` ($6.99): unlocks the Tier A **RP-X Hyperion**, +25,000 coins and No Ads.
-  - Store dialog (cart button in the top bar, or tapping the locked Hyperion in the **Cars** tab) with localized Play prices; purchases are acknowledged, pending payments unlock when they clear, refunds revoke the entitlement on next launch.
+  - `supercar_bundle` ($6.99): unlocks the Tier A **Valkyrie GT-R**, +25,000 coins and No Ads.
+  - Store dialog (cart button in the top bar, or tapping the locked Valkyrie in the **Cars** tab) with localized Play prices; purchases are acknowledged, pending payments unlock when they clear, refunds revoke the entitlement on next launch.
   - Purchase state is saved on device and re-synced with Play on every launch, so it survives restarts and works offline. Coin bonuses are paid once per install, so Restore never pays twice.
   - **Settings → Restore purchases** (Play compliance).
   - **Sandbox store**: Settings toggle in pre-release builds that simulates both purchases on device with no charge (always on in the desktop browser), plus "Reset purchases" and "Reset crate" for testing. Not present in a `VITE_RELEASE=1` build.
-- **Cars tab and Tier A hypercar**: RP-1 Vanta (starter) and RP-X Hyperion (wing, canards, roof scoop, side blades, yellow calipers; Speed 74 / Nitro 66 / Handling 70 / Grip 68). The selected car is used in the garage and on track; upgrades apply to both.
+- **Cars tab and Tier A hypercar**: RP-1 Vanta (starter) and Valkyrie GT-R (wing, canards, roof scoop, side blades, yellow calipers; Speed 74 / Nitro 66 / Handling 70 / Grip 68). The selected car is used in the garage and on track; upgrades apply to both.
 - **3D model pipeline** (`src/assets/modelLoader.js`): a vehicle spawner that loads `public/assets/models/<car>.glb` with `GLTFLoader` (Draco and Meshopt decoders bundled for offline use) and adapts it to the same car rig as the procedural builder: scaled to length, centred and grounded, wheel nodes re-pivoted to spin and steer, paint materials swapped for the clear-coat paint so the paint shop works, light lenses wired to the light toggle and brake glow, and exhaust anchors for nitro flames. The race bakes whichever rig it gets, and physics never reads meshes, so dropping in a model changes nothing else. A missing or malformed file falls back to the procedural car. Export conventions: [`public/assets/models/README.md`](public/assets/models/README.md).
 
 ## Phase 2: Emerald Coast, arcade physics and the race loop

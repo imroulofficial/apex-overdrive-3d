@@ -501,7 +501,7 @@ function buildVegetation(def, terrain, quality) {
     const x = -1100 + rand() * 2200;
     const z = -900 + rand() * 1250;
     const { h, road, steep } = terrain.sample(x, z);
-    if (h < 3 || road < 17 || steep > 0.3) continue;
+    if (h < 3 || road < 19 || steep > 0.3) continue;
     const coastDist = def.coastZ(x) - z;
     const t = { x, y: h - 0.3, z, rot: rand() * Math.PI * 2, scale: 0.8 + rand() * 0.5 };
     if (coastDist < 110) {
@@ -512,7 +512,7 @@ function buildVegetation(def, terrain, quality) {
     } else if (rand() < 0.012 && redwoods.length < 420 * density) {
       redwoods.push({ ...t, scale: 0.6 + rand() * 0.45 });
     }
-    if (road < 70 && road > 19 && steep < 0.22 && rand() < 0.25 && bushes.length < 900 * density) {
+    if (road < 70 && road > 20 && steep < 0.22 && rand() < 0.25 && bushes.length < 900 * density) {
       bushes.push({ x: x + rand() * 2, y: h - 0.25, z: z + rand() * 2, rot: rand() * 6.28, scale: 0.5 + rand() * 0.8, stretch: 0.7 + rand() * 0.5 });
     }
   }
@@ -545,7 +545,7 @@ function buildRocks(def, terrain) {
     const zc = def.coastZ(x);
     const z = zc - 30 + rand() * 70;
     const { h, road } = terrain.sample(x, z);
-    if (road < 18 || h > 24 || h < -6) continue;
+    if (road < 20 || h > 24 || h < -6) continue;
     items.push({ x, y: h - 0.4, z, rot: rand() * 6.28, scale: 1.5 + rand() * 3.5, stretch: 0.8 + rand() * 0.6 });
   }
   // Sea stacks offshore.

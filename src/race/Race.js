@@ -4,6 +4,7 @@ import { buildTrackMeshes } from './trackMeshes.js';
 import { buildScenery } from './scenery.js';
 import { SmashProps } from './props.js';
 import { Vehicle, statsToParams, NITRO } from './vehicle.js';
+import { DriftChain } from './driftChain.js';
 import { AIDriver } from './ai.js';
 import { CarFactory } from './raceCars.js';
 import { createCar } from '../garage/carModel.js';
@@ -22,8 +23,10 @@ import { BASE_STATS as BASE } from '../data/catalog.js';
 const STEP = 1 / 60;
 const SMOKE = new THREE.Color(0xe9ebee);
 const DUST = new THREE.Color(0xc9b48a);
+const GRASS_BITS = new THREE.Color(0x8a9a52);
 const SPARK = new THREE.Color(0xffb347);
 const PULSE_SPARK = new THREE.Color(0xc062ff);
+const PERFECT_SPARK = new THREE.Color(0x7dffe0);
 const COUNTDOWN_STEP = 0.9;
 const now = () => performance.now() / 1000;
 
@@ -143,7 +146,7 @@ export class Race {
           accel: BASE.accel + r.stats.accel + upgradeBoost,
         });
       }
-      if (!r.vehicle) r.vehicle = new Vehicle(track, params, { passiveNitro: r.isPlayer ? 0.6 : 3.2 });
+      if (!r.vehicle) r.vehicle = new Vehicle(track, params, { passiveNitro: r.isPlayer ? 0.6 : 3.2, skills: r.isPlayer });
       r.vehicle.params = params;
       r.vehicle.reset(s, d);
       if (!r.isPlayer) r.ai = new AIDriver(r.vehicle, track, { aggression: r.aggression, skill: r.skill, laneBias: r.laneBias, rand });
@@ -168,6 +171,10 @@ export class Race {
     this.stateTime = 0;
     this.phase = 'intro';
     this.driftTotal = 0;
+    this.chain ??= new DriftChain();
+    this.chain.reset();
+    this.bestCombo = 1;
+    this.perfects = 0;
     this.smashes = 0;
     this.bigAirs = 0;
     this.airTotal = 0;
@@ -305,6 +312,7 @@ export class Race {
       const h = dt / steps;
       for (let k = 0; k < steps; k++) this.simStep(h, playerInput, k === 0);
       this.updateLaps();
+      this.onChain(this.chain.update(dt));
     }
 
     // Visuals.
@@ -379,9 +387,11 @@ export class Race {
     for (const r of this.racers) {
       const hits = this.props.collide(r.vehicle, this.hits);
       for (const p of hits) {
-        const big = p.type === 'panel';
+        const big = p.type !== 'cone';
+        if (p.type === 'neon' && p.first) this.sparkBurst(p.pos, p.glow);
         if (r.isPlayer) {
-          raceSfx.smash(big);
+          if (p.type === 'stall' || p.type === 'neon') raceSfx.shatter(p.type);
+          else raceSfx.smash(big);
           this.chase.bump(big ? 0.35 : 0.1);
           if (p.first) {
             this.smashes += 1;
@@ -463,7 +473,10 @@ export class Race {
     if (!r.isPlayer) return;
     // Player crossed the line: autopilot takes over while the camera orbits.
     r.ai = new AIDriver(r.vehicle, this.track, { aggression: 0.2, skill: 0.8 });
+    // Bank a drift or chain still running as the player crosses the line.
     if (r.vehicle.drifting) r.vehicle.endDrift();
+    this.processEvents();
+    this.onChain(this.chain.finish());
     this.input.setEnabled(false);
     this.toPhase('finished');
     this.resultShown = false;
@@ -485,6 +498,8 @@ export class Race {
       airTime: Math.round(this.airTotal * 10) / 10,
       pulses: this.pulses,
       smashes: this.smashes,
+      perfectExits: this.perfects,
+      bestCombo: this.bestCombo,
     };
     this.hud.callout(position === 1 ? 'VICTORY!' : `FINISHED ${ordinal(position)}`, 'finish');
     this.onFinish?.(this.result);
@@ -515,19 +530,26 @@ export class Race {
         case 'driftStart':
           raceSfx.chirp();
           this.hud.flash('drift');
+          this.onChain(this.chain.start());
           break;
         case 'driftEnd':
-          if (e.value > 50) {
-            this.driftTotal += e.value;
-            raceSfx.driftBank();
-            this.hud.driftBank(e.value);
-          }
+          this.onChain(this.chain.end(e.value));
+          break;
+        case 'perfectExit':
+          this.perfects += 1;
+          raceSfx.perfect();
+          this.chase.bump(0.3);
+          this.hud.callout('PERFECT!', 'perfect');
+          this.hud.flash('perfect');
+          this.perfectBurst(v);
           break;
         case 'wall':
           if (e.value > 3) {
             raceSfx.wall(e.value);
             this.chase.bump(Math.min(0.6, e.value * 0.03));
           }
+          // A hard hit ends the drift chain early: what is banked pays out, no more links.
+          if (e.value > 9) this.onChain(this.chain.finish());
           break;
         case 'bump':
           if (e.value > 2) {
@@ -555,6 +577,51 @@ export class Race {
     for (const r of this.racers) if (!r.isPlayer) r.vehicle.events.length = 0;
   }
 
+  // Drift chain events (core/driftChain.js) -> nitro, score, HUD and sound.
+  onChain(e) {
+    if (!e) return;
+    const v = this.player.vehicle;
+    if (e.type === 'level') {
+      v.addNitro(e.nitro);
+      this.bestCombo = Math.max(this.bestCombo, e.multiplier);
+      raceSfx.combo(e.level);
+      this.hud.comboUp(e.multiplier, e.nitro);
+    } else if (e.type === 'bank') {
+      raceSfx.driftBank();
+    } else if (e.type === 'chain') {
+      this.driftTotal += e.total;
+      this.hud.driftBank(e.total, e.links > 1 ? e.multiplier : 0);
+    }
+  }
+
+  perfectBurst(v) {
+    const fx = Math.cos(v.heading);
+    const fz = -Math.sin(v.heading);
+    for (let k = 0; k < 26; k++) {
+      const side = (Math.random() - 0.5) * 2;
+      this.sparks.emit(v.pos.x - fx * 2.2 - fz * side, v.pos.y + 0.4, v.pos.z - fz * 2.2 + fx * side, v.vel.x * 0.5 - fx * 6 + (Math.random() - 0.5) * 8, 1 + Math.random() * 3, v.vel.y * 0.5 - fz * 6 + (Math.random() - 0.5) * 8, {
+        color: Math.random() < 0.6 ? PERFECT_SPARK : SPARK,
+        size: 0.24,
+        life: 0.45 + Math.random() * 0.3,
+        grow: -0.3,
+        alpha: 1,
+      });
+    }
+  }
+
+  // Neon tube glass: a shower of coloured sparks.
+  sparkBurst(pos, color) {
+    for (let k = 0; k < 30; k++) {
+      this.sparks.emit(pos.x, pos.y + 2 + Math.random() * 1.2, pos.z, (Math.random() - 0.5) * 9, 1 + Math.random() * 5, (Math.random() - 0.5) * 9, {
+        color: Math.random() < 0.7 ? color : SPARK,
+        size: 0.2,
+        life: 0.4 + Math.random() * 0.4,
+        grow: -0.3,
+        alpha: 1,
+      });
+    }
+  }
+
   emitEffects(r, dt) {
     const v = r.vehicle;
     const near = v.pos.distanceToSquared(this.player.vehicle.pos) < 120 * 120;
@@ -567,7 +634,7 @@ export class Race {
     const slip = Math.abs(v.slip);
     const smoking = (v.drifting && slip > 0.15) || (v.braking && v.speed > 15);
     // Rubber on the road from both rear tyres while sliding or braking hard on the asphalt.
-    const onRoad = Math.abs(v.proj.d) < this.track.halfWidth + this.track.shoulder;
+    const onRoad = v.mix.asphalt > 0.5;
     const marking = onRoad && ((v.drifting && slip > 0.08) || (v.braking && v.speed > 10));
     const strength = v.drifting ? Math.min(1, 0.45 + slip * 1.2) : 0.5;
     for (let k = 0; k < 2; k++) {
@@ -623,10 +690,14 @@ export class Race {
         alpha: 0.9,
       });
     }
-    if (Math.abs(v.proj.d) > this.track.halfWidth + 0.3 && v.speed > 12 && Math.random() < 0.5) {
+    // Loose surfaces: a gravel dust plume, or torn-up turf off the grass.
+    const loose = v.mix.gravel + v.mix.grass;
+    if (loose > 0.1 && v.speed > 8 && Math.random() < Math.min(1, loose * (v.drifting ? 1.6 : 0.9))) {
+      const grass = v.mix.grass > v.mix.gravel;
       const x = v.pos.x - fx * 1.4;
       const z = v.pos.z - fz * 1.4;
-      this.smoke.emit(x, v.pos.y + 0.2, z, v.vel.x * 0.1, 0.6, v.vel.y * 0.1, { color: DUST, size: 0.8, life: 0.8, grow: 2, alpha: 0.25 });
+      if (grass) this.smoke.emit(x, v.pos.y + 0.2, z, v.vel.x * 0.2, 1.2, v.vel.y * 0.2, { color: GRASS_BITS, size: 0.45, life: 0.6, grow: 0.6, alpha: 0.5 });
+      else this.smoke.emit(x, v.pos.y + 0.2, z, v.vel.x * 0.1, 0.6, v.vel.y * 0.1, { color: DUST, size: 0.9, life: 1.0, grow: 2.4, alpha: v.drifting ? 0.4 : 0.28 });
     }
   }
 
@@ -650,8 +721,11 @@ export class Race {
       airborne: v.airborne,
       speed: Math.min(1, v.speed / 70),
       boost: v.tier,
-      skid: v.drifting ? Math.min(1, Math.abs(v.slip) * 2) : v.braking && v.speed > 12 ? 0.5 : 0,
+      // Tyres squeal on the asphalt only; off it they crunch and swish instead.
+      skid: (v.drifting ? Math.min(1, Math.abs(v.slip) * 2) : v.braking && v.speed > 12 ? 0.5 : 0) * v.mix.asphalt,
       slip: v.slip ?? 0,
+      gravel: v.airborne ? 0 : v.mix.gravel,
+      grass: v.airborne ? 0 : v.mix.grass,
     });
   }
 
@@ -673,7 +747,12 @@ export class Race {
       tier: v.tier,
       sinceTap: v.canPulse ? now() - v.lastTap : -1,
       drifting: v.drifting,
-      driftScore: Math.round(v.driftScore),
+      driftScore: Math.round(v.driftScore * this.chain.multiplier),
+      combo: this.chain.multiplier,
+      chainTotal: this.chain.total,
+      linkLeft: this.chain.linkLeft,
+      apexReady: v.apexReady,
+      surface: v.surface,
       wrongWay: v.wrongWay > 1.2,
       racers: this.racers.map((r) => ({
         frac: Math.max(0, Math.min(1, r.finished ? 1 : r.progress / total)),

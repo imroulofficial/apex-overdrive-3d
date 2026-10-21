@@ -7,7 +7,7 @@ so a model can land at any time without code changes.
 | Car | File |
 | --- | --- |
 | RP-1 Vanta (starter) | `rp1_vanta.glb` |
-| RP-X Hyperion (Tier A) | `rpx_hyperion.glb` |
+| Valkyrie GT-R (Tier A) | `valkyrie_gtr.glb` |
 
 ## Export conventions
 

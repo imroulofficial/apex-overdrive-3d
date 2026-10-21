@@ -4,7 +4,7 @@ import { createStudioEnvironment } from '../../src/garage/showroom.js';
 
 // Renders the launcher icon layers at 1024 px:
 //   background: carbon-fibre weave under a crimson diagonal glow and speed streaks
-//   foreground: the RP-X Hyperion in crimson, low 3/4 front view, with a cyan nitro trail,
+//   foreground: the Valkyrie GT-R in crimson, low 3/4 front view, with a cyan nitro trail,
 //               kept inside the adaptive-icon safe zone (66/108 of the canvas)
 // window.__icon resolves to { background, foreground, legacy, round, store } data URLs.
 

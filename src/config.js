@@ -5,7 +5,7 @@ export const GAME = {
   title: 'Apex Overdrive',
   subtitle: '3D Racing',
   studio: 'Red Pen Studio',
-  version: '0.7.0',
+  version: '0.8.0',
   appId: 'com.redpenstudio.apexoverdrive',
 };
 
@@ -64,7 +64,7 @@ export const PRODUCTS = {
   supercar_bundle: {
     id: 'supercar_bundle',
     title: 'Supercar Bundle',
-    blurb: 'Unlock the Tier A RP-X Hyperion, 25,000 coins and No Ads.',
+    blurb: 'Unlock the Tier A Valkyrie GT-R hypercar, 25,000 coins and No Ads.',
     price: '$6.99',
     grants: { noAds: true, coins: 25000, cars: ['rpx-hyperion'], paints: [] },
   },

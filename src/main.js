@@ -68,7 +68,14 @@ cloud.subscribe((_, { restored } = {}) => {
   toast('Cloud save restored');
 });
 
-const raceInput = createRaceInput({ steerPad: $('#rc-steer'), drift: $('#rc-drift'), nitro: $('#rc-nitro'), gas: $('#rc-gas'), hud: $('#race-hud') });
+const raceInput = createRaceInput({
+  steerPad: $('#rc-steer'),
+  wheel: $('#rc-wheel'),
+  brakes: [$('#rc-drift'), $('#rc-brake')],
+  nitro: $('#rc-nitro'),
+  gas: $('#rc-gas'),
+  hud: $('#race-hud'),
+});
 const raceHud = createRaceHud({
   onPause: () => pauseRace(),
   onResume: () => resumeRace(),
@@ -110,6 +117,7 @@ const playerStats = () => carStats(state, state.car);
 
 function beginRace() {
   raceInput.setAutoAccelerate(state.settings.autoAccelerate);
+  raceInput.setScheme(state.settings.controls);
   race.begin({
     stats: playerStats(),
     paint: currentPaint(),

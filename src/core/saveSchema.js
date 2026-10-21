@@ -24,6 +24,7 @@ import { STARTING_COINS } from '../data/economy.js';
 import { CARS, STARTER_CAR } from '../data/cars.js';
 import { PAINTS, RIMS, UPGRADES } from '../data/catalog.js';
 import { STAGES, MILESTONES } from '../data/career.js';
+import { CONTROL_SCHEMES, DEFAULT_CONTROLS } from '../data/controls.js';
 
 export const SAVE_VERSION = 2;
 
@@ -37,6 +38,11 @@ const V1_UPGRADES = { engine: 'topSpeed', tires: 'acceleration', handling: 'hand
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const int = (v, lo, hi, fallback) => (Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : fallback);
+function normalizeSettings(st) {
+  if (!CONTROL_SCHEMES.includes(st.controls)) st.controls = DEFAULT_CONTROLS;
+  return st;
+}
+
 const uniq = (list, valid) => [...new Set((Array.isArray(list) ? list : []).filter((x) => typeof x === 'string' && (!valid || valid(x))))];
 const carIds = new Set(CARS.map((c) => c.id));
 const paintIds = new Set(PAINTS.map((p) => p.id));
@@ -58,7 +64,7 @@ export function defaults() {
     cars: { [STARTER_CAR]: newCarEntry('starter') },
     ownedPaints: [...DEFAULT_PAINTS],
     career: { unlockedStage: 1, stageStars: STAGES.map(() => 0), best: {}, milestones: [] },
-    settings: { quality: 'auto', sound: true, music: true, autoAccelerate: true, showFps: false, sandboxStore: false },
+    settings: { quality: 'auto', sound: true, music: true, autoAccelerate: true, showFps: false, sandboxStore: false, controls: DEFAULT_CONTROLS },
     // Play purchases. `owned` mirrors what the store reports; `granted` records which
     // products already paid out their one-time coin bonus so a restore never pays twice.
     purchases: { owned: [], sandboxOwned: [], granted: [], noAds: false, paints: [] },
@@ -129,7 +135,7 @@ export function normalize(data) {
     cars,
     ownedPaints: uniq([...DEFAULT_PAINTS, ...(d.ownedPaints ?? [])], (id) => paintIds.has(id)),
     career: normalizeCareer(d.career),
-    settings: { ...base.settings, ...d.settings },
+    settings: normalizeSettings({ ...base.settings, ...d.settings }),
     purchases: {
       ...base.purchases,
       ...d.purchases,

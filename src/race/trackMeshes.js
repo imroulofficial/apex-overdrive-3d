@@ -3,26 +3,35 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { canvasTexture, mulberry32 } from './noise.js';
 import { asphaltTextures } from '../render/textures.js';
 import { bothFaces, createVertexPbrMaterial, mergePainted, paintVertices, stamp } from '../render/vertexPbr.js';
+import { LAYOUT } from './surface.js';
 
 // Render geometry generated from the race spline: asphalt with a rubbered-in racing line,
-// shoulders, raised rumble-strip kerbs, embankment, steel guardrails, lamp posts, chevron
+// gravel shoulders and grass verges (core/surface.js), raised rumble-strip kerbs, embankment, steel guardrails, lamp posts, chevron
 // boards, jump ramps and the start/finish gantry. Untextured trackside hardware (guardrails,
 // posts, lamps, gantry) is merged into one vertex-PBR mesh: a single draw call for the lap.
 
 const ROAD_TILE = 40; // metres of road per texture repeat
 
-function concreteTexture() {
-  const tex = canvasTexture(THREE, 64, 256, (g, w, h) => {
+// Loose gravel and packed dirt: warm stones of mixed sizes over a dusty base, a little darker
+// toward the asphalt where cars have scattered it (u = 0 is the road side).
+function gravelTexture() {
+  const tex = canvasTexture(THREE, 128, 256, (g, w, h) => {
     const rand = mulberry32(11);
-    g.fillStyle = '#8f8c86';
+    g.fillStyle = '#8a7a62';
     g.fillRect(0, 0, w, h);
-    for (let i = 0; i < 1500; i++) {
-      const v = 110 + rand() * 60;
-      g.fillStyle = `rgba(${v},${v - 4},${v - 10},0.35)`;
-      g.fillRect(rand() * w, rand() * h, 1.5, 1.5);
+    for (let i = 0; i < 4200; i++) {
+      const v = 70 + rand() * 110;
+      const r = rand() < 0.15 ? 2 + rand() * 2.5 : 0.8 + rand() * 1.4;
+      g.fillStyle = `rgba(${v + 18},${v + 6},${v - 12},${0.35 + rand() * 0.5})`;
+      g.beginPath();
+      g.ellipse(rand() * w, rand() * h, r, r * (0.6 + rand() * 0.4), rand() * 3, 0, Math.PI * 2);
+      g.fill();
     }
-    g.fillStyle = 'rgba(40,40,40,0.35)';
-    g.fillRect(0, h - 2, w, 2);
+    const edge = g.createLinearGradient(0, 0, w, 0);
+    edge.addColorStop(0, 'rgba(30,26,22,0.35)');
+    edge.addColorStop(0.25, 'rgba(30,26,22,0)');
+    g.fillStyle = edge;
+    g.fillRect(0, 0, w, h);
   });
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   return tex;
@@ -177,19 +186,21 @@ export function buildTrackMeshes(track, renderer, { groundMaterial } = {}) {
   group.add(road);
   group.add(buildRacingLine(track));
 
-  // Shoulders and the embankment falling away to the terrain (same layered ground shader).
-  const concrete = new THREE.MeshStandardMaterial({ map: concreteTexture(), roughness: 0.95 });
+  // Gravel shoulders, then the grass verge up to the rail and the embankment falling away to
+  // the terrain, both in the terrain's layered ground shader (grass on the flat).
+  const gv = LAYOUT.gravel;
+  const gravel = new THREE.MeshStandardMaterial({ map: gravelTexture(), roughness: 1 });
   const shoulders = mergeGeometries([
-    fixUpNormals(ribbon(track, [[hw, 0, 0], [hw + sh, 0, 1]], { vScale: 8 })),
-    fixUpNormals(ribbon(track, [[-hw - sh, 0, 0], [-hw, 0, 1]], { vScale: 8 })),
+    fixUpNormals(ribbon(track, [[hw, 0, 0], [hw + gv, -0.02, 1]], { vScale: 8 })),
+    fixUpNormals(ribbon(track, [[-hw - gv, -0.02, 1], [-hw, 0, 0]], { vScale: 8 })),
   ]);
-  const shoulderMesh = new THREE.Mesh(shoulders, concrete);
+  const shoulderMesh = new THREE.Mesh(shoulders, gravel);
   shoulderMesh.receiveShadow = true;
   group.add(shoulderMesh);
 
   const bank = mergeGeometries([
-    fixUpNormals(ribbon(track, [[hw + sh, 0, 0], [hw + sh + 2.5, -0.6, 0.5], [hw + sh + 9, -4.2, 1]], { step: 2, vScale: 10 })),
-    fixUpNormals(ribbon(track, [[-hw - sh - 9, -4.2, 0], [-hw - sh - 2.5, -0.6, 0.5], [-hw - sh, 0, 1]], { step: 2, vScale: 10 })),
+    fixUpNormals(ribbon(track, [[hw + gv, -0.02, 0], [hw + sh, -0.05, 0.2], [hw + sh + 2, -0.6, 0.5], [hw + sh + 6.5, -4.2, 1]], { step: 2, vScale: 10 })),
+    fixUpNormals(ribbon(track, [[-hw - sh - 6.5, -4.2, 0], [-hw - sh - 2, -0.6, 0.5], [-hw - sh, -0.05, 0.8], [-hw - gv, -0.02, 1]], { step: 2, vScale: 10 })),
   ]);
   const bankMesh = new THREE.Mesh(bank, groundMaterial ?? new THREE.MeshLambertMaterial({ color: 0x5f7f3a }));
   bankMesh.receiveShadow = true;
