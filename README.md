@@ -5,11 +5,22 @@ Offline-first 3D arcade racer for Android by **Red Pen Studio**.
 | | |
 |---|---|
 | Package | `com.redpenstudio.apexoverdrive` |
-| Android | minSdk 24 · targetSdk 36 · compileSdk 36 · edge-to-edge |
+| Android | minSdk 24 · targetSdk 36 · compileSdk 36 · immersive fullscreen |
 | Stack | Three.js (WebGL2) + Vite, wrapped with Capacitor 8 |
 | Audience | 13+, no sign-up, no analytics; gameplay is offline, cloud save, ads and Play Billing use the network when available |
 
-## Phase 4 (this release): zero-cost Firebase cloud save
+## Graphics & performance pass (this release)
+
+Fixes from the first device test (22 FPS, white bars, cartoon look, stock icon).
+
+- **True fullscreen**: `MainActivity` hides the status and navigation bars with `WindowInsetsControllerCompat` (`BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`, the modern replacement for `SYSTEM_UI_FLAG_IMMERSIVE_STICKY`) and re-hides them on focus/resume; the window draws under the display cutout; the theme, decor view, WebView, `body` and canvas are all `#000000`, so no white strip can appear on any aspect ratio. `SystemBars.hidden` is `true` in `capacitor.config.json`.
+- **Draw calls** (headless measurement, 960×450): garage 293 → 72 on Medium (the Auto default on phones), 115 on High (adds the floor mirror pass), 42 on Low; race 145 → 76 on the grid with all six cars in view, 41-60 while racing. Untextured parts are batched with a vertex-PBR "atlas" material (`src/render/vertexPbr.js`): each race car is 4 draws (paint, glass, atlas, brake lights) and all wheels are 2 instanced draws; guardrails, posts, lamp posts and the gantry are one mesh for the whole lap; ramps are one mesh.
+- **Lighting**: exactly one directional sun with a 512² shadow map (texel-snapped, following the player) plus hemisphere ambient, in the race and in the garage. The garage spotlights and the car's head/tail light sources are now additive floor decals.
+- **Render loop**: pixel ratio capped at 1.5 (1.25 Medium, 1 Low); Auto starts at Medium on phones; the garage planar mirror (a second full render each frame) is High-only; the terrain is split into chunks so it frustum-culls; distant trees and trackside rails do not render into the shadow map.
+- **Look**: procedural asphalt with normal + roughness maps, painted edge and lane lines, cracks and patches; rubbered-in racing line; raised red/white rumble strips; tyre skid marks (one ring-buffer mesh); layered terrain shader (coastal grass, triplanar stratified cliff rock, wet/dry sand); ocean shader with Fresnel sky reflection and sun glint; coast redwoods, palms and undergrowth; clear-coat rival paint, smoked glass and polished alloy rims, all reflecting a cubemap baked from the actual coast at load.
+- **Icons**: adaptive launcher icon (crimson RP-X Hyperion over carbon fibre with a cyan nitro trail), legacy/round icons for every density, a dark launch splash and `tools/icon/out/play-store-512.png`. Regenerate with `node tools/icon/render.mjs` (needs Playwright; see the header of that file).
+
+## Phase 4: zero-cost Firebase cloud save
 
 - **Anonymous player profiles** (`@capacitor-firebase/authentication`): the first time the game is online it signs in anonymously, so every install gets a Firebase player ID with no sign-up. The native Firebase SDK keeps the session across launches.
 - **Cloud Firestore save** (`@capacitor-firebase/firestore`, `src/core/cloud.js`): one document per player at `players/{uid}` holding `{ v, save, updatedAt, appVersion }`, where `save` is the progress JSON (coins, paints, upgrades, selected car, race records, Play products owned and bonuses paid, crate timer). Settings, sandbox purchases and ad pacing stay on the device.
@@ -99,12 +110,14 @@ src/
   data/tracks.js       Emerald Coast definition (waypoints, ramps, props, coastline)
   data/rivals.js       AI rivals, race rewards and star rating
   garage/              renderer + quality, showroom, procedural car, paint shader, camera rig
+  render/              batching material (vertex PBR) and procedural surface textures
   race/                track spline + meshes, scenery, props, vehicle physics, AI, race cars,
                        effects, chase camera, input and the Race state machine
   ui/                  garage HUD, store + reward crate, race HUD + finish screen, settings, styles
 public/assets/models/  drop-in .glb car models (see README there)
 android/               Capacitor Android project (signing reads env vars / keystore.properties)
 docs/                  GitHub Pages: privacy-policy.html, terms.html
+tools/icon/            launcher icon + splash renderer (dev only, not in the game bundle)
 .github/workflows/     build-aab.yml
 ```
 

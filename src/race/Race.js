@@ -9,7 +9,7 @@ import { CarFactory } from './raceCars.js';
 import { createCar } from '../garage/carModel.js';
 import { loadCar } from '../assets/modelLoader.js';
 import { ChaseCamera } from './chaseCamera.js';
-import { Particles, SpeedLines, softDotTexture } from './effects.js';
+import { Particles, SkidMarks, SpeedLines, softDotTexture } from './effects.js';
 import { mulberry32 } from './noise.js';
 import { RIVALS, POSITION_REWARD, DRIFT_POINTS_PER_COIN, SMASH_COINS, starsFor } from '../data/rivals.js';
 import { raceSfx, createEngineSound } from '../core/audio.js';
@@ -48,13 +48,19 @@ export class Race {
     this.scene.add(this.camera);
     this.track = new Track(this.def);
     this.scenery = buildScenery(this.scene, renderer, this.track, this.def, quality);
-    this.scene.add(buildTrackMeshes(this.track, renderer));
+    this.scene.add(buildTrackMeshes(this.track, renderer, { groundMaterial: this.scenery.groundMaterial }));
     this.props = new SmashProps(this.track, this.def, this.scene);
+    // Cars and water reflect the real coastline: bake the finished world into a cubemap once,
+    // from just above the start line (before any car exists, so none reflects itself).
+    const f = this.track.frame(0, {});
+    this.scenery.bakeEnvironment(new THREE.Vector3(f.x, this.track.roadY(0) + 6, f.z));
 
     // Rivals share the procedural coupe; the player's car comes from the spawner (.glb or procedural).
     this.rivalFactory = new CarFactory(createCar({ paintColor: paint.color, finish: paint.finish, detail: 0.6 }));
     this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, detail: 0.6 }));
     this.playerCarId = car.id;
+    for (const f of [this.rivalFactory, this.factory]) this.scene.add(...f.sharedMeshes);
+    this.skids = new SkidMarks(this.scene);
     const dot = softDotTexture();
     this.smoke = new Particles(this.scene, { count: 360, texture: dot });
     this.sparks = new Particles(this.scene, { count: 160, additive: true, texture: dot });
@@ -85,13 +91,16 @@ export class Race {
   async setPlayerCar(car, paint) {
     if (car.id === this.playerCarId) return;
     const old = this.player.visual;
+    const oldFactory = this.factory;
     this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, detail: 0.6 }));
     this.playerCarId = car.id;
     this.player.visual = this.factory.build({ player: true });
-    this.scene.remove(old.root);
-    this.scene.add(this.player.visual.root);
+    this.scene.remove(old.root, ...oldFactory.sharedMeshes);
+    this.scene.add(this.player.visual.root, ...this.factory.sharedMeshes);
     old.root.traverse((o) => o.isMesh && o.geometry.dispose());
+    oldFactory.sharedMeshes.forEach((m) => m.geometry.dispose());
     if (this.player.vehicle) this.player.visual.update(this.player.vehicle, 0, 0);
+    this.factory.syncWheels();
     await this.renderer.compileAsync(this.scene, this.camera);
   }
 
@@ -146,8 +155,11 @@ export class Race {
       r.lapStart = 0;
       r.lapTimes = [];
       r.visual.update(r.vehicle, 0, 0);
+      r.skidTrails = [null, null];
     });
+    this.syncWheels();
     this.props.reset();
+    this.skids.clear();
     this.smoke.clear();
     this.sparks.clear();
     this.time = 0;
@@ -295,6 +307,8 @@ export class Race {
       r.visual.update(r.vehicle, dt, this.time);
       this.emitEffects(r, dt);
     }
+    this.syncWheels();
+    this.skids.update(dt);
     this.smoke.update(dt, -0.6);
     this.sparks.update(dt, 9);
     this.props.update(dt);
@@ -313,6 +327,11 @@ export class Race {
       this.resultShown = true;
       this.hud.results(this.result);
     }
+  }
+
+  syncWheels() {
+    this.factory.syncWheels();
+    this.rivalFactory.syncWheels();
   }
 
   toPhase(p) {
@@ -528,11 +547,28 @@ export class Race {
   emitEffects(r, dt) {
     const v = r.vehicle;
     const near = v.pos.distanceToSquared(this.player.vehicle.pos) < 120 * 120;
-    if (!near || v.airborne) return;
+    if (!near || v.airborne) {
+      r.skidTrails = [null, null];
+      return;
+    }
     const fx = Math.cos(v.heading);
     const fz = -Math.sin(v.heading);
     const slip = Math.abs(v.slip);
     const smoking = (v.drifting && slip > 0.15) || (v.braking && v.speed > 15);
+    // Rubber on the road from both rear tyres while sliding or braking hard on the asphalt.
+    const onRoad = Math.abs(v.proj.d) < this.track.halfWidth + this.track.shoulder;
+    const marking = onRoad && ((v.drifting && slip > 0.08) || (v.braking && v.speed > 10));
+    const strength = v.drifting ? Math.min(1, 0.45 + slip * 1.2) : 0.5;
+    for (let k = 0; k < 2; k++) {
+      if (!marking) {
+        r.skidTrails[k] = null;
+        continue;
+      }
+      const side = k ? 1 : -1;
+      const x = v.pos.x - fx * 1.3 + -fz * side * 0.82;
+      const z = v.pos.z - fz * 1.3 + fx * side * 0.82;
+      r.skidTrails[k] = this.skids.add(r.skidTrails[k], x, v.pos.y + 0.02, z, -fz, fx, strength);
+    }
     if (smoking) {
       const rate = v.drifting ? 34 : 14;
       r.smokeAcc = (r.smokeAcc ?? 0) + rate * dt;

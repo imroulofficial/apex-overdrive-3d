@@ -1,40 +1,15 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { canvasTexture, mulberry32 } from './noise.js';
+import { asphaltTextures } from '../render/textures.js';
+import { bothFaces, createVertexPbrMaterial, mergePainted, paintVertices, stamp } from '../render/vertexPbr.js';
 
-// Render geometry generated from the race spline: asphalt, shoulders, kerbs, embankment,
-// wooden barrier fences, chevron boards, jump ramps and the start/finish gantry.
+// Render geometry generated from the race spline: asphalt with a rubbered-in racing line,
+// shoulders, raised rumble-strip kerbs, embankment, steel guardrails, lamp posts, chevron
+// boards, jump ramps and the start/finish gantry. Untextured trackside hardware (guardrails,
+// posts, lamps, gantry) is merged into one vertex-PBR mesh: a single draw call for the lap.
 
 const ROAD_TILE = 40; // metres of road per texture repeat
-
-function roadTexture(maxAniso) {
-  const tex = canvasTexture(THREE, 256, 512, (g, w, h) => {
-    const rand = mulberry32(7);
-    g.fillStyle = '#3a3d42';
-    g.fillRect(0, 0, w, h);
-    // Aggregate speckle.
-    for (let i = 0; i < 9000; i++) {
-      const v = 40 + rand() * 50;
-      g.fillStyle = `rgba(${v},${v},${v + 4},${0.25 + rand() * 0.4})`;
-      g.fillRect(rand() * w, rand() * h, 1 + rand() * 1.5, 1 + rand() * 1.5);
-    }
-    // Darker tyre-worn lines in each lane.
-    g.fillStyle = 'rgba(15,16,18,0.18)';
-    for (const lane of [1 / 6, 3 / 6, 5 / 6]) {
-      for (const off of [-0.055, 0.055]) g.fillRect((lane + off) * w - 6, 0, 12, h);
-    }
-    // Edge lines and dashed lane dividers.
-    g.fillStyle = '#f2f2ee';
-    g.fillRect(w * 0.012, 0, 4, h);
-    g.fillRect(w * 0.988 - 4, 0, 4, h);
-    for (const lane of [1 / 3, 2 / 3]) {
-      for (let k = 0; k < 2; k++) g.fillRect(lane * w - 2, k * (h / 2), 4, h / 4);
-    }
-  });
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.anisotropy = maxAniso;
-  return tex;
-}
 
 function concreteTexture() {
   const tex = canvasTexture(THREE, 64, 256, (g, w, h) => {
@@ -62,25 +37,6 @@ function stripeTexture(a, b, n = 2) {
   });
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.magFilter = THREE.NearestFilter;
-  return tex;
-}
-
-function woodTexture() {
-  const tex = canvasTexture(THREE, 128, 32, (g, w, h) => {
-    const rand = mulberry32(5);
-    g.fillStyle = '#8a5a32';
-    g.fillRect(0, 0, w, h);
-    for (let i = 0; i < 40; i++) {
-      g.strokeStyle = `rgba(${60 + rand() * 30},${35 + rand() * 20},15,${0.25 + rand() * 0.3})`;
-      g.lineWidth = 1;
-      g.beginPath();
-      const y = rand() * h;
-      g.moveTo(0, y);
-      g.bezierCurveTo(w * 0.3, y + rand() * 4 - 2, w * 0.7, y + rand() * 4 - 2, w, y + rand() * 3 - 1.5);
-      g.stroke();
-    }
-  });
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   return tex;
 }
 
@@ -195,22 +151,33 @@ function fixUpNormals(geo) {
   return geo;
 }
 
-export function buildTrackMeshes(track, renderer) {
+export function buildTrackMeshes(track, renderer, { groundMaterial } = {}) {
   const group = new THREE.Group();
   group.name = 'track';
   const hw = track.halfWidth;
   const sh = track.shoulder;
   const maxAniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
 
-  // Asphalt.
+  // Asphalt: albedo with painted lines, tyre-polished wheel tracks, cracks and patches, plus
+  // matching normal and roughness maps so the sun glints off the smooth lines.
+  const asphalt = asphaltTextures({ widthM: hw * 2, tileM: ROAD_TILE, lanes: 3, maxAniso });
   const road = new THREE.Mesh(
     fixUpNormals(ribbon(track, [[-hw, 0, 0], [0, 0, 0.5], [hw, 0, 1]])),
-    new THREE.MeshStandardMaterial({ map: roadTexture(maxAniso), roughness: 0.88, metalness: 0 })
+    new THREE.MeshStandardMaterial({
+      map: asphalt.map,
+      normalMap: asphalt.normalMap,
+      normalScale: new THREE.Vector2(0.6, 0.6),
+      roughnessMap: asphalt.roughnessMap,
+      roughness: 1,
+      metalness: 0,
+      envMapIntensity: 0.6,
+    })
   );
   road.receiveShadow = true;
   group.add(road);
+  group.add(buildRacingLine(track));
 
-  // Shoulders and grassy embankment falling away to the terrain.
+  // Shoulders and the embankment falling away to the terrain (same layered ground shader).
   const concrete = new THREE.MeshStandardMaterial({ map: concreteTexture(), roughness: 0.95 });
   const shoulders = mergeGeometries([
     fixUpNormals(ribbon(track, [[hw, 0, 0], [hw + sh, 0, 1]], { vScale: 8 })),
@@ -224,84 +191,202 @@ export function buildTrackMeshes(track, renderer) {
     fixUpNormals(ribbon(track, [[hw + sh, 0, 0], [hw + sh + 2.5, -0.6, 0.5], [hw + sh + 9, -4.2, 1]], { step: 2, vScale: 10 })),
     fixUpNormals(ribbon(track, [[-hw - sh - 9, -4.2, 0], [-hw - sh - 2.5, -0.6, 0.5], [-hw - sh, 0, 1]], { step: 2, vScale: 10 })),
   ]);
-  group.add(new THREE.Mesh(bank, new THREE.MeshLambertMaterial({ color: 0x5f7f3a })));
+  const bankMesh = new THREE.Mesh(bank, groundMaterial ?? new THREE.MeshLambertMaterial({ color: 0x5f7f3a }));
+  bankMesh.receiveShadow = true;
+  group.add(bankMesh);
 
-  // Red/white kerbs through the corners.
+  // Raised red/white rumble strips through the corners: a 7 cm hump with 1 m stripes.
   const kerbGeos = [];
   let start = -1;
   const sharp = (i) => Math.abs(track.curv[i]) > 1 / 150;
+  const kerbProfile = (side) => {
+    const cols = [[hw - 0.2, 0.0, 0], [hw + 0.05, 0.06, 0.3], [hw + 0.55, 0.07, 0.7], [hw + 0.95, 0.0, 1]];
+    return side > 0 ? cols : cols.map(([d, dy, u]) => [-d, dy, 1 - u]).reverse();
+  };
   for (let i = 0; i <= track.n; i++) {
     const on = i < track.n && sharp(i);
     if (on && start < 0) start = i;
     if (!on && start >= 0) {
       const from = Math.max(0, start - 8);
       const to = Math.min(track.n, i + 8);
-      kerbGeos.push(fixUpNormals(ribbon(track, [[hw - 0.15, 0.02, 0], [hw + 0.9, 0.02, 1]], { from, to, vScale: 4 })));
-      kerbGeos.push(fixUpNormals(ribbon(track, [[-hw - 0.9, 0.02, 0], [-hw + 0.15, 0.02, 1]], { from, to, vScale: 4 })));
+      for (const side of [1, -1]) kerbGeos.push(fixUpNormals(ribbon(track, kerbProfile(side), { from, to, vScale: 2, lift: 0.015 })));
       start = -1;
     }
   }
   if (kerbGeos.length) {
     const kerbs = new THREE.Mesh(
       mergeGeometries(kerbGeos),
-      new THREE.MeshStandardMaterial({ map: stripeTexture('#d81e2c', '#f4f4f4'), roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2 })
+      new THREE.MeshStandardMaterial({ map: stripeTexture('#c8102e', '#f2f2ee'), roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -2 })
     );
     kerbs.receiveShadow = true;
     group.add(kerbs);
   }
 
-  group.add(buildFences(track));
+  const hardware = createVertexPbrMaterial({ envMapIntensity: 0.9 });
+  const trackside = [...buildGuardrails(track), buildLampPosts(track)];
+  const start0 = buildStartLine(track);
+  trackside.push(start0.steel);
+  const side = new THREE.Mesh(mergePainted(trackside), hardware);
+  side.name = 'trackside';
+  // A whole lap of rail never culls against the shadow camera, so it only receives shadows.
+  side.castShadow = false;
+  side.receiveShadow = true;
+  group.add(side);
+  group.add(...start0.meshes);
   group.add(buildChevrons(track));
   group.add(buildRamps(track));
-  group.add(buildStartLine(track));
   return group;
 }
 
-function buildFences(track) {
-  const group = new THREE.Group();
-  const wood = new THREE.MeshLambertMaterial({ map: woodTexture() });
-  const spacing = 3.2;
-  const count = Math.floor(track.length / spacing);
-  const postGeo = new THREE.BoxGeometry(0.2, 1.25, 0.2);
-  postGeo.translate(0, 0.42, 0);
-  const railGeo = new THREE.BoxGeometry(1, 0.2, 0.07);
-  const posts = new THREE.InstancedMesh(postGeo, wood, count * 2);
-  const rails = new THREE.InstancedMesh(railGeo, wood, count * 4);
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const e = new THREE.Euler(0, 0, 0, 'YZX');
-  const p = new THREE.Vector3();
-  const sc = new THREE.Vector3();
-  const a = new THREE.Vector3();
-  const b = new THREE.Vector3();
-  let pi = 0;
-  let ri = 0;
-  for (const side of [-1, 1]) {
-    const d = side * track.fenceOffset;
-    for (let k = 0; k < count; k++) {
-      track.point(k * spacing, d, a);
-      a.y = track.roadY(k * spacing) - 0.15;
-      track.point((k + 1) * spacing, d, b);
-      b.y = track.roadY((k + 1) * spacing) - 0.15;
-      m.makeTranslation(a.x, a.y, a.z);
-      posts.setMatrixAt(pi++, m);
-      const dx = b.x - a.x;
-      const dz = b.z - a.z;
-      const len = Math.hypot(dx, dz);
-      e.set(0, Math.atan2(-dz, dx), Math.atan2(b.y - a.y, len));
-      q.setFromEuler(e);
-      for (const h of [0.35, 0.82]) {
-        p.set((a.x + b.x) / 2, (a.y + b.y) / 2 + h, (a.z + b.z) / 2);
-        sc.set(Math.hypot(len, b.y - a.y) + 0.05, 1, 1);
-        m.compose(p, q, sc);
-        rails.setMatrixAt(ri++, m);
-      }
+// Rubbered-in racing line: dark tyre rubber along the classic outside-inside-outside line.
+// The lateral offset is a "Mexican hat" filter of the track curvature: inside at the apex
+// (narrow lobe) and outside on entry and exit (wide negative lobe).
+function buildRacingLine(track) {
+  const n = track.n;
+  const hw = track.halfWidth;
+  const blur = (src, sigmaM) => {
+    const r = Math.ceil((sigmaM * 2.5) / track.spacing);
+    const w = [];
+    let sum = 0;
+    for (let k = -r; k <= r; k++) {
+      const v = Math.exp(-0.5 * ((k * track.spacing) / sigmaM) ** 2);
+      w.push(v);
+      sum += v;
+    }
+    const out = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      let acc = 0;
+      for (let k = -r; k <= r; k++) acc += src[(i + k + n) % n] * w[k + r];
+      out[i] = acc / sum;
+    }
+    return out;
+  };
+  const narrow = blur(track.curv, 14);
+  const wide = blur(track.curv, 46);
+  const reach = hw - 2.4;
+  const offset = new Float32Array(n);
+  for (let i = 0; i < n; i++) offset[i] = reach * Math.tanh((narrow[i] * 1.6 - wide[i] * 1.0) * 140);
+  const line = blur(offset, 8);
+
+  const pos = [];
+  const uv = [];
+  const index = [];
+  const f = {};
+  const halfW = 0.95;
+  for (let k = 0; k <= n; k++) {
+    const i = k % n;
+    const s = k === n ? track.length : track.s[i];
+    track.frame(s, f);
+    const d = line[i];
+    for (const [dd, u] of [[-halfW, 0], [halfW, 1]]) {
+      pos.push(f.x + f.rx * (d + dd), f.y + 0.012, f.z + f.rz * (d + dd));
+      uv.push(u, s / 6);
+    }
+    if (k < n) {
+      const a = k * 2;
+      index.push(a, a + 1, a + 2, a + 2, a + 1, a + 3);
     }
   }
-  posts.count = pi;
-  rails.count = ri;
-  group.add(posts, rails);
-  return group;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(index);
+  geo.computeVertexNormals();
+  fixUpNormals(geo);
+  const tex = canvasTexture(THREE, 64, 128, (g, w, h) => {
+    const rand = mulberry32(3);
+    g.clearRect(0, 0, w, h);
+    for (let x = 0; x < w; x++) {
+      const k = Math.exp(-(((x / w - 0.5) / 0.28) ** 2));
+      for (let y = 0; y < h; y++) {
+        const a = k * (0.55 + rand() * 0.45);
+        g.fillStyle = `rgba(8,8,9,${a.toFixed(3)})`;
+        g.fillRect(x, y, 1, 1);
+      }
+    }
+  });
+  tex.wrapT = THREE.RepeatWrapping;
+  const mesh = new THREE.Mesh(
+    geo,
+    new THREE.MeshStandardMaterial({
+      map: tex,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false,
+      roughness: 0.7,
+      metalness: 0,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    })
+  );
+  mesh.receiveShadow = true;
+  mesh.renderOrder = 1;
+  mesh.name = 'racing-line';
+  return mesh;
+}
+
+// Galvanised W-beam guardrails on both sides, on posts every 4 m. Returns painted geometries.
+function buildGuardrails(track) {
+  const steel = { color: 0xaab1b8, roughness: 0.38, metalness: 0.85 };
+  const post = { color: 0x6b7178, roughness: 0.6, metalness: 0.7 };
+  // W-beam cross-section: (outward offset from the road-side face, height above the road).
+  const profile = [[0, 0.44], [0.07, 0.5], [0.025, 0.6], [0.07, 0.7], [0, 0.77]];
+  const out = [];
+  for (const side of [1, -1]) {
+    const cols = profile.map(([o, y], k) => [side * (track.fenceOffset + o), y - 0.15, k / (profile.length - 1)]);
+    const rail = ribbon(track, cols, { vScale: 4 });
+    for (const g of bothFaces(rail)) out.push(paintVertices(g, steel));
+  }
+  const postGeo = paintVertices(new THREE.BoxGeometry(0.12, 0.95, 0.16).translate(0, 0.32, 0).toNonIndexed(), post);
+  const matrices = [];
+  const spacing = 4;
+  const count = Math.floor(track.length / spacing);
+  const a = new THREE.Vector3();
+  const f = {};
+  for (const side of [1, -1]) {
+    for (let k = 0; k < count; k++) {
+      const s = k * spacing;
+      track.frame(s, f);
+      const d = side * (track.fenceOffset + 0.12);
+      a.set(f.x + f.rx * d, track.roadY(s) - 0.15, f.z + f.rz * d);
+      matrices.push(new THREE.Matrix4().makeRotationY(Math.atan2(-f.tz, f.tx)).setPosition(a));
+    }
+  }
+  out.push(stamp(postGeo, matrices));
+  return out;
+}
+
+// Coastal highway street lights: a pole with an arm over the road every 70 m, alternating sides.
+function buildLampPosts(track) {
+  const metal = { color: 0x50555c, roughness: 0.45, metalness: 0.8 };
+  const parts = [];
+  const pole = new THREE.CylinderGeometry(0.09, 0.13, 8.6, 8).translate(0, 4.3, 0);
+  parts.push(paintVertices(pole.toNonIndexed(), metal));
+  const arm = new THREE.CylinderGeometry(0.06, 0.06, 2.6, 6).rotateZ(Math.PI / 2).translate(-1.2, 8.45, 0);
+  parts.push(paintVertices(arm.toNonIndexed(), metal));
+  const head = new THREE.BoxGeometry(0.75, 0.16, 0.32).translate(-2.45, 8.4, 0);
+  parts.push(paintVertices(head.toNonIndexed(), { color: 0x2c3036, roughness: 0.4, metalness: 0.6 }));
+  const lens = new THREE.BoxGeometry(0.6, 0.03, 0.24).translate(-2.45, 8.31, 0);
+  parts.push(paintVertices(lens.toNonIndexed(), { color: 0xfff1d0, roughness: 0.2, metalness: 0, emissive: 0.35 }));
+  const base = new THREE.CylinderGeometry(0.22, 0.26, 0.5, 8).translate(0, 0.25, 0);
+  parts.push(paintVertices(base.toNonIndexed(), { color: 0x8a8d90, roughness: 0.9, metalness: 0 }));
+  const lamp = mergePainted(parts);
+
+  const matrices = [];
+  const f = {};
+  const spacing = 70;
+  const count = Math.floor(track.length / spacing);
+  for (let k = 0; k < count; k++) {
+    const s = k * spacing + 20;
+    track.frame(s, f);
+    const side = k % 2 ? 1 : -1;
+    const d = side * (track.fenceOffset + 0.9);
+    // Local -x (the arm) points across the road, toward the centre line.
+    const yaw = Math.atan2(-side * f.rz, side * f.rx);
+    matrices.push(new THREE.Matrix4().makeRotationY(yaw).setPosition(f.x + f.rx * d, track.roadY(s) - 0.15, f.z + f.rz * d));
+  }
+  return stamp(lamp, matrices);
 }
 
 function buildChevrons(track) {
@@ -332,19 +417,19 @@ function buildChevrons(track) {
   return mesh;
 }
 
+// All jump ramps in one mesh: hazard-striped tops and steel sides (2 draw calls in total).
 function buildRamps(track) {
-  const group = new THREE.Group();
   const top = new THREE.MeshStandardMaterial({ map: rampTexture(), roughness: 0.6, metalness: 0.1 });
   const side = new THREE.MeshStandardMaterial({ color: 0x2a2c31, roughness: 0.7, metalness: 0.4 });
   const a = new THREE.Vector3();
+  const tops = { pos: [], uv: [] };
+  const sides = { pos: [], uv: [] };
+  const quad = (out, p0, p1, p2, p3, uvs) => {
+    out.pos.push(...p0, ...p1, ...p2, ...p0, ...p2, ...p3);
+    out.uv.push(...uvs[0], ...uvs[1], ...uvs[2], ...uvs[0], ...uvs[2], ...uvs[3]);
+  };
+  const zero = [[0, 0], [0, 0], [0, 0], [0, 0]];
   for (const r of track.ramps) {
-    const pos = [];
-    const uv = [];
-    const groups = [];
-    const quad = (p0, p1, p2, p3, uvs) => {
-      pos.push(...p0, ...p1, ...p2, ...p0, ...p2, ...p3);
-      uv.push(...uvs[0], ...uvs[1], ...uvs[2], ...uvs[0], ...uvs[2], ...uvs[3]);
-    };
     const steps = Math.ceil(r.length);
     const pt = (ds, d, onTop) => {
       const s = r.s0 + ds;
@@ -353,42 +438,37 @@ function buildRamps(track) {
       return [a.x, a.y, a.z];
     };
     const width = r.to - r.from;
-    const topStart = 0;
     for (let k = 0; k < steps; k++) {
       const s0 = (k / steps) * r.length;
       const s1 = ((k + 1) / steps) * r.length;
-      quad(pt(s0, r.from, true), pt(s0, r.to, true), pt(s1, r.to, true), pt(s1, r.from, true), [
+      quad(tops, pt(s0, r.from, true), pt(s0, r.to, true), pt(s1, r.to, true), pt(s1, r.from, true), [
         [0, s0 / 4], [width / 4, s0 / 4], [width / 4, s1 / 4], [0, s1 / 4],
       ]);
-    }
-    groups.push([topStart, pos.length / 3]);
-    const sideStart = pos.length / 3;
-    for (let k = 0; k < steps; k++) {
-      const s0 = (k / steps) * r.length;
-      const s1 = ((k + 1) / steps) * r.length;
-      const zero = [[0, 0], [0, 0], [0, 0], [0, 0]];
-      quad(pt(s0, r.from, false), pt(s1, r.from, false), pt(s1, r.from, true), pt(s0, r.from, true), zero);
-      quad(pt(s0, r.to, true), pt(s1, r.to, true), pt(s1, r.to, false), pt(s0, r.to, false), zero);
+      quad(sides, pt(s0, r.from, false), pt(s1, r.from, false), pt(s1, r.from, true), pt(s0, r.from, true), zero);
+      quad(sides, pt(s0, r.to, true), pt(s1, r.to, true), pt(s1, r.to, false), pt(s0, r.to, false), zero);
     }
     const L = r.length;
-    quad(pt(L, r.from, false), pt(L, r.to, false), pt(L, r.to, true), pt(L, r.from, true), [[0, 0], [0, 0], [0, 0], [0, 0]]);
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    geo.addGroup(groups[0][0], groups[0][1], 0);
-    geo.addGroup(sideStart, pos.length / 3 - sideStart, 1);
-    geo.computeVertexNormals();
-    const mesh = new THREE.Mesh(geo, [top, side]);
-    mesh.material.forEach((mm) => (mm.side = THREE.DoubleSide));
-    mesh.receiveShadow = true;
-    mesh.castShadow = true;
-    group.add(mesh);
+    quad(sides, pt(L, r.from, false), pt(L, r.to, false), pt(L, r.to, true), pt(L, r.from, true), zero);
   }
-  return group;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute([...tops.pos, ...sides.pos], 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute([...tops.uv, ...sides.uv], 2));
+  const nTop = tops.pos.length / 3;
+  geo.addGroup(0, nTop, 0);
+  geo.addGroup(nTop, sides.pos.length / 3, 1);
+  geo.computeVertexNormals();
+  top.side = side.side = THREE.DoubleSide;
+  const mesh = new THREE.Mesh(geo, [top, side]);
+  mesh.receiveShadow = true;
+  mesh.castShadow = true;
+  mesh.name = 'ramps';
+  return mesh;
 }
 
+// Chequered line on the road and the start gantry. The gantry steel is returned as painted
+// geometry for the trackside batch; the line and the banner keep their textures.
 function buildStartLine(track) {
-  const group = new THREE.Group();
+  const meshes = [];
   const hw = track.halfWidth;
   const checker = canvasTexture(THREE, 256, 32, (g, w, h) => {
     const sq = 16;
@@ -412,34 +492,28 @@ function buildStartLine(track) {
   lineGeo.computeVertexNormals();
   const line = new THREE.Mesh(lineGeo, new THREE.MeshStandardMaterial({ map: checker, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2 }));
   line.receiveShadow = true;
-  group.add(line);
+  meshes.push(line);
 
-  // Gantry over the line.
+  // Gantry over the line; its local +x points along the track.
   track.frame(0, f);
   const y = track.roadY(0);
-  const gantry = new THREE.Group();
-  const steel = new THREE.MeshStandardMaterial({ color: 0x2b2e35, roughness: 0.4, metalness: 0.8 });
+  const frame = new THREE.Matrix4().makeRotationY(Math.atan2(-f.tz, f.tx)).setPosition(f.x, y, f.z);
+  const steel = { color: 0x2b2e35, roughness: 0.4, metalness: 0.8 };
   const span = (track.fenceOffset + 1) * 2;
-  for (const side of [-1, 1]) {
-    const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.7, 8.4, 0.7), steel);
-    pillar.position.set(0, 4.2, side * span / 2);
-    pillar.castShadow = true;
-    gantry.add(pillar);
-  }
-  const beam = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.9, span + 0.7), steel);
-  beam.position.y = 7.6;
-  gantry.add(beam);
+  const parts = [];
+  for (const side of [-1, 1]) parts.push(paintVertices(new THREE.BoxGeometry(0.7, 8.4, 0.7).translate(0, 4.2, (side * span) / 2).toNonIndexed(), steel));
+  parts.push(paintVertices(new THREE.BoxGeometry(0.8, 1.9, span + 0.7).translate(0, 7.6, 0).toNonIndexed(), steel));
+  const gantry = mergePainted(parts).applyMatrix4(frame);
+
   const banner = bannerTexture('APEX OVERDRIVE', 'EMERALD COAST');
-  const bannerMat = new THREE.MeshBasicMaterial({ map: banner, toneMapped: false });
+  const boards = [];
   for (const side of [-1, 1]) {
-    const board = new THREE.Mesh(new THREE.PlaneGeometry(span, span / 8), bannerMat);
-    board.position.set(side * 0.42, 7.6, 0);
-    board.rotation.y = side * Math.PI / 2;
-    gantry.add(board);
+    const board = new THREE.PlaneGeometry(span, span / 8);
+    board.rotateY((side * Math.PI) / 2);
+    board.translate(side * 0.42, 7.6, 0);
+    boards.push(board);
   }
-  // Gantry local +x points along the track.
-  gantry.position.set(f.x, y, f.z);
-  gantry.rotation.y = Math.atan2(-f.tz, f.tx);
-  group.add(gantry);
-  return group;
+  const boardMesh = new THREE.Mesh(mergeGeometries(boards).applyMatrix4(frame), new THREE.MeshBasicMaterial({ map: banner, toneMapped: false }));
+  meshes.push(boardMesh);
+  return { steel: gantry, meshes };
 }

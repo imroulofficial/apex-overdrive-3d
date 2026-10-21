@@ -1,13 +1,18 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { applyFinish } from '../garage/carPaint.js';
+import { FINISHES } from '../data/catalog.js';
+import { backFace, createVertexPbrMaterial, describeMaterial, isFlatMaterial, mergePainted, paintVertices } from '../render/vertexPbr.js';
 
 // Race-ready cars baked from a garage car rig (procedural or .glb, see modelLoader.js). The
 // showroom model has dozens of meshes and real light sources; on track six of them would
-// cost hundreds of draw calls and a heavy light loop in every shader. Here the body is baked
-// into one mesh per material, each wheel into one spinning mesh per material, and lights
-// are replaced by emissive lenses.
+// cost hundreds of draw calls and a heavy light loop in every shader. Here every untextured
+// part (trim, carbon, chrome, lenses, liners...) is folded into one vertex-coloured "atlas"
+// mesh, paint, glass and the brake lights keep their own materials, and the wheels of every
+// car from one factory are a single InstancedMesh. A car costs 4 draw calls instead of ~18.
 
+const ATLAS = Symbol('atlas');
+const WHEEL_CAPACITY = 16; // per side: up to 16 cars per factory
 function sliceGroups(mesh) {
   const geo = mesh.geometry;
   const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
@@ -31,7 +36,8 @@ function normalize(geo, matrix) {
 }
 
 // Collect meshes under `root` (excluding `skip` subtrees) into one merged mesh per material.
-function bake(root, relativeTo, skip = () => false, materialMap = (m) => m) {
+// Parts mapped to ATLAS are painted into vertex attributes and merged under `atlasMaterial`.
+function bake(root, relativeTo, skip = () => false, materialMap = (m) => m, atlasMaterial = null) {
   const buckets = new Map();
   const inv = new THREE.Matrix4().copy(relativeTo.matrixWorld).invert();
   const m = new THREE.Matrix4();
@@ -42,14 +48,36 @@ function bake(root, relativeTo, skip = () => false, materialMap = (m) => m) {
     for (const { geo, mat } of sliceGroups(o)) {
       const target = materialMap(mat);
       if (!target) continue;
-      if (!buckets.has(target)) buckets.set(target, []);
-      buckets.get(target).push(normalize(geo, m));
+      const key = target === ATLAS ? atlasMaterial : target;
+      if (!buckets.has(key)) buckets.set(key, []);
+      const g = normalize(geo, m);
+      if (target === ATLAS) {
+        paintVertices(g, describeMaterial(mat));
+        buckets.get(key).push(g);
+        if (mat.side === THREE.DoubleSide) buckets.get(key).push(backFace(g));
+      } else {
+        buckets.get(key).push(g);
+      }
     }
   });
   return [...buckets].map(([mat, geos]) => {
-    const mesh = new THREE.Mesh(mergeGeometries(geos), mat);
+    const mesh = new THREE.Mesh(mat === atlasMaterial ? mergePainted(geos) : mergeGeometries(geos), mat);
     mesh.castShadow = true;
     return mesh;
+  });
+}
+
+// Clear-coated paint for rivals: the showroom's flake normal map and iridescence are left
+// out (they cost a texture fetch and a lobe each), the lacquer layer and env reflections stay.
+export function createRivalPaint(color, finish = 'gloss') {
+  const f = FINISHES[finish] ?? FINISHES.gloss;
+  return new THREE.MeshPhysicalMaterial({
+    color,
+    metalness: f.metalness,
+    roughness: Math.max(0.12, f.roughness),
+    clearcoat: Math.max(0.6, f.clearcoat),
+    clearcoatRoughness: 0.04,
+    envMapIntensity: 1.35,
   });
 }
 
@@ -76,24 +104,79 @@ export class CarFactory {
     template.group.updateMatrixWorld(true);
     this.paint = template.paintMaterial;
     this.flameTex = flameTexture();
+    this.atlas = createVertexPbrMaterial({ envMapIntensity: 1.1 });
+    // Left and right wheels are mirror images, so each side gets its own batch.
+    const wheelsSrc = template.group.children.filter((c) => c.isGroup && c.userData.wheelIndex !== undefined);
+    this.wheelBatches = [];
+    for (const side of [1, -1]) {
+      const src = wheelsSrc.find((w) => Math.sign(w.position.z || 1) === side);
+      const mesh = src && this.createWheelBatch(src);
+      if (mesh) this.wheelBatches.push({ side, mesh, slots: [] });
+    }
+    // Instancing only when both sides batch; otherwise every wheel stays a per-car mesh.
+    if (this.wheelBatches.length !== 2) this.wheelBatches = [];
+  }
+
+  // Meshes the race adds to its scene once (shared by every car from this factory).
+  get sharedMeshes() {
+    return this.wheelBatches.map((b) => b.mesh);
   }
 
   setPlayerPaint(color, finish) {
     applyFinish(this.paint, color, finish);
   }
 
-  // Builds a car; the player keeps the garage clear-coat paint, rivals get a cheaper standard paint.
+  // One InstancedMesh for every wheel on one side of the cars this factory builds (tyre, rim
+  // and disc merged with vertex PBR). Returns null when the wheel uses textures.
+  createWheelBatch(src) {
+    const geos = [];
+    let flat = true;
+    src.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(src.matrixWorld).invert();
+    const m = new THREE.Matrix4();
+    src.traverse((o) => {
+      if (!o.isMesh || o.name === 'caliper') return;
+      m.multiplyMatrices(inv, o.matrixWorld);
+      for (const { geo, mat } of sliceGroups(o)) {
+        if (!isFlatMaterial(mat)) flat = false;
+        const g = normalize(geo, m);
+        paintVertices(g, describeMaterial(mat));
+        geos.push(g);
+        if (mat.side === THREE.DoubleSide) geos.push(backFace(g));
+      }
+    });
+    if (!flat || !geos.length) return null;
+    const mesh = new THREE.InstancedMesh(mergePainted(geos), this.atlas, WHEEL_CAPACITY);
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.count = 0;
+    // Wheels move with the cars; the batch bounds would have to be rebuilt every frame.
+    mesh.frustumCulled = false;
+    mesh.name = 'wheels';
+    return mesh;
+  }
+
+  // Copies every wheel's world transform into the batch. Call once per frame after the cars move.
+  syncWheels() {
+    for (const { mesh, slots } of this.wheelBatches) {
+      for (let i = 0; i < slots.length; i++) {
+        slots[i].updateWorldMatrix(true, false);
+        mesh.setMatrixAt(i, slots[i].matrixWorld);
+      }
+      mesh.count = slots.length;
+      mesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  // Drops a car's wheels from the batches (its visual is being thrown away).
+  release(visual) {
+    for (const b of this.wheelBatches) b.slots = b.slots.filter((s) => !visual.wheels.some((w) => w.spin === s));
+  }
+
+  // Builds a car; the player keeps the garage clear-coat paint, rivals get a lighter clear-coat.
   build({ color, finish = 'gloss', player = false }) {
     const t = this.template.group;
     const own = new Map();
-    const paint = player
-      ? this.paint
-      : new THREE.MeshStandardMaterial({
-          color,
-          metalness: finish === 'metallic' || finish === 'pearl' ? 0.55 : finish === 'chrome' ? 0.95 : 0.1,
-          roughness: finish === 'matte' ? 0.6 : 0.25,
-          envMapIntensity: 1.2,
-        });
+    const paint = player ? this.paint : createRivalPaint(color, finish);
     const materialMap = (mat) => {
       if (mat === this.paint) return paint;
       if (mat.name === 'skip') return null;
@@ -102,7 +185,7 @@ export class CarFactory {
         if (!own.has(mat)) own.set(mat, mat.clone());
         return own.get(mat);
       }
-      return mat;
+      return isFlatMaterial(mat) ? ATLAS : mat;
     };
     const wheelsSrc = t.children.filter((c) => c.isGroup && c.userData.wheelIndex !== undefined);
     const isWheel = (o) => wheelsSrc.includes(o);
@@ -110,7 +193,7 @@ export class CarFactory {
     const root = new THREE.Group(); // position + yaw + pitch
     const body = new THREE.Group(); // roll / squat
     root.add(body);
-    bake(t, t, isWheel, materialMap).forEach((mesh) => {
+    bake(t, t, isWheel, materialMap, this.atlas).forEach((mesh) => {
       // One shadow caster per car keeps the shadow pass cheap; the paint shell is the silhouette.
       mesh.castShadow = mesh.material === paint;
       body.add(mesh);
@@ -122,12 +205,17 @@ export class CarFactory {
       wheel.position.copy(src.position);
       const spin = new THREE.Group();
       wheel.add(spin);
-      // Everything except the caliper spins; procedural wheels merge to tyre + metal.
-      const merged = bake(src, src, (o) => o.name === 'caliper', (mat) => (mat.roughness > 0.85 ? mat : this.metalOf(mat)));
-      merged.forEach((mesh) => {
-        mesh.castShadow = false;
-        spin.add(mesh);
-      });
+      const batch = this.wheelBatches.find((b) => b.side === Math.sign(src.position.z || 1));
+      if (batch && batch.slots.length < WHEEL_CAPACITY) {
+        batch.slots.push(spin);
+      } else {
+        // Textured (.glb) wheels: everything except the caliper spins, one mesh per material.
+        const merged = bake(src, src, (o) => o.name === 'caliper', (mat) => (mat.roughness > 0.85 ? mat : this.metalOf(mat)));
+        merged.forEach((mesh) => {
+          mesh.castShadow = false;
+          spin.add(mesh);
+        });
+      }
       body.add(wheel);
       return { wheel, spin, front: index < 2 };
     });

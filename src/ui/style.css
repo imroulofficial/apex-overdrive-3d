@@ -1,7 +1,8 @@
 /* Apex Overdrive HUD: angled glassmorphism over the WebGL garage. */
 :root {
   color-scheme: dark;
-  --bg: #05070d;
+  /* Pure black behind everything: any letterbox or cutout area blends into the bezel. */
+  --bg: #000000;
   --text: #f2f4f8;
   --muted: #9aa3b2;
   --accent: #ff2a3a;
@@ -52,6 +53,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   width: 100%;
   height: 100%;
   display: block;
+  background: #000000;
   touch-action: none;
 }
 
