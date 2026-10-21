@@ -92,14 +92,14 @@ test('damaged saves are repaired, never thrown', () => {
     assert.equal(s.career.stageStars.length, STAGES.length);
   }
   assert.equal(migrate({ upgrades: { engine: 99 } }).cars['rp1-vanta'].upgrades.topSpeed, 5);
-  const s = normalize({ v: 2, car: 'ghost', cars: { ghost: {}, 'rp1-vanta': { upgrades: { nitro: -3 }, paint: 'nope', rim: 'gold' } }, career: { stageStars: [9, 3.4, -1], milestones: ['stars-10', 'fake', 'stars-10'] } });
+  const s = normalize({ v: 2, car: 'ghost', cars: { ghost: {}, 'rp1-vanta': { upgrades: { nitro: -3 }, paint: 'nope', rim: 'gold' } }, career: { stageStars: [9, 3.4, -1], milestones: ['ec-15', 'fake', 'stars-10', 'ec-15'] } });
   assert.equal(s.car, 'rp1-vanta');
   assert.equal(s.cars.ghost, undefined);
   assert.equal(s.cars['rp1-vanta'].upgrades.nitro, 0);
   assert.equal(s.cars['rp1-vanta'].paint, 'apex-red');
   assert.equal(s.cars['rp1-vanta'].rim, 'stock');
   assert.deepEqual(s.career.stageStars.slice(0, 3), [7, 3, 0]);
-  assert.deepEqual(s.career.milestones, ['stars-10']);
+  assert.deepEqual(s.career.milestones, ['ec-15']);
 });
 
 // ---- Cloud ----
@@ -142,7 +142,7 @@ test('v2 cloud documents round-trip', () => {
 
   const other = defaults();
   other.purchases.granted = ['remove_ads'];
-  other.career.milestones = ['stars-10'];
+  other.career.milestones = ['ec-15'];
   other.ads.crateClaimedAt = 1792531999999;
   applyProgress(other, back.progress, doc.updatedAt);
   assert.equal(other.coins, 18450);
@@ -151,7 +151,7 @@ test('v2 cloud documents round-trip', () => {
   assert.deepEqual(other.career.stageStars, s.career.stageStars);
   // Bonuses paid and milestones claimed on this device are never forgotten.
   assert.deepEqual(other.purchases.granted.sort(), ['remove_ads', 'supercar_bundle']);
-  assert.deepEqual(other.career.milestones, ['stars-10']);
+  assert.deepEqual(other.career.milestones, ['ec-15']);
   assert.equal(other.ads.crateClaimedAt, 1792531999999);
   // Device-only settings survive.
   assert.deepEqual(other.settings, defaults().settings);

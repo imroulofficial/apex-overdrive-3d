@@ -22,7 +22,7 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // CI passes -PversionCode=<run number> so every uploaded bundle is unique.
         versionCode((project.findProperty('versionCode') ?: '1') as Integer)
-        versionName "0.9.0"
+        versionName "0.10.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         // AdMob app id: Google's sample id until a store release passes -PadmobAppId.
         manifestPlaceholders = [admobAppId: (project.findProperty('admobAppId') ?: 'ca-app-pub-3940256099942544~3347511713')]

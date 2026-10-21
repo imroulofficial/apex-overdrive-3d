@@ -85,11 +85,11 @@
       </nav>
 
       <div class="race-launch">
-        <button id="btn-stage" class="stage-chip glass angled" aria-label="Choose stage">
+        <button id="btn-stage" class="stage-chip glass angled" aria-label="Continue the campaign">
           <span class="stage-chip-text"><small id="stage-kicker">STAGE EC-01 · CLASSIC EXPEDITION</small><b id="stage-name">Coastal Loop</b></span>
           <span class="stage-chip-stars" id="stage-stars"></span>
         </button>
-        <button id="btn-race" class="race-btn"><span>RACE START</span></button>
+        <button id="btn-race" class="race-btn"><span>WORLD MAP</span></button>
       </div>
     </div>
 
@@ -189,7 +189,7 @@
       <div class="dialog-body pause-body">
         <button class="pill-btn" id="pause-resume">Resume</button>
         <button class="pill-btn ghost" id="pause-restart">Restart race</button>
-        <button class="pill-btn ghost" id="pause-quit">Quit to garage</button>
+        <button class="pill-btn ghost" id="pause-quit">Quit to world map</button>
         <p class="about">Quitting forfeits this race's rewards.</p>
       </div>
     </dialog>
@@ -222,7 +222,8 @@
             <span>Watch ad · 2× coins</span>
           </button>
           <button class="pill-btn ghost" id="res-again">Race again</button>
-          <button class="pill-btn" id="res-garage">Back to garage</button>
+          <button class="pill-btn ghost" id="res-next" hidden>Next stage</button>
+          <button class="pill-btn" id="res-garage">World map</button>
         </div>
       </div>
     </div>
@@ -302,18 +303,88 @@
       </div>
     </dialog>
 
-    <dialog id="stage-picker" class="dialog stage-picker glass angled" aria-labelledby="stage-picker-title">
-      <header class="dialog-head">
-        <h2 id="stage-picker-title">Stages</h2>
-        <span class="sandbox-badge" id="stage-dev" hidden>DEV · ALL UNLOCKED</span>
-        <button class="icon-btn close" data-close aria-label="Close stages">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
-        </button>
+
+    <div id="map-hud" class="map-hud" hidden>
+      <header class="map-top">
+        <button id="map-back" class="icon-btn glass angled" aria-label="Back to garage"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 8 12l7 7" /></svg></button>
+        <div class="map-title glass angled"><small>WORLD MAP · THE APEX EXPEDITION</small><b id="map-chapter-name">1 · Emerald Coast</b><span id="map-chapter-sub"></span></div>
+        <nav id="map-chapters" class="map-chapters glass angled" role="tablist" aria-label="Chapters"></nav>
+        <div class="map-pills">
+          <div class="coins map-stars glass angled" aria-label="Career stars"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2.5 2.9 6 6.6.8-4.9 4.5 1.3 6.5L12 17l-5.9 3.3 1.3-6.5-4.9-4.5 6.6-.8z" /></svg><span id="map-stars">0</span></div>
+          <div class="coins glass angled" aria-label="Coins"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" class="coin-face" /><path d="M12 7v10M9.5 9.5h4a1.5 1.5 0 0 1 0 3h-3a1.5 1.5 0 0 0 0 3h4" class="coin-mark" /></svg><span id="map-coins">0</span></div>
+        </div>
       </header>
-      <div class="dialog-body">
-        <div class="segmented stage-modes" id="stage-modes" role="radiogroup" aria-label="Game mode"></div>
-        <div id="stage-list" class="stage-list"></div>
-        <div class="stage-detail" id="stage-detail"></div>
+      <div id="map-nodes" class="map-nodes"></div>
+      <div id="map-lock" class="map-lock glass angled" hidden></div>
+      <footer class="map-bottom">
+        <div class="chest-track glass angled">
+          <div class="chest-head"><small>CHAPTER STARS</small><b id="chest-count">0 / 60</b></div>
+          <div class="chest-bar"><i id="chest-fill"></i><div id="chest-marks" class="chest-marks"></div></div>
+        </div>
+        <button id="map-continue" class="race-btn map-continue"><span><small>CONTINUE</small><b id="map-continue-label">STAGE EC-01</b></span></button>
+      </footer>
+    </div>
+
+    <div id="briefing" class="briefing" hidden>
+      <div class="brief-card glass angled" role="dialog" aria-labelledby="brief-title">
+        <header class="brief-head">
+          <button id="brief-back" class="icon-btn" aria-label="Back to world map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 8 12l7 7" /></svg></button>
+          <div class="brief-heading">
+            <small id="brief-kicker"></small>
+            <h2 id="brief-title">Coastal Loop</h2>
+            <span id="brief-chapter"></span>
+          </div>
+          <button id="brief-story" class="pill-btn ghost brief-story" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" /></svg>Story</button>
+        </header>
+        <div class="brief-body">
+          <section class="brief-col">
+            <ul id="brief-facts" class="brief-facts"></ul>
+            <h3>3-star objectives</h3>
+            <ol id="brief-objectives" class="brief-objectives"></ol>
+            <div id="brief-rival" class="brief-rival"></div>
+          </section>
+          <section class="brief-col">
+            <h3>Vehicle <small id="brief-demand"></small></h3>
+            <div id="brief-cars" class="brief-cars"></div>
+            <button id="brief-nitro" class="nitro-perk" data-state="idle">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 5 13.5h6L10 22l8-11.5h-6z" /></svg>
+              <span><b>Fill Nitrous Tank</b><small>Watch an ad · start at 100% nitro</small></span>
+              <i class="perk-ad">AD</i>
+            </button>
+          </section>
+        </div>
+        <footer class="brief-foot">
+          <p id="brief-note" class="brief-note"></p>
+          <button id="brief-start" class="race-btn"><span>START RACE</span></button>
+        </footer>
+      </div>
+    </div>
+
+    <div id="dialogue" class="dialogue" hidden>
+      <div class="dlg-title" id="dlg-title"></div>
+      <button id="dlg-skip" class="pill-btn ghost dlg-skip">Skip</button>
+      <div class="dlg-stage">
+        <div class="dlg-portrait" data-slot="left" hidden></div>
+        <div class="dlg-portrait" data-slot="right" hidden></div>
+        <div class="dlg-caption" id="dlg-caption" hidden><span></span></div>
+        <div class="dlg-box" hidden>
+          <div class="dlg-plate"><b id="dlg-name"></b><small id="dlg-role"></small></div>
+          <p id="dlg-text"></p>
+        </div>
+      </div>
+      <div class="dlg-foot"><span id="dlg-dots" class="dlg-dots"></span><small>Tap to continue</small></div>
+    </div>
+
+    <dialog id="chest-dialog" class="dialog chest-dialog glass angled" aria-labelledby="chest-title">
+      <header class="dialog-head">
+        <h2 id="chest-title">Milestone chest</h2>
+        <button class="icon-btn close" data-close aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>
+      </header>
+      <div class="dialog-body chest-body">
+        <div class="chest-hero" id="chest-hero"></div>
+        <ul class="chest-rewards" id="chest-rewards"></ul>
+        <p class="about" id="chest-note"></p>
+        <button class="pill-btn gold" id="chest-collect">Collect</button>
       </div>
     </dialog>
 

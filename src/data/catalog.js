@@ -25,6 +25,13 @@ export const PAINTS = [
   { id: 'liquid-gold', name: 'Liquid Gold', color: '#d4a537', finish: 'chrome', price: 1500 },
   // Never sold for coins: granted by the No Ads Pack (see PRODUCTS in config.js).
   { id: 'founder', name: 'Red Pen Studio Founder', color: '#b3122f', finish: 'founder', price: 0, product: 'remove_ads' },
+  // Never sold: each comes out of a world-map milestone chest (MILESTONES in data/career.js).
+  { id: 'tidal-teal', name: 'Tidal Teal', color: '#0fa3a3', finish: 'pearl', price: 0, milestone: 'ec-30' },
+  { id: 'riptide-wave', name: 'Riptide Wave', color: '#1d4fd8', finish: 'metallic', price: 0, milestone: 'ec-60' },
+  { id: 'glacier-frost', name: 'Glacier Frost', color: '#bfe6ff', finish: 'pearl', price: 0, milestone: 'as-30' },
+  { id: 'avalanche-white', name: 'Avalanche Chrome', color: '#dfe7ee', finish: 'chrome', price: 0, milestone: 'as-60' },
+  { id: 'neon-magenta', name: 'Neon Magenta', color: '#ff2bd6', finish: 'metallic', price: 0, milestone: 'nc-30' },
+  { id: 'kage-shadow', name: 'Kage Shadow', color: '#2a0f3d', finish: 'pearl', price: 0, milestone: 'nc-60' },
 ];
 
 // Every car has its own levels (0 = stock, 1-5 bought with coins), stored per car in the

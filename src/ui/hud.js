@@ -1,4 +1,5 @@
 import { PAINTS, FINISHES, UPGRADES, upgradeCost } from '../data/catalog.js';
+import { MILESTONES, chapterById } from '../data/career.js';
 import { PRODUCTS } from '../config.js';
 import { RELEASED_CARS, carById } from '../data/cars.js';
 import { state, save, subscribe, spendCoins, activeCar } from '../core/store.js';
@@ -74,7 +75,7 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
   // Coin paints are bought once; purchase-exclusive paints follow the Play entitlement.
   const ownsPaint = (p) => (p.product ? state.purchases.paints.includes(p.id) : state.ownedPaints.includes(p.id));
   grid.innerHTML = PAINTS.map(
-    (p) => `<button class="swatch${p.product ? ' exclusive' : ''}" data-paint="${p.id}" style="--swatch:${p.color}" aria-label="${p.name}"></button>`
+    (p) => `<button class="swatch${p.product ? ' exclusive' : ''}${p.milestone ? ' chest-paint' : ''}" data-paint="${p.id}" style="--swatch:${p.color}" aria-label="${p.name}"></button>`
   ).join('');
 
   function renderPaint() {
@@ -88,7 +89,12 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
     });
     const p = paintById(previewPaint);
     $('#paint-name').textContent = p.name;
-    $('#paint-finish').textContent = p.product ? `${FINISHES[p.finish].label} · ${PRODUCTS[p.product].title} exclusive` : FINISHES[p.finish].label;
+    const chest = p.milestone && MILESTONES.find((m) => m.id === p.milestone);
+    $('#paint-finish').textContent = p.product
+      ? `${FINISHES[p.finish].label} · ${PRODUCTS[p.product].title} exclusive`
+      : chest
+        ? `${FINISHES[p.finish].label} · ${chapterById(chest.chapterId).name} ${chest.stars}★ chest`
+        : FINISHES[p.finish].label;
     const action = $('#paint-action');
     action.classList.toggle('gold', Boolean(p.product) && !ownsPaint(p));
     if (equipped() === p.id) {
@@ -100,6 +106,10 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
     } else if (p.product) {
       action.textContent = `Get · ${billing.price(p.product)}`;
       action.disabled = false;
+    } else if (chest) {
+      // Chest paints are never sold: they come out of world-map milestone chests.
+      action.textContent = `${chest.stars}★ chest`;
+      action.disabled = true;
     } else {
       action.textContent = `Buy · ${fmt(p.price)}`;
       action.disabled = false;
@@ -130,6 +140,7 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
       onOpenStore?.(p.product);
       return;
     }
+    if (p.milestone && !ownsPaint(p)) return;
     if (!ownsPaint(p)) {
       if (!spendCoins(p.price)) {
         sfx.deny();
