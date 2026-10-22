@@ -24,6 +24,11 @@ export const TEXTURES = {
   redwoodBark: ['redwood_bark_diff.webp', true],
   palmBark: ['palm_bark_diff.webp', true],
   fronds: ['fronds_rgba.webp', true],
+  // Alpine Summit.
+  snow: ['snow_diff.webp', true],
+  alpineRock: ['alpine_rock_diff.webp', true],
+  tunnelStone: ['tunnel_stone_diff.webp', true],
+  pineBark: ['pine_bark_diff.webp', true],
 };
 export const MODELS = { boulder: 'boulder.glb', rock: 'rock.glb' };
 
@@ -59,6 +64,7 @@ async function load(renderer) {
           t.flipY = false;
           t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
         }
+        t.userData.shared = true; // kept across tracks (Race.dispose)
         tex[key] = t;
       },
       () => (tex[key] = null)

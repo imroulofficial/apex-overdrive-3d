@@ -243,7 +243,7 @@ export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, 
       set('apex', !!s.apexReady, (v) => root.classList.toggle('apex-ready', v));
       set('surface', s.surface, (v) => {
         el.surface.hidden = !v || v === 'asphalt';
-        el.surface.textContent = { grass: 'GRASS', dirt: 'DIRT', wood: 'TIMBER' }[v] ?? 'GRAVEL';
+        el.surface.textContent = { grass: 'GRASS', dirt: 'DIRT', wood: 'TIMBER', ice: 'BLACK ICE' }[v] ?? 'GRAVEL';
         el.surface.dataset.surface = v;
       });
       set('wrong', s.wrongWay, (v) => (el.wrong.hidden = !v));

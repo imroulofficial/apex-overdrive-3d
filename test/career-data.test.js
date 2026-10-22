@@ -40,9 +40,9 @@ test('every stage defines the full stage model', () => {
   }
 });
 
-test('all five modes and all six weather presets are used', () => {
+test('all five modes and every weather preset are used', () => {
   assert.deepEqual(new Set(STAGES.map((s) => s.gameMode)), new Set(['Classic', 'TimeTrial', 'DriftTouge', 'Elimination', 'BossDuel']));
-  assert.deepEqual(new Set(STAGES.map((s) => s.weatherPreset)), new Set(['GoldenHour', 'Fog', 'Rain', 'Storm', 'Midday', 'Dusk']));
+  assert.deepEqual(new Set(STAGES.map((s) => s.weatherPreset)), new Set(Object.keys(WEATHER)));
 });
 
 test('each chapter ends in a boss duel against its regional boss', () => {

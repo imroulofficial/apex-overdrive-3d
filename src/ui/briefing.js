@@ -33,6 +33,10 @@ const WEATHER_ICONS = {
   Midday: '<circle cx="12" cy="12" r="4.5" /><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8" />',
   Dusk: '<path d="M6 17a4 4 0 0 1-.3-8A5.5 5.5 0 0 1 16 9.8 3.6 3.6 0 0 1 16.4 17z" /><path d="M3 21h18" />',
   Storm: '<path d="M7 13.5a4 4 0 0 1-.4-8 5.5 5.5 0 0 1 10.6 1.2A3.4 3.4 0 0 1 17 13.5z" /><path d="m12.5 13.5-2.5 4h3l-2 4.5" />',
+  // Alpine Summit: cloud on the peaks, falling snow and the finale blizzard.
+  MountainFog: '<path d="m2.5 16 6-9 4 5.5 2.5-3 6.5 6.5" /><path d="M4 19.5h16M7 22.5h10" />',
+  Snowfall: '<path d="M7 12.5a4 4 0 0 1-.4-8 5.5 5.5 0 0 1 10.6 1.2A3.4 3.4 0 0 1 17 12.5z" /><path d="M8 16v.01M12 18v.01M16 16v.01M10 21v.01M14 21v.01" />',
+  Blizzard: '<path d="M3 8h11a2.5 2.5 0 1 0-2.5-2.5M3 12h16a2.5 2.5 0 1 1-2.5 2.5M3 16h8" /><path d="M14 19v.01M18 20v.01M8 20v.01" />',
 };
 const icon = (paths) => `<svg viewBox="0 0 24 24" aria-hidden="true">${paths}</svg>`;
 const TRACK_ICON = '<path d="M4 20c0-6 4-7 8-7s8-1 8-7" /><path d="M4 20h3M17 6h3" />';

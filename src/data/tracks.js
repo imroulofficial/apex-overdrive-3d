@@ -1,3 +1,5 @@
+import { ALPINE_SUMMIT } from './alpineSummit.js';
+
 // Track definitions. Points are closed-loop waypoints [x, y, z] in metres (y is road height
 // above sea level); the race spline runs through them. The ocean lies to the south (+z).
 
@@ -72,4 +74,5 @@ export const EMERALD_COAST = {
   ],
 };
 
-export const TRACKS = [EMERALD_COAST];
+export const TRACKS = [EMERALD_COAST, ALPINE_SUMMIT];
+export { ALPINE_SUMMIT };
