@@ -186,6 +186,19 @@ export const SCENES = {
       line('elena', "Bank every star you can. When Kage finally shows, you'll want every upgrade we can buy."),
     ],
   },
+  'nc-15': {
+    id: 'nc-15',
+    trigger: { stage: 'nc-15', when: 'before' },
+    chapterId: 'neon-city',
+    title: 'Static on the Skyline',
+    lines: [
+      caption('Every billboard on the Neon Mile flickers at once. For one frame, they all show the same word: KAGE.'),
+      line('kage', 'Fifty-four stages. You have earned a look at the car you will be chasing.', 'whisper'),
+      line('rookie', 'Nice light show. Does it come with a race?'),
+      line('kage', 'Five more stages. Then the Grand Prix, in the storm. Win, and the city is yours. Lose, and you were never here.'),
+      line('elena', 'Kage owns the night signal, not the road. Out here a fast lap is still a fast lap. Bank the stars.'),
+    ],
+  },
   'nc-20': {
     id: 'nc-20',
     trigger: { stage: 'nc-20', when: 'before' },
@@ -193,9 +206,10 @@ export const SCENES = {
     title: 'Final Duel: Kage',
     boss: true,
     lines: [
-      caption('The Neon Grand Prix. Three laps through the heart of the city. The last duel of the Apex Expedition.'),
+      caption('The Neon Grand Prix. Three laps through the heart of the city as a thunderstorm breaks over the skyline. The last duel of the Apex Expedition.'),
       line('kage', 'Riptide, Avalanche... they raced you. I am going to erase you.', 'shout'),
       line('elena', 'Kage never makes a mistake, so you cannot wait for one. Perfect exits, Pulse nitros, all race long.'),
+      line('elena', 'Watch for the magenta light trail. Where it bends, Kage braked. Brake later.'),
       line('rookie', "From the back of the grid on the coast to here. Let's finish it."),
     ],
   },
@@ -209,6 +223,8 @@ export const SCENES = {
       line('riptide', 'Told you the rookie was trouble.'),
       line('avalanche', 'The mountain, the coast, the city. All of it, in one season.'),
       line('elena', 'Rookie... no. Champion. The Apex Expedition is yours. Now go get the last stars. I know you want them.'),
+      caption('Above the Neon Mile, every billboard changes at once. This time they all read the same name, and it is not Kage.'),
+      caption('Apex Expedition complete. Thanks for racing with Red Pen Studio.'),
     ],
   },
 };

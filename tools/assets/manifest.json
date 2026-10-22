@@ -8,7 +8,9 @@
     { "id": "forest_ground_04", "key": "forest", "maps": { "diff": 512 }, "use": "Redwood trail dirt" },
     { "id": "metasequoia_bark", "key": "redwood_bark", "maps": { "diff": 512 }, "use": "Redwood trunks" },
     { "id": "palm_tree_bark", "key": "palm_bark", "maps": { "diff": 256 }, "use": "Palm trunks" },
-    { "id": "fern_02", "key": "fronds", "maps": { "rgba": 512 }, "use": "Frond atlas shared by fern, redwood spray and palm leaf cards" }
+    { "id": "fern_02", "key": "fronds", "maps": { "rgba": 512 }, "use": "Frond atlas shared by fern, redwood spray and palm leaf cards" },
+    { "id": "concrete_wall_008", "key": "concrete", "maps": { "diff": 512 }, "use": "Neon City viaducts, barriers, overpasses and bridge pylons" },
+    { "id": "concrete_pavement", "key": "pavement", "maps": { "diff": 512 }, "use": "Neon City hard shoulders and pavements" }
   ],
   "models": [
     { "id": "rock_07", "key": "boulder", "ratio": 0.018, "error": 0.05, "texture": 512, "use": "Coastal boulders and sea stacks" },

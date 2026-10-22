@@ -24,6 +24,9 @@ export const TEXTURES = {
   redwoodBark: ['redwood_bark_diff.webp', true],
   palmBark: ['palm_bark_diff.webp', true],
   fronds: ['fronds_rgba.webp', true],
+  // Neon City: viaducts, barriers and pylons; hard shoulders and pavements.
+  concrete: ['concrete_diff.webp', true],
+  pavement: ['pavement_diff.webp', true],
 };
 export const MODELS = { boulder: 'boulder.glb', rock: 'rock.glb' };
 

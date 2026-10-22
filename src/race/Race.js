@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Track } from './track.js';
 import { buildTrackMeshes, buildDirectional } from './trackMeshes.js';
 import { buildScenery } from './scenery.js';
+import { buildNeonScenery } from './neonScenery.js';
 import { loadEnvAssets } from '../render/envAssets.js';
 import { SmashProps } from './props.js';
 import { Vehicle, statsToParams, NITRO } from './vehicle.js';
@@ -49,6 +50,8 @@ const RED_DIRT = new THREE.Color(0xb4532c);
 const SPRAY = new THREE.Color(0xd9e0e4);
 const COAST_INPUT = { steer: 0, throttle: 0, brake: false, brakePressed: false, nitroTaps: [] };
 const now = () => performance.now() / 1000;
+// World builders by track biome (data/tracks.js `biome`); the coast is the default.
+const SCENERY = { coast: buildScenery, neon: buildNeonScenery };
 
 export class Race {
   constructor(renderer, def, { onFps } = {}) {
@@ -76,7 +79,7 @@ export class Race {
     this.tracks = { forward: this.track, reverse: null };
     // Bundled CC0 scans (road, ground, bark, fronds, rocks); loaded once per session.
     const env = await loadEnvAssets(renderer);
-    this.scenery = buildScenery(this.scene, renderer, this.track, this.def, quality, env);
+    this.scenery = (SCENERY[this.def.biome] ?? buildScenery)(this.scene, renderer, this.track, this.def, quality, env);
     const meshes = buildTrackMeshes(this.track, renderer, { groundMaterial: this.scenery.groundMaterial, env });
     this.scene.add(meshes);
     this.wet = meshes.userData.wet; // shared rain uniform: asphalt, kerbs, bridge, trails
@@ -88,7 +91,7 @@ export class Race {
     // Biome set-pieces.
     const ground = (x, z) => this.scenery.terrain.sample(x, z).h;
     this.setPieces = [buildBridge(this.track, this.wet), buildWaterfall(this.scenery.terrain.gorge, ground), buildTrails(this.track, this.wet, env)].filter(Boolean);
-    this.scene.add(...this.setPieces);
+    if (this.setPieces.length) this.scene.add(...this.setPieces);
     this.waterfall = this.setPieces.find((o) => o.name === 'waterfall') ?? null;
     this.trailBarriers = this.setPieces.find((o) => o.name === 'trails')?.userData.barriers ?? null;
     this.seabirds = new Seabirds(this.track, this.def, ground);
@@ -512,7 +515,7 @@ export class Race {
     this.sparks.update(dt, 9);
     this.props.update(dt);
     this.modeProps.update(dt, this.time);
-    this.scenery.update(this.time, this.camera);
+    this.scenery.update(this.time, this.camera, player, this.racers);
     this.scenery.follow(player.pos);
     this.updateAtmosphere(dt, player, simulate);
 

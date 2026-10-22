@@ -40,9 +40,11 @@ test('every stage defines the full stage model', () => {
   }
 });
 
-test('all five modes and all six weather presets are used', () => {
+test('all five modes and every weather preset are used', () => {
   assert.deepEqual(new Set(STAGES.map((s) => s.gameMode)), new Set(['Classic', 'TimeTrial', 'DriftTouge', 'Elimination', 'BossDuel']));
-  assert.deepEqual(new Set(STAGES.map((s) => s.weatherPreset)), new Set(['GoldenHour', 'Fog', 'Rain', 'Storm', 'Midday', 'Dusk']));
+  const used = new Set(STAGES.map((s) => s.weatherPreset));
+  for (const id of used) assert.ok(WEATHER[id], `unknown preset ${id}`);
+  for (const id of Object.keys(WEATHER)) assert.ok(used.has(id), `preset ${id} unused`);
 });
 
 test('each chapter ends in a boss duel against its regional boss', () => {

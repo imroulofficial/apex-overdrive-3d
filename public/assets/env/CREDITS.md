@@ -18,5 +18,7 @@ and meshopt-compressed by the script. They are bundled into the app, so nothing 
 | `redwood_bark_diff.webp` | [Metasequoia Bark](https://polyhaven.com/a/metasequoia_bark) (texture) | Charlotte Baglioni | Redwood trunks |
 | `palm_bark_diff.webp` | [Palm Tree Bark](https://polyhaven.com/a/palm_tree_bark) (texture) | Dimitrios Savva, Rico Cilliers | Palm trunks |
 | `fronds_rgba.webp` | [Fern 02](https://polyhaven.com/a/fern_02) (model) | Rob Tuytel, Rico Cilliers | Frond atlas shared by fern, redwood spray and palm leaf cards |
+| `concrete_diff.webp` | [Concrete Wall 008](https://polyhaven.com/a/concrete_wall_008) (texture) | Dario Barresi, Charlotte Baglioni | Neon City viaducts, barriers, overpasses and bridge pylons |
+| `pavement_diff.webp` | [Concrete Pavement](https://polyhaven.com/a/concrete_pavement) (texture) | Charlotte Baglioni | Neon City hard shoulders and pavements |
 | `boulder.glb` | [Rock 07](https://polyhaven.com/a/rock_07) (model) | Jenelle van Heerden | Coastal boulders and sea stacks |
 | `rock.glb` | [Rock 09](https://polyhaven.com/a/rock_09) (model) | Jenelle van Heerden | Roadside rocks |
