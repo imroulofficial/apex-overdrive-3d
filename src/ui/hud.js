@@ -1,10 +1,10 @@
-import { PAINTS, FINISHES, UPGRADES, RIMS, SPOILERS, FX_COLORS, upgradeCost } from '../data/catalog.js';
+import { PAINTS, FINISHES, UPGRADES, RIMS, FX_COLORS, upgradeCost } from '../data/catalog.js';
 import { MILESTONES, chapterById } from '../data/career.js';
 import { PRODUCTS } from '../config.js';
 import { RELEASED_CARS, TIERS, carById } from '../data/cars.js';
 import { TAB_SHOTS } from '../garage/cameraRig.js';
 import { state, save, subscribe, spendCoins, activeCar } from '../core/store.js';
-import { buyUpgrade, buyRim, buySpoiler, equipFx, carStats, equipPaint, unlockStatus, unlockCar, activeProducts } from '../core/inventory.js';
+import { buyUpgrade, buyRim, equipFx, carStats, equipPaint, unlockStatus, unlockCar, activeProducts } from '../core/inventory.js';
 import { sfx } from '../core/audio.js';
 import { billing } from '../monetization/billing.js';
 import { cloud } from '../core/cloud.js';
@@ -83,7 +83,6 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
       $$('.tab-panel').forEach((p) => (p.hidden = p.dataset.panel !== tab.dataset.tab));
       if (tab.dataset.tab !== 'paint') revertPreview();
       if (tab.dataset.tab !== 'rims') revertRim();
-      if (tab.dataset.tab !== 'kit') revertWing();
       if (tab.dataset.tab !== 'cars') endPeek();
       // Each tab frames the part it edits.
       const shot = TAB_SHOTS[tab.dataset.tab];
@@ -241,21 +240,9 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
     cloud.syncSoon();
   });
 
-  // ---- Kit: rear wing (bought per car), tyre smoke and nitro trail colours (free) ----
-  const wingList = $('#wing-list');
-  let previewWing = activeCar().spoiler;
-  const wingById = (id) => SPOILERS.find((w) => w.id === id) ?? SPOILERS[0];
+  // ---- Kit: tyre smoke and nitro trail colours (free, per car) ----
   function renderKit() {
     const entry = activeCar();
-    wingList.innerHTML = SPOILERS.map((w) => {
-      const owned = entry.spoilers.includes(w.id);
-      const equippedWing = entry.spoiler === w.id;
-      const label = equippedWing ? 'Fitted' : owned ? 'Fit' : fmt(w.price);
-      return `<li class="wing${w.id === previewWing ? ' is-selected' : ''}">
-        <button class="wing-pick" data-wing="${w.id}"><strong>${w.name}</strong><small>${owned ? 'Owned' : 'Preview'}</small></button>
-        <button class="pill-btn" data-fit-wing="${w.id}" ${equippedWing ? 'disabled' : ''}>${owned || equippedWing ? '' : LOCK_ICON}${label}</button>
-      </li>`;
-    }).join('');
     for (const row of [$('#fx-smoke'), $('#fx-nitro')]) {
       const current = entry[row.dataset.slot];
       row.innerHTML = FX_COLORS.map(
@@ -263,43 +250,6 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
       ).join('');
     }
   }
-  function revertWing() {
-    if (previewWing === activeCar().spoiler) return;
-    previewWing = activeCar().spoiler;
-    garage.setSpoiler(previewWing);
-    renderKit();
-  }
-  wingList.addEventListener('click', (e) => {
-    const pick = e.target.closest('[data-wing]');
-    if (pick) {
-      sfx.tap();
-      previewWing = pick.dataset.wing;
-      garage.setSpoiler(previewWing);
-      garage.snap('spoiler');
-      setActiveShot('rear');
-      renderKit();
-      return;
-    }
-    const fit = e.target.closest('[data-fit-wing]');
-    if (!fit) return;
-    const id = fit.dataset.fitWing;
-    const owned = activeCar().spoilers.includes(id);
-    const res = buySpoiler(state, state.car, id);
-    if (!res.ok) {
-      sfx.deny();
-      if (res.reason === 'coins') toast(`You need ${fmt(res.cost - state.coins)} more coins`);
-      return;
-    }
-    if (owned) sfx.tap();
-    else {
-      sfx.buy();
-      toast(`${wingById(id).name} fitted`);
-    }
-    previewWing = id;
-    garage.setSpoiler(id);
-    save();
-    cloud.syncSoon();
-  });
   for (const row of [$('#fx-smoke'), $('#fx-nitro')]) {
     row.addEventListener('click', (e) => {
       const el = e.target.closest('[data-fx]');
@@ -420,20 +370,16 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
     const entry = activeCar();
     const p = paintById(equipped());
     if (garage.wantedCarId === state.car) {
-      // Same car: keep its rim and wing in step (a cloud reload can change them).
+      // Same car: keep its rim in step (a cloud reload can change it).
       if (previewRim === shownRim && entry.rim !== shownRim) garage.setRim((previewRim = entry.rim));
-      if (previewWing === shownWing && entry.spoiler !== shownWing) garage.setSpoiler((previewWing = entry.spoiler));
       shownRim = entry.rim;
-      shownWing = entry.spoiler;
       return;
     }
     previewPaint = shownEquipped = p.id;
     previewRim = shownRim = entry.rim;
-    previewWing = shownWing = entry.spoiler;
-    garage.setCar(carById(state.car), { color: p.color, finish: p.finish, rim: entry.rim, spoiler: entry.spoiler });
+    garage.setCar(carById(state.car), { color: p.color, finish: p.finish, rim: entry.rim });
   }
   let shownRim = activeCar().rim;
-  let shownWing = activeCar().spoiler;
   function previewCar(id) {
     peeking = id === state.car ? null : id;
     const p = paintById(equipped());
@@ -546,7 +492,6 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
   $('#btn-race').addEventListener('click', () => {
     revertPreview();
     revertRim();
-    revertWing();
     endPeek();
     sfx.rev();
     garage.rev();
@@ -595,13 +540,11 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
     revertPreview() {
       revertPreview();
       revertRim();
-      revertWing();
       endPeek();
     },
     // A newer cloud save replaced the device's progress: show its paint and wallet.
     reloadSave() {
       previewRim = shownRim;
-      previewWing = shownWing;
       previewPaint = shownEquipped = equipped();
       const p = paintById(previewPaint);
       garage.setPaint(p.color, p.finish);

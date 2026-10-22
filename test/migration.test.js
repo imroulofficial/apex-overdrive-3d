@@ -99,7 +99,7 @@ test('damaged saves are repaired, never thrown', () => {
   assert.equal(s.cars['rp1-vanta'].paint, 'apex-red');
   assert.equal(s.cars['rp1-vanta'].rim, 'stock');
   assert.equal(s.cars['rp1-vanta'].spoiler, 'factory');
-  assert.deepEqual(s.cars['rp1-vanta'].spoilers, ['factory', 'gt-wing']);
+  assert.deepEqual(s.cars['rp1-vanta'].spoilers, ['factory']);
   assert.equal(s.cars['rp1-vanta'].smoke, 'white');
   assert.equal(s.cars['rp1-vanta'].nitroFx, 'blue');
   assert.deepEqual(s.career.stageStars.slice(0, 3), [7, 3, 0]);
@@ -178,3 +178,28 @@ test('control scheme defaults to Touch Drive and survives migration', () => {
   s.settings.controls = 'joystick';
   assert.equal(normalize(s).settings.controls, 'touch');
 });
+
+// ---- 0.14.0 roster: 12 cars -> 8 ----
+
+test('retired cars and bought wings are refunded once, then gone', () => {
+  const before = {
+    v: 2,
+    coins: 1000,
+    car: 'zn-zenith',
+    cars: {
+      'rp1-vanta': { unlockedBy: 'starter', upgrades: { topSpeed: 2 }, spoilers: ['factory', 'gt-wing'], spoiler: 'gt-wing' },
+      'zn-zenith': { unlockedBy: 'coins', upgrades: { topSpeed: 2, nitro: 1 }, rims: ['stock', 'mesh'], spoilers: ['factory', 'ducktail'] },
+      'dr-raptor': { unlockedBy: 'stars', upgrades: {} },
+    },
+  };
+  const s = normalize(before);
+  // 75,000 + 20,000 cars, 250 + 500 + 250 upgrades, 500 mesh rims, 1,500 + 800 wings.
+  assert.equal(s.coins, 1000 + 75000 + 20000 + 1000 + 500 + 2300);
+  assert.equal(s.car, 'rp1-vanta');
+  assert.deepEqual(Object.keys(s.cars), ['rp1-vanta']);
+  assert.equal(s.cars['rp1-vanta'].upgrades.topSpeed, 2); // a kept car keeps its upgrades
+  assert.deepEqual(s.cars['rp1-vanta'].spoilers, ['factory']);
+  // Loading the normalized save again pays nothing more.
+  assert.equal(normalize(JSON.parse(JSON.stringify(s))).coins, s.coins);
+});
+

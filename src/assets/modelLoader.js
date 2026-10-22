@@ -2,25 +2,21 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { createCar, createSwapWheel } from '../garage/carModel.js';
+import { createSwapWheel } from '../garage/carModel.js';
 import { createCarPaint } from '../garage/carPaint.js';
 
-// Vehicle spawner. Every car in src/data/cars.js resolves to the same "car rig" interface,
-// whether it comes from an external .glb in public/assets/models/ or from the procedural
-// builder in carModel.js:
+// Vehicle spawner. Every car in src/data/cars.js is a real model in public/assets/models/
+// (three files per car, see the README there), turned into one "car rig" interface:
 //
 //   { group, source, paintMaterial, wheels: [{ wheel, spin }], wheelRadius, exhausts,
-//     lightsOn, setLights(on), spinWheels(speed), update(dt),
-//     rim, setRim(id), spoiler, setSpoiler(id), door: { anchor, normal, open, toggle(), close() } | null }
+//     lightsOn, setLights(on), spinWheels(speed), update(dt), rim, setRim(id), door: null }
 //
-// A .glb brings its own wheels, wing and doors. Its 'stock' rim is the model's own wheel and
-// the other five rim designs swap in procedural wheels (carModel.js createSwapWheel); the wing
-// setter only records the choice and `door` is null (no hotspot).
+// A model brings its own wheels, aero and lights. Its 'stock' rim is the model's own wheel and
+// the other five rim designs swap in wheels built at the model's tyre size
+// (carModel.js createSwapWheel).
 //
 // The garage turntable, the paint system and the race baker (raceCars.js) only talk to that
-// interface, and vehicle physics never looks at meshes at all, so swapping a procedural car
-// for a real model changes nothing else. A missing or broken .glb falls back to the
-// procedural car, which keeps the game fully playable offline before any art lands.
+// interface, and vehicle physics never looks at meshes at all.
 
 const BASE = import.meta.env.BASE_URL ?? './';
 // Same order as carModel.js: front then rear, +z (the car's right side, nose at +X) first.
@@ -66,7 +62,7 @@ async function fetchGltf(url) {
     const dir = url.slice(0, url.lastIndexOf('/') + 1);
     return getLoader().parseAsync(buffer, dir);
   })().catch((err) => {
-    console.warn(`[models] ${url} could not be parsed, using the procedural car`, err);
+    console.warn(`[models] ${url} could not be parsed`, err);
     return null;
   });
   cache.set(url, task);
@@ -75,25 +71,24 @@ async function fetchGltf(url) {
 
 const resolveUrl = (path) => (/^(https?:|blob:|data:|\/)/.test(path) ? path : `${BASE}${path}`);
 
-// Returns true when the car's external model is present (does not build anything).
-export async function hasExternalModel(def) {
-  return Boolean(def.model?.url && (await fetchGltf(resolveUrl(def.model.url))));
-}
+// Model files per level of detail: the showroom, the player's own car on track, and rivals.
+const LOD_URL = { garage: 'url', drive: 'driveUrl', race: 'raceUrl' };
 
-// Spawns a car rig for a catalog entry. Below full detail (the race) a model's `raceUrl`
-// LOD is used when present, else the showroom file; `detail` also scales the procedural car.
-export async function loadCar(def, { paintColor, finish, detail = 1, rim, spoiler } = {}) {
-  const urls = [detail < 1 && def.model?.raceUrl, def.model?.url].filter(Boolean);
+// Spawns a car rig for a catalog entry at `lod` ('garage' | 'drive' | 'race'). A missing LOD
+// file falls back to the next more detailed one; a car with no loadable file at all throws.
+export async function loadCar(def, { paintColor, finish, lod = 'garage', rim } = {}) {
+  const order = ['race', 'drive', 'garage'];
+  const urls = order.slice(order.indexOf(lod)).map((k) => def.model?.[LOD_URL[k]]).filter(Boolean);
   for (const url of urls) {
     const gltf = await fetchGltf(resolveUrl(url));
     if (!gltf) continue;
     try {
-      return adaptGltf(gltf.scene, def, { paintColor, finish, rim, spoiler, url });
+      return adaptGltf(gltf.scene, def, { paintColor, finish, rim, url });
     } catch (err) {
       console.warn(`[models] ${url} does not follow the car conventions`, err);
     }
   }
-  return createCar({ paintColor, finish, detail, style: def.procedural?.style, rim, spoiler });
+  throw new Error(`[models] no model could be loaded for ${def.id}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -109,13 +104,38 @@ function findNode(root, name, pattern) {
   return hit;
 }
 
-function adaptGltf(source, def, { paintColor, finish, rim = 'stock', spoiler = 'factory', url }) {
+// The paint's flake normal map tiles over the mesh UVs, which are livery unwraps of very
+// different scales between models (the Stallion's made flakes centimetres wide). Paint
+// meshes get box-projected UVs in metres instead, so every car sparkles at the same grain.
+const FLAKE_UV_PER_METRE = 0.25;
+function flakeUv(mesh) {
+  const geo = mesh.geometry;
+  if (geo.userData.flakeUv) return;
+  const pos = geo.attributes.position;
+  const nrm = geo.attributes.normal;
+  const p = new THREE.Vector3();
+  const n = new THREE.Vector3();
+  const normalMatrix = new THREE.Matrix3().getNormalMatrix(mesh.matrixWorld);
+  const uv = new Float32Array(pos.count * 2);
+  for (let i = 0; i < pos.count; i++) {
+    p.fromBufferAttribute(pos, i).applyMatrix4(mesh.matrixWorld).multiplyScalar(FLAKE_UV_PER_METRE);
+    if (nrm) n.fromBufferAttribute(nrm, i).applyMatrix3(normalMatrix);
+    const ax = Math.abs(n.x), ay = Math.abs(n.y), az = Math.abs(n.z);
+    const [u, v] = ax >= ay && ax >= az ? [p.z, p.y] : ay >= az ? [p.x, p.z] : [p.x, p.y];
+    uv[i * 2] = u;
+    uv[i * 2 + 1] = v;
+  }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geo.userData.flakeUv = true;
+}
+
+function adaptGltf(source, def, { paintColor, finish, rim = 'stock', url }) {
   const opts = def.model;
   const car = new THREE.Group();
   car.name = def.id;
 
   // Inner group carries the normalisation (orientation, scale, centring), so the rig's own
-  // root keeps an identity transform like the procedural car.
+  // root keeps an identity transform.
   const model = source.clone(true);
   const fit = new THREE.Group();
   fit.add(model);
@@ -125,12 +145,14 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', spoiler = '
   car.updateMatrixWorld(true);
 
   // Scale to the catalog length, then centre on the wheelbase (or bounds) and ground it.
-  const box = new THREE.Box3().setFromObject(model);
+  // Precise bounds: a rotated node's transformed bounding box pokes below its real
+  // geometry (the Stallion's tilted calipers lifted the whole car off the floor).
+  const box = new THREE.Box3().setFromObject(model, true);
   const size = box.getSize(new THREE.Vector3());
   if (!(size.x > 0)) throw new Error('model has no geometry');
   if (opts.length && !opts.scale) fit.scale.setScalar(opts.length / size.x);
   car.updateMatrixWorld(true);
-  box.setFromObject(model);
+  box.setFromObject(model, true);
   const center = box.getCenter(new THREE.Vector3());
   fit.position.set(-center.x, -box.min.y, -center.z);
   car.updateMatrixWorld(true);
@@ -141,6 +163,7 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', spoiler = '
   const head = new THREE.MeshStandardMaterial({ color: 0xdfe8ff, roughness: 0.1, emissive: 0xe8f0ff, emissiveIntensity: 0 });
   const tail = new THREE.MeshStandardMaterial({ color: 0x400608, roughness: 0.15, emissive: 0xff1a1a, emissiveIntensity: 0.15 });
   tail.userData.tailLight = true;
+  head.userData.headLight = true;
   const paintNames = opts.paintMaterials ?? null;
   let paintFound = false;
   const part = new THREE.Box3();
@@ -180,11 +203,12 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', spoiler = '
       return mat;
     };
     o.material = Array.isArray(o.material) ? o.material.map(swap) : swap(o.material);
+    if (o.material === paint) flakeUv(o);
   });
   if (!paintFound) console.warn(`[models] ${url}: no paint material found; paint changes will not show`);
 
   // Wheels: re-parent each wheel node under a pivot at its centre so it can spin about the
-  // axle (z) and steer about y, exactly like the procedural wheels.
+  // axle (z) and steer about y.
   const wheels = [];
   let wheelRadius = 0.34;
   WHEEL_KEYS.forEach((key, index) => {
@@ -212,9 +236,9 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', spoiler = '
     if (index === 0) wheelRadius = wb.getSize(new THREE.Vector3()).y / 2;
   });
 
-  // Aftermarket rims: the model's wheel comes out of the spinning group and a procedural
-  // wheel of the same radius goes in; 'stock' puts the model's wheel back.
-  const lod = /_race\.glb$/.test(url) ? 0.5 : 1;
+  // Aftermarket rims: the model's wheel comes out of the spinning group and a rim of the
+  // same radius goes in; 'stock' puts the model's wheel back.
+  const lod = /_(race|drive)\.glb$/.test(url) ? 0.5 : 1;
   const fitRim = (id) => {
     wheels.forEach((w, index) => {
       if (w.swap) {
@@ -263,15 +287,11 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', spoiler = '
     wheelRadius,
     exhausts,
     rim,
-    spoiler,
     setRim(id) {
       if (id === this.rim) return;
       this.rim = id;
       fitRim(id);
       wheelSpeed = Math.max(wheelSpeed, 10);
-    },
-    setSpoiler(id) {
-      this.spoiler = id;
     },
     door: null,
     get lightsOn() {

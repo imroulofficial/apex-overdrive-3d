@@ -1,51 +1,54 @@
 # Car models (.glb)
 
-Drop finished car models here. The game looks for the file named in `src/data/cars.js`
-(`model.url`) and falls back to the procedural car when it is missing or cannot be parsed,
-so a model can land at any time without code changes.
+Every car in the game is a real model from this folder; there is no procedural fallback, so a
+car whose files are missing fails to load. Each car ships three levels of detail, named after
+the permanent car id:
 
-| Car | File |
-| --- | --- |
-| RP-1 Vanta (Tier D starter) | `rp1_vanta.glb` |
-| Fujin Type-R (Tier D) | `kz_kestrel.glb` |
-| Kaze 370 (Tier D) | `rz_sakura.glb` |
-| Trailblazer Rally (Tier C) | `rb_ridgeback.glb` |
-| Mustang Bandit (Tier C) | `sv_stallion.glb` |
-| Apex WRX (Tier C) | `dr_raptor.glb` |
-| Bavaria M-Sport (Tier B) | `ag_aurelia.glb` |
-| Stuttgart Carrera (Tier B) | `st_stratos.glb` |
-| Monza GT3 (Tier B) | `mz_monza.glb` |
-| Valkyrie GT-R (Tier A) | `valkyrie_gtr.glb` |
-| Chimera Senna (Tier A) | `tm_tempesta.glb` |
-| Revuelto Storm (Tier A) | `zn_zenith.glb` |
+| File | Used for | Budget |
+| --- | --- | --- |
+| `<id>.glb` | Garage showroom (turntable, close-ups) | 150k triangles, 10 MB, colour textures 2048 px |
+| `<id>_drive.glb` | The player's own car on track | 60k triangles, 3 MB, textures 1024 px |
+| `<id>_race.glb` | Rival cars (flat vertex colours, no textures) | 10k triangles with any rim, 0.5 MB |
 
-Each car can also have a race LOD next to it, `<file>_race.glb` (for example
-`tm_tempesta_race.glb`). The race loads it when present and otherwise uses the showroom file,
-so keep the race file under 10k triangles. Six cars race at once.
+`test/car-models.test.js` fails when a file goes over budget. The loader falls back to a more
+detailed file when a lower LOD is missing.
 
-File names follow the permanent car ids, not the display names. A `.glb` brings its own
-wheels, wing and doors. The Stock rim shows the model's own wheels; the other five rims swap
-in procedural wheels at the model's tyre size. The Kit choices and the door hotspot only apply
-to the procedural cars.
+| Car | Tier | Files |
+| --- | --- | --- |
+| Flux 85 (starter) | D | `rp1_vanta*.glb` |
+| Kestrel 930 | D | `kz_kestrel*.glb` |
+| Stallion Jet | C | `sv_stallion*.glb` |
+| Ridgeback 66 | C | `rb_ridgeback*.glb` |
+| Aurelia Vision | B | `ag_aurelia*.glb` |
+| Monza 55 | B | `mz_monza*.glb` |
+| Tempesta 9X | A | `tm_tempesta*.glb` |
+| Valkyrie GT-R (Supercar Bundle) | A | `rpx_hyperion*.glb` |
+
+All eight come from the studio's Ca.zip asset pack; see `CREDITS.md`. File names follow the
+permanent car ids, not the display names. A `.glb` brings its own wheels. The Stock rim shows
+the model's own wheels; the other five rims swap in procedural rims at the model's tyre size.
 
 ## Importing source models
 
-`node tools/models/optimize.mjs <folder with the source .glb files>` builds both files for
-every car listed in `tools/models/manifest.json`. It simplifies to the triangle budgets, turns
-textures into WebP of up to 1024 px, drops the interior and bakes flat colours for the race
-LOD, turns the nose to +X, renames the wheels and the paint material to the conventions below,
+`node tools/models/optimize.mjs <folder with the source .glb files>` builds all three files
+for every car listed in `tools/models/manifest.json`. It simplifies to the triangle budgets
+(the garage file only as far as its budget needs, so detail is not thrown away), turns
+textures into WebP (garage colour maps 2048 px, other maps and cabin textures smaller, drive
+file 1024 px), drops the interior and bakes flat colours for the race LOD, turns the nose to +X, renames the wheels and the paint material to the conventions below,
 and applies meshopt compression. Per-car manifest options: `drop` (parts removed from both
-files), `raceDrop` (parts removed from the race file), `raceTris` / `garageTris` (budgets) and
+files), `raceDrop` / `driveDrop` (parts removed from those files), `raceTris` / `driveTris` /
+`garageTris` (budgets), `wheelParts` (group loose tyre and rim meshes into the four wheels) and
 `raceSimplify: "collapse"` for bodies with closed, welded panels, which keep their shape
 better with edge collapse than with the default vertex clustering. Transmissive glass is
 turned into tinted blended glass in the game, because transmission renders the scene twice. It also rewrites `CREDITS.md` from the manifest, so add each
 model's author, licence and source there. Only use models whose licence allows commercial use,
-because the game has ads and in-app purchases.
+because the game has ads and in-app purchases; a pack model the studio holds rights to is
+marked `commercialRights: true` with the studio's licence line.
 
 ## Export conventions
 
 - **Format:** binary glTF (`.glb`), textures embedded. Draco and Meshopt compression are
-  both supported offline. Keep each car under ~3 MB and ~60k triangles for mid-range phones.
+  both supported offline. See the budgets above.
 - **Orientation:** nose toward **+X**, roof toward **+Y** in glTF space. In Blender that
   means the car faces +X (the exporter keeps X and turns Blender's Z-up into Y-up). A
   model facing another way works too: set `model.rotationY` in `cars.js` (radians, e.g.

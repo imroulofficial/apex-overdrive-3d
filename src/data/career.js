@@ -293,9 +293,7 @@ function buildStages() {
 
 export const STAGES = buildStages();
 export const stageById = (id) => STAGES.find((s) => s.stageId === id);
-export const stageByNumber = (n) => STAGES[n - 1];
 export const chapterById = (id) => CHAPTERS.find((c) => c.id === id);
-export const stagesOfChapter = (id) => STAGES.filter((s) => s.chapterId === id);
 export const MAX_STARS = STAGES.length * 3;
 
 // Milestone reward chests on the world map: four per chapter, opened once each when that

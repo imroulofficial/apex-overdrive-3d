@@ -44,13 +44,13 @@ test('coin cars are bought once with coins', () => {
 test('star cars need the career stars first', () => {
   const save = defaults();
   save.coins = 50000;
-  const st = unlockStatus(save, 'rb-ridgeback');
+  const st = unlockStatus(save, 'sv-stallion');
   assert.equal(st.reason, 'stars');
   assert.equal(st.starsNeeded, 15);
   save.career.stageStars.fill(7, 0, 5); // 15 stars
-  assert.ok(unlockCar(save, 'rb-ridgeback').ok);
+  assert.ok(unlockCar(save, 'sv-stallion').ok);
   assert.equal(save.coins, 38000);
-  assert.equal(save.cars['rb-ridgeback'].unlockedBy, 'stars');
+  assert.equal(save.cars['sv-stallion'].unlockedBy, 'stars');
 });
 
 test('IAP cars follow the Play entitlement and keep their upgrades through a refund', () => {
@@ -87,22 +87,13 @@ test('paint and rims are equipped per car', () => {
   assert.equal(save.coins, 500);
 });
 
-test('rear wings are bought per car; smoke and nitro colours are free and per car', async () => {
-  const { buySpoiler, equipFx, carLook } = await import('../src/core/inventory.js');
+test('smoke and nitro colours are free and per car; the wing shop is closed', async () => {
+  const { equipFx, carLook } = await import('../src/core/inventory.js');
+  const inventory = await import('../src/core/inventory.js');
+  assert.equal(inventory.buySpoiler, undefined);
   const save = defaults();
-  save.coins = 2000;
   syncOwnedCars(save, new Set(['supercar_bundle']));
-  assert.deepEqual(carLook(save, 'rp1-vanta'), { rim: 'stock', spoiler: 'factory' });
-  assert.ok(buySpoiler(save, 'rp1-vanta', 'gt-wing').ok);
-  assert.equal(save.coins, 500);
-  assert.deepEqual(save.cars['rp1-vanta'].spoilers, ['factory', 'gt-wing']);
-  assert.equal(carLook(save, 'rp1-vanta').spoiler, 'gt-wing');
-  assert.equal(save.cars['rpx-hyperion'].spoiler, 'factory');
-  assert.equal(buySpoiler(save, 'rp1-vanta', 'swan-neck').reason, 'coins');
-  assert.ok(buySpoiler(save, 'rp1-vanta', 'factory').ok); // owned: free to refit
-  assert.ok(buySpoiler(save, 'rp1-vanta', 'gt-wing').ok);
-  assert.equal(save.coins, 500);
-  assert.equal(buySpoiler(save, 'rp1-vanta', 'rocket').reason, 'unknown');
+  assert.deepEqual(carLook(save, 'rp1-vanta'), { rim: 'stock' });
 
   assert.equal(save.cars['rp1-vanta'].smoke, 'white');
   assert.equal(save.cars['rp1-vanta'].nitroFx, 'blue');
@@ -111,5 +102,4 @@ test('rear wings are bought per car; smoke and nitro colours are free and per ca
   assert.ok(!equipFx(save, 'rp1-vanta', 'smoke', 'plaid'));
   assert.ok(!equipFx(save, 'rp1-vanta', 'paint', 'gold'));
   assert.equal(save.cars['rpx-hyperion'].smoke, 'white');
-  assert.equal(save.coins, 500);
 });

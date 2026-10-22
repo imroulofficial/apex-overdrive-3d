@@ -8,8 +8,6 @@ import { isStageUnlocked } from '../core/career.js';
 // (pre-release or ?debug) can open any stage and run locked ones as practice that saves
 // nothing. Stages whose chapter track is not built yet race their segment on Emerald Coast.
 
-export const MODE_TAGS = { Classic: 'RACE', TimeTrial: 'TIME', DriftTouge: 'DRIFT', Elimination: 'K.O.', BossDuel: 'BOSS' };
-
 // 24x24 stroke icons per game mode (flag, stopwatch, drift swirl, knock-out, crown).
 const MODE_PATHS = {
   Classic: '<path d="M5 21V4" /><path d="M5 4h13l-2.5 4.5L18 13H5" /><path d="M9 4v9M13 4v9M5 8.5h13" opacity=".55" />',

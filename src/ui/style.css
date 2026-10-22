@@ -1039,21 +1039,6 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* ---------- Kit tab ---------- */
 .kit-head { margin: 4px 0 6px; font-size: 10px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); }
 .kit-head:not(:first-child) { margin-top: 12px; }
-.wing-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.wing {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 6px 6px 10px;
-  background: rgba(255, 255, 255, 0.04);
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
-}
-.wing.is-selected { background: rgba(255, 42, 58, 0.12); box-shadow: inset 3px 0 0 var(--accent); }
-.wing-pick { display: flex; flex-direction: column; align-items: flex-start; text-align: left; }
-.wing-pick strong { font-size: 12px; font-style: italic; letter-spacing: 0.04em; }
-.wing-pick small { font-size: 9.5px; color: var(--muted); letter-spacing: 0.08em; text-transform: uppercase; }
-.wing .pill-btn { padding: 7px 11px; font-size: 11px; }
 .fx-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .fx-swatch {
   position: relative;

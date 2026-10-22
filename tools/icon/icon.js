@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { createCar } from '../../src/garage/carModel.js';
+import { loadCar } from '../../src/assets/modelLoader.js';
+import { carById } from '../../src/data/cars.js';
 import { createStudioEnvironment } from '../../src/garage/showroom.js';
 
 // Renders the launcher icon layers at 1024 px:
@@ -79,7 +80,10 @@ async function foreground() {
   scene.environment = createStudioEnvironment(renderer);
   scene.environmentIntensity = 1.2;
 
-  const car = createCar({ paintColor: '#d0102c', finish: 'metallic', kit: 'hyper' });
+  // The Valkyrie GT-R's showroom model; its url is made absolute because this page is not
+  // served from the game's base path.
+  const def = carById('rpx-hyperion');
+  const car = await loadCar({ ...def, model: { ...def.model, url: `/${def.model.url}` } }, { paintColor: '#d0102c', finish: 'metallic' });
   car.setLights(true);
   for (let i = 0; i < 60; i++) car.update(1 / 30);
   car.group.traverse((o) => {

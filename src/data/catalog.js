@@ -56,8 +56,9 @@ export const RIMS = [
   { id: 'carbon-aero', name: 'Carbon Aero', price: 1500 },
 ];
 
-// Rear wings, bought per car. 'factory' is the car's own (none, a lip or its stock wing);
-// the others bolt onto the deck, or the roof's trailing edge on hatchbacks.
+// Rear wings, sold per car until 0.13.0. Every car is now a real model with its own aero, so
+// the wing shop is closed; the list stays so old saves are refunded what they paid
+// (core/saveSchema.js retiredRefund) and every car reads 'factory'.
 export const SPOILERS = [
   { id: 'factory', name: 'Factory Aero', price: 0 },
   { id: 'ducktail', name: 'Ducktail Lip', price: 800 },

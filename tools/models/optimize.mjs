@@ -1,8 +1,12 @@
 // Turns source car models (.glb, usually 20-90 MB Sketchfab or Blender exports) into the two
 // files the game loads from public/assets/models/ (see the README there):
 //
-//   <id>.glb       garage / showroom: simplified to `garageTris`, WebP textures ≤ 1024 px
-//   <id>_race.glb  race LOD: interior and small parts dropped, simplified to `raceTris`
+//   <id>.glb       garage / showroom: full detail up to `garageTris` (150k), WebP textures
+//                  up to `textureSize` (2048 px); only meshes over budget are simplified,
+//                  with a tight error bound so panels, grilles and lights keep their shape
+//   <id>_drive.glb the player's own car on track: interior dropped, textured (1024 px),
+//                  simplified to `driveTris` (40k)
+//   <id>_race.glb  rival LOD: interior and small parts dropped, simplified to `raceTris`
 //                  (< 10k), textures baked into flat colours so raceCars.js folds the whole
 //                  car into its vertex-colour atlas and instances the wheels
 //
@@ -14,6 +18,12 @@
 //
 // The source files are not kept in the repo; manifest.json records where each came from and
 // its licence, and CREDITS.md in the output folder is regenerated from it.
+//
+// Per-car manifest options: `src`, `paint` (material names the game repaints), `headlights` /
+// `taillights` (material names), `wheels` ({ FL: node name, ... }) or `wheelParts`
+// ({ FL: [node names], ... } for models without wheel nodes), `drop` (regex of parts removed
+// from every file: badges, plates, decals), `driveDrop` / `raceDrop` (parts removed from the
+// track files), `garageTris` / `driveTris` / `raceTris`, `textureSize`, `raceSimplify`.
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -76,7 +86,8 @@ function dropParts(doc, pattern, keep = new Set()) {
 }
 
 // Finds the four wheel nodes (manifest names first, then the loader's name patterns).
-function findWheels(doc, names = {}) {
+function findWheels(doc, names = {}, parts = null) {
+  if (parts) groupWheelParts(doc, parts);
   const nodes = doc.getRoot().listNodes();
   const patterns = {
     FL: /wheel[\s_.-]*(fl|lf|front[\s_.-]*l(eft)?)\b/i,
@@ -92,11 +103,28 @@ function findWheels(doc, names = {}) {
   return wheels;
 }
 
+// Models without wheel nodes: gathers each wheel's meshes (tyre, rim, disc) under a new node
+// at the scene root. clearNodeParent keeps their world transforms.
+function groupWheelParts(doc, parts) {
+  const scene = doc.getRoot().getDefaultScene() ?? doc.getRoot().listScenes()[0];
+  const nodes = doc.getRoot().listNodes();
+  for (const key of WHEEL_KEYS) {
+    const wheel = doc.createNode(`wheel_${key}`);
+    scene.addChild(wheel);
+    for (const name of parts[key]) {
+      const node = nodes.find((n) => n.getName() === name);
+      if (!node) throw new Error(`wheel part ${name} not found`);
+      clearNodeParent(node);
+      wheel.addChild(node);
+    }
+  }
+}
+
 // Wraps the scene in a node that turns the nose to +X (and the car's left to -Z), using the
 // wheel positions, and renames wheels / paint to the loader conventions.
 function normalise(doc, entry) {
   const scene = doc.getRoot().getDefaultScene() ?? doc.getRoot().listScenes()[0];
-  const wheels = findWheels(doc, entry.wheels);
+  const wheels = findWheels(doc, entry.wheels, entry.wheelParts);
   const c = Object.fromEntries(WHEEL_KEYS.map((k) => [k, worldCenter(wheels[k])]));
   const mid = (a, b) => a.map((v, i) => (v + b[i]) / 2);
   const front = mid(c.FL, c.FR);
@@ -130,6 +158,13 @@ function flattenParts(doc, wheels) {
     for (let p = node; p; p = p.getParentNode()) if (wheelSet.has(p)) return p;
     return null;
   };
+  // A wheel node that carries its own mesh hands it to a child, so join() cannot merge two
+  // wheels (siblings at the root) into one mesh and lose their names.
+  for (const w of wheelSet) {
+    if (!w.getMesh()) continue;
+    w.addChild(doc.createNode(`${w.getName()}_part`).setMesh(w.getMesh()));
+    w.setMesh(null);
+  }
   const meshNodes = doc.getRoot().listNodes().filter((n) => n.getMesh());
   for (const w of wheelSet) clearNodeParent(w);
   for (const node of meshNodes) {
@@ -306,7 +341,7 @@ function invert(m) {
 // Edge-collapse simplification (showroom) until the scene is under `target` triangles; the
 // allowed error grows a step at a time up to `maxError` of each mesh's radius.
 async function simplifyTo(doc, target, maxError = 0.02) {
-  let error = 0.002;
+  let error = Math.min(0.002, maxError);
   for (let i = 0; i < 10 && countTris(doc) > target; i++) {
     const ratio = Math.min(1, (target / countTris(doc)) * 0.95);
     await doc.transform(simplify({ simplifier: MeshoptSimplifier, ratio, error, lockBorder: false }));
@@ -362,12 +397,36 @@ async function flattenMaterials(doc) {
   for (const tex of doc.getRoot().listTextures()) tex.dispose();
 }
 
+// Textures that only the cabin uses (seen through the glass from the orbit camera) are
+// shrunk to `size` up front; the bodywork keeps the full resolution.
+const CABIN = /int|cabin|cockpit|cpit|seat|dash|gauge|steer|harness|belt|alcantara|leather|stitch|pedal|lenkrad/i;
+async function shrinkCabinTextures(doc, size) {
+  for (const tex of doc.getRoot().listTextures()) {
+    const mats = tex.listParents().filter((p) => p.propertyType === 'Material');
+    if (!mats.length || !mats.every((m) => CABIN.test(m.getName()))) continue;
+    const [w, h] = tex.getSize() ?? [0, 0];
+    if (Math.max(w, h) <= size) continue;
+    const img = await sharp(Buffer.from(tex.getImage())).resize(size, size, { fit: 'inside' }).png().toBuffer();
+    tex.setImage(new Uint8Array(img)).setMimeType('image/png');
+  }
+}
+
+// Kinds of file built per car (see the header): suffix, triangle budget, texture size.
+const KINDS = {
+  garage: { suffix: '', tris: (e) => e.garageTris ?? 150000, texture: (e) => e.textureSize ?? 2048, maxError: 0.008 },
+  drive: { suffix: '_drive', tris: (e) => e.driveTris ?? 40000, texture: () => 1024, maxError: 0.02 },
+  race: { suffix: '_race', tris: (e) => e.raceTris ?? 9000 },
+};
+
 async function build(entry, kind) {
+  const spec = KINDS[kind];
   const doc = await io.read(path.join(srcDir, entry.src));
   if (entry.drop) dropParts(doc, new RegExp(entry.drop, 'i'));
   const wheels = normalise(doc, entry);
+  const keepWheels = new Set(Object.values(wheels));
+  if (kind === 'drive') dropParts(doc, entry.driveDrop ? new RegExp(entry.driveDrop, 'i') : RACE_DROP, keepWheels);
   if (kind === 'race') {
-    dropParts(doc, entry.raceDrop ? new RegExp(entry.raceDrop, 'i') : RACE_DROP, new Set(Object.values(wheels)));
+    dropParts(doc, entry.raceDrop ? new RegExp(entry.raceDrop, 'i') : RACE_DROP, keepWheels);
     await flattenMaterials(doc);
   }
   flattenParts(doc, wheels);
@@ -386,17 +445,24 @@ async function build(entry, kind) {
   await doc.transform(dedup(), prune(), join({ keepNamed: false }), weld());
   // Clustering suits bodies built from many open panels; models with closed, welded panels
   // keep their shape better with edge collapse (manifest `raceSimplify: "collapse"`).
-  if (kind === 'race' && entry.raceSimplify !== 'collapse') sloppyTo(doc, entry.raceTris);
-  else if (kind === 'race') collapseTo(doc, entry.raceTris, wheels);
-  else await simplifyTo(doc, entry.garageTris);
+  if (kind === 'race' && entry.raceSimplify !== 'collapse') sloppyTo(doc, spec.tris(entry));
+  else if (kind === 'race') collapseTo(doc, spec.tris(entry), wheels);
+  else await simplifyTo(doc, spec.tris(entry), spec.maxError);
   if (kind === 'race') creaseNormals(doc);
   await doc.transform(prune());
-  if (kind === 'garage') {
-    const size = entry.textureSize ?? 1024;
-    await doc.transform(textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [size, size], quality: 82, effort: 6 }));
+  if (spec.texture) {
+    // Colour maps keep the full size (that is where badges-free liveries, grilles and lights
+    // live); normal / roughness / occlusion maps read the same at half resolution.
+    const size = spec.texture(entry);
+    const half = Math.max(512, size / 2);
+    await shrinkCabinTextures(doc, half);
+    await doc.transform(
+      textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [half, half], quality: 85, effort: 6, slots: /^(?!baseColorTexture|emissiveTexture).*$/ }),
+      textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [size, size], quality: 85, effort: 6 }),
+    );
   }
   await doc.transform(meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
-  const file = path.join(OUT, `${entry.id.replace(/-/g, '_')}${kind === 'race' ? '_race' : ''}.glb`);
+  const file = path.join(OUT, `${entry.id.replace(/-/g, '_')}${spec.suffix}.glb`);
   await io.write(file, doc);
   const draws = doc.getRoot().listMeshes().reduce((n, m) => n + m.listPrimitives().length, 0);
   const { size } = await fs.stat(file);
@@ -407,7 +473,7 @@ const report = [];
 for (const entry of manifest.cars) {
   if (only && !entry.id.includes(only)) continue;
   console.log(`${entry.id} ← ${entry.src}`);
-  for (const kind of ['garage', 'race']) {
+  for (const kind of Object.keys(KINDS)) {
     const r = await build(entry, kind);
     console.log(`  ${kind}: ${r.tris} tris, ${r.draws} primitives, ${r.mb} MB → ${r.file}`);
     report.push({ id: entry.id, kind, ...r });
@@ -417,7 +483,8 @@ for (const entry of manifest.cars) {
 // Credits for every car in the manifest (not only the ones rebuilt this run).
 const lines = ['# Car model credits', '', 'Generated by `tools/models/optimize.mjs` from `tools/models/manifest.json`. The files here are', 'simplified, re-textured and compressed versions of the originals.', ''];
 for (const e of manifest.cars) {
-  lines.push(`- **${e.id}** (\`${e.id.replace(/-/g, '_')}.glb\`, \`${e.id.replace(/-/g, '_')}_race.glb\`): "${e.title}" by ${e.author}, ${e.license}. Source: ${e.source}. Changes: ${e.changes ?? 'simplified, textures resized to WebP, meshopt-compressed, race LOD baked to flat colours'}.`);
+  const f = e.id.replace(/-/g, '_');
+  lines.push(`- **${e.id}** (\`${f}.glb\`, \`${f}_drive.glb\`, \`${f}_race.glb\`): "${e.title}" by ${e.author}, ${e.license}. Source: ${e.source}. Changes: ${e.changes ?? 'badges and plates removed, simplified where over budget, textures resized to WebP, meshopt-compressed, rival LOD baked to flat colours'}.`);
 }
 await fs.writeFile(path.join(OUT, 'CREDITS.md'), `${lines.join('\n')}\n`);
 console.table(report);

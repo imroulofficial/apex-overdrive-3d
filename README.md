@@ -9,7 +9,16 @@ Offline-first 3D arcade racer for Android by **Red Pen Studio**.
 | Stack | Three.js (WebGL2) + Vite, wrapped with Capacitor 8 |
 | Audience | 13+, no sign-up, no analytics; gameplay is offline, cloud save, ads and Play Billing use the network when available |
 
-## Phases 13-14: 12-car roster and the sunset showroom (this release)
+## Hardware audit: eight real cars (this release)
+
+The roster is now the eight usable cars from the studio's Ca.zip pack, all real models; the procedural car bodies are gone.
+
+- **Roster** (`src/data/cars.js`), two cars per tier, each with one job: Tier D Street Classics **Flux 85** (starter, all-rounder) and **Kestrel 930** (drift); Tier C Muscle & Heritage **Stallion Jet** (launch) and **Ridgeback 66** (all-weather endurance); Tier B Vision Tourers **Aurelia Vision** (nitro) and **Monza 55** (cornering grip); Tier A Hypercars **Tempesta 9X** (downforce prototype) and **Valkyrie GT-R** (top speed, Supercar Bundle). Ids are unchanged for the kept cars. The four retired cars (`rz-sakura`, `dr-raptor`, `st-stratos`, `zn-zenith`) and every bought rear wing are refunded in coins once, when an old save loads (`retiredRefund` in `src/core/saveSchema.js`). Rivals now drive the roster's cars too.
+- **Three levels of detail per car** (`tools/models/optimize.mjs`): the showroom file (up to 150k triangles, 2048 px paint-side textures), a drive file for the player's own car on track (about 40k triangles) and a rival file under 10k triangles with flat colours. See `public/assets/models/README.md`.
+- **Removed**: `src/garage/carShapes.js` and the procedural car builder, the rear-wing shop (the Kit tab keeps smoke and nitro colours), the procedural fallback in the model loader, and a handful of unused exports.
+- **Grounded in the track's light**: car bodies receive sun shadows, every car sits on an instanced contact shadow (one draw call for the field), head and tail lights switch on at dusk, at night and in bad weather, and paint flake is laid out in metres so it looks the same on every model.
+
+## Phases 13-14: 12-car roster and the sunset showroom
 
 Blueprint section 04. All twelve launch cars are in the garage, every one built procedurally on the device (no downloaded assets), and the garage is now the architectural showroom from blueprint 4.4.
 
