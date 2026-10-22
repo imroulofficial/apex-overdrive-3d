@@ -30,13 +30,7 @@ function beam(a, b, w, h, pbr) {
 // Vertex-PBR (one batch) that also darkens and glosses in the rain.
 function wetAtlas(wet, key) {
   const mat = createVertexPbrMaterial({ envMapIntensity: 0.6 });
-  const pbr = mat.onBeforeCompile;
-  wettable(mat, wet, { darken: 0.35, key });
-  const wetHook = mat.onBeforeCompile;
-  mat.onBeforeCompile = (shader, r) => {
-    wetHook(shader, r);
-    pbr(shader, r);
-  };
+  wettable(mat, wet, { darken: 0.35, key }); // runs the vertex-PBR hook first
   mat.customProgramCacheKey = () => `vertex-pbr-wet-${key}`;
   return mat;
 }
@@ -515,7 +509,7 @@ function dirtTexture() {
   return tex;
 }
 
-export function buildTrails(track, wet) {
+export function buildTrails(track, wet, env = null) {
   if (!track.trails.length) return null;
   const group = new THREE.Group();
   group.name = 'trails';
@@ -593,7 +587,13 @@ export function buildTrails(track, wet) {
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   geo.setIndex(index);
   geo.computeVertexNormals();
-  const dirtMat = wettable(new THREE.MeshStandardMaterial({ map: dirtTexture(), vertexColors: true, roughness: 0.95 }), wet, { darken: 0.4, key: 'dirt' });
+  // Scanned forest-floor dirt (about 3 m per repeat), stained red by the vertex colours.
+  let dirtMap = dirtTexture();
+  if (env?.tex.forest) {
+    dirtMap = env.tex.forest.clone();
+    dirtMap.repeat.set(2.4, 2.6);
+  }
+  const dirtMat = wettable(new THREE.MeshStandardMaterial({ map: dirtMap, vertexColors: true, roughness: 0.95, color: env?.tex.forest ? new THREE.Color(1.9, 1.75, 1.6) : 0xffffff }), wet, { darken: 0.4, key: 'dirt' });
   const road = new THREE.Mesh(geo, dirtMat);
   road.name = 'trail-dirt';
   road.receiveShadow = true;

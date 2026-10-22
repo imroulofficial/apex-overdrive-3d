@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Track } from './track.js';
 import { buildTrackMeshes, buildDirectional } from './trackMeshes.js';
 import { buildScenery } from './scenery.js';
+import { loadEnvAssets } from '../render/envAssets.js';
 import { SmashProps } from './props.js';
 import { Vehicle, statsToParams, NITRO } from './vehicle.js';
 import { DriftChain } from './driftChain.js';
@@ -73,8 +74,10 @@ export class Race {
     this.track = new Track(this.def);
     // Route variations: the reversed road is built the first time a stage needs it.
     this.tracks = { forward: this.track, reverse: null };
-    this.scenery = buildScenery(this.scene, renderer, this.track, this.def, quality);
-    const meshes = buildTrackMeshes(this.track, renderer, { groundMaterial: this.scenery.groundMaterial });
+    // Bundled CC0 scans (road, ground, bark, fronds, rocks); loaded once per session.
+    const env = await loadEnvAssets(renderer);
+    this.scenery = buildScenery(this.scene, renderer, this.track, this.def, quality, env);
+    const meshes = buildTrackMeshes(this.track, renderer, { groundMaterial: this.scenery.groundMaterial, env });
     this.scene.add(meshes);
     this.wet = meshes.userData.wet; // shared rain uniform: asphalt, kerbs, bridge, trails
     this.directional = { forward: meshes.getObjectByName('directional'), reverse: null };
@@ -84,7 +87,7 @@ export class Race {
 
     // Biome set-pieces.
     const ground = (x, z) => this.scenery.terrain.sample(x, z).h;
-    this.setPieces = [buildBridge(this.track, this.wet), buildWaterfall(this.scenery.terrain.gorge, ground), buildTrails(this.track, this.wet)].filter(Boolean);
+    this.setPieces = [buildBridge(this.track, this.wet), buildWaterfall(this.scenery.terrain.gorge, ground), buildTrails(this.track, this.wet, env)].filter(Boolean);
     this.scene.add(...this.setPieces);
     this.waterfall = this.setPieces.find((o) => o.name === 'waterfall') ?? null;
     this.trailBarriers = this.setPieces.find((o) => o.name === 'trails')?.userData.barriers ?? null;
