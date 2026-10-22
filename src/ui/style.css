@@ -606,6 +606,14 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rh-dot:not(.me) { top: -9px; width: 8px; height: 8px; margin: 0 0 0 -4px; border-radius: 2px; transform: rotate(45deg); }
 .rh-dot.me { z-index: 2; width: 14px; height: 14px; margin: -7px 0 0 -7px; box-shadow: 0 0 0 2px #fff, 0 0 12px var(--accent); }
 #rh-pause { flex-shrink: 0; }
+/* Camera view toggle: three pips show which of chase / close / hood is live. */
+.rh-cam { position: relative; flex-shrink: 0; }
+.rh-cam svg { stroke-width: 2.4; }
+.rh-cam-pips { position: absolute; left: 50%; bottom: 5px; display: flex; gap: 3px; transform: translateX(-50%); }
+.rh-cam-pips b { width: 4px; height: 4px; border-radius: 50%; background: rgba(255, 255, 255, 0.3); }
+.rh-cam[data-view='chase'] .rh-cam-pips b:nth-child(1),
+.rh-cam[data-view='close'] .rh-cam-pips b:nth-child(2),
+.rh-cam[data-view='hood'] .rh-cam-pips b:nth-child(3) { background: var(--accent); }
 #rh-pause svg { stroke-width: 3; }
 
 /* ---- Bottom: steering, speedometer, actions ---- */
@@ -625,7 +633,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rc-half { width: 96px; height: 96px; --cut: 16px; clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut)); }
 .rc-half svg { width: 40px; height: 40px; fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 .rc-steer.left-on .left,
-.rc-steer.right-on .right { background: linear-gradient(135deg, rgba(255, 42, 58, 0.85), rgba(255, 122, 26, 0.75)); transform: scale(0.96); }
+.rc-steer.right-on .right { background: linear-gradient(135deg, rgba(255, 42, 58, calc(0.35 + 0.5 * var(--steer, 1))), rgba(255, 122, 26, calc(0.3 + 0.45 * var(--steer, 1)))); transform: scale(0.96); }
 
 .rh-speedo {
   position: relative;
@@ -656,8 +664,9 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rc-btn.gas { display: none; width: 74px; height: 118px; clip-path: polygon(12px 0, 100% 0, 100% 100%, 0 100%, 0 12px); color: #c9ffd9; }
 .race-hud.manual-throttle .rc-btn.gas { display: grid; place-items: center; }
 .rc-btn.gas.is-pressed { background: linear-gradient(180deg, rgba(43, 212, 107, 0.85), rgba(20, 120, 70, 0.75)); color: #fff; transform: scale(0.97); }
-/* Pedals: ribbed foot plates. */
+/* Pedals: ribbed foot plates. The fill rises with how hard the pedal is pressed (--depth). */
 .rc-btn.pedal { background-image: repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.07) 0 3px, transparent 3px 12px); }
+.rc-btn.pedal::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--depth, 0) * 100%); background: rgba(255, 255, 255, 0.16); pointer-events: none; }
 .rc-btn.pedal span { transform: rotate(-90deg); white-space: nowrap; }
 .rc-btn.brake { display: none; width: 84px; height: 124px; clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%); color: #ffd0d0; }
 .rc-btn.brake.is-pressed { background: linear-gradient(180deg, rgba(255, 42, 58, 0.9), rgba(140, 16, 30, 0.8)); color: #fff; transform: scale(0.97); }

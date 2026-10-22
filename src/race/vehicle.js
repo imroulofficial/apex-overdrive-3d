@@ -117,6 +117,7 @@ export class Vehicle {
     this.lastTap = -10;
     this.canPulse = false;
     this.braking = false;
+    this.brake = 0; // pedal 0..1 this step
     this.forward = 0;
     this.wrongWay = 0;
     this.wallScrape = 0;
@@ -341,7 +342,7 @@ export class Vehicle {
     this.driftScore = 0;
   }
 
-  // input: { steer -1..1 (right +), throttle 0..1, brake bool, brakePressed bool, nitroTaps [] }
+  // input: { steer -1..1 (right +), throttle 0..1, brake 0..1 or bool, brakePressed bool, nitroTaps [] }
   step(dt, input, time) {
     const P = this.params;
     const track = this.track;
@@ -365,6 +366,9 @@ export class Vehicle {
     let fz = -Math.sin(this.heading);
     let vF = this.vel.x * fx + this.vel.y * fz;
     const steer = input.steer;
+    // Analog brake (touch pedals) or a bool (keys, AI, the drift button).
+    const brake = input.brake === true ? 1 : +input.brake || 0;
+    this.brake = brake;
 
     if (!this.airborne && !this.drifting && input.brakePressed && Math.abs(steer) > 0.25 && vF > 14) {
       this.startDrift(Math.sign(steer));
@@ -376,7 +380,7 @@ export class Vehicle {
       let gripK;
       if (this.drifting) {
         const rel = steer * this.driftDir;
-        const target = -this.driftDir * P.driftRate * (0.72 + 0.45 * rel) * (input.brake ? 1.12 : 1);
+        const target = -this.driftDir * P.driftRate * (0.72 + 0.45 * rel) * (1 + 0.12 * brake);
         this.yawRate += (target - this.yawRate) * Math.min(1, dt * 6);
         if (Math.abs(this.slip) > 0.95) this.yawRate *= 0.85;
         gripK = P.driftGrip * S.driftGrip;
@@ -398,7 +402,7 @@ export class Vehicle {
       // Longitudinal.
       const topMul = (this.tier === 2 ? NITRO.pulseTop : this.tier === 1 ? NITRO.blueTop : 1) * (this.perfectT > 0 ? PERFECT.top : 1);
       const top = P.topSpeed * topMul * S.top;
-      const throttle = input.brake && !this.drifting ? 0 : input.throttle ?? 1;
+      const throttle = brake > 0 && !this.drifting ? 0 : input.throttle ?? 1;
       let a = 0;
       if (throttle > 0 && vF < top) a += P.accel * throttle * (1 - (Math.max(0, vF) / top) ** (P.power ?? 2)) * (vF < 18 ? P.launch : 1);
       if (vF > top) a -= (vF - top) * 1.4;
@@ -406,12 +410,13 @@ export class Vehicle {
       if (this.perfectT > 0) a += PERFECT.accel;
       a -= S.drag * Math.max(0, vF) * (P.momentum ?? 1); // rolling resistance off the asphalt
       this.braking = false;
-      if (input.brake && !this.drifting) {
+      if (brake > 0 && !this.drifting) {
         this.braking = vF > 0.5;
-        a -= vF > 0.5 ? 28 : 8; // brake, then reverse slowly
+        // Brake force follows the pedal; reversing needs it held past halfway.
+        a -= vF > 0.5 ? 28 * brake : brake > 0.5 ? 8 : 0; // brake, then reverse slowly
       }
-      if (throttle === 0 && !input.brake) a -= Math.sign(vF) * 2;
-      if (this.drifting && input.brake) a -= 3; // handbrake drag
+      if (throttle === 0 && !brake) a -= Math.sign(vF) * 2;
+      if (this.drifting && brake) a -= 3 * brake; // handbrake drag
       vF += a * dt;
       if (vF < -10) vF = -10;
 
@@ -446,7 +451,7 @@ export class Vehicle {
           this.proximityScore += bonus;
         }
         const rel = steer * this.driftDir;
-        if (rel < -0.35 || (Math.abs(steer) < 0.15 && !input.brake)) {
+        if (rel < -0.35 || (Math.abs(steer) < 0.15 && brake < 0.1)) {
           if (this.driftExitTimer === 0) this.releaseS = pr.s;
           this.driftExitTimer += dt;
         } else {

@@ -20,7 +20,7 @@ export function formatTime(t) {
   return `${m}:${s.toFixed(2).padStart(5, '0')}`;
 }
 
-export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, onRaceAgain, onNext, onDoubleCoins }) {
+export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, onRaceAgain, onNext, onDoubleCoins, onCameraView }) {
   const root = $('#race-hud');
   const el = {
     pos: $('#rh-pos'),
@@ -70,6 +70,13 @@ export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, 
   // Every HUD button gets the high-tech click.
   const button = (sel, fn) => $(sel).addEventListener('click', () => (sfx.tap(), fn()));
   button('#rh-pause', () => onPause());
+  // Camera view toggle (also C on a keyboard) while the race HUD is up.
+  const camBtn = $('#rh-cam');
+  camBtn.addEventListener('pointerdown', (e) => e.preventDefault()); // keep focus off it
+  button('#rh-cam', () => onCameraView?.());
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyC' && !e.repeat && !root.hidden && !el.pause.open) onCameraView?.();
+  });
   button('#pause-resume', () => onResume());
   button('#pause-restart', () => onRestart());
   button('#pause-quit', () => onQuit());
@@ -155,6 +162,13 @@ export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, 
       el.countdown.innerHTML = `<span class="${text === 'GO!' ? 'go' : ''}">${text}</span>`;
       clearTimeout(countdownTimer);
       countdownTimer = setTimeout(() => (el.countdown.hidden = true), 900);
+    },
+
+    // The live camera view; `announce` flashes its name (on a toggle, not at race start).
+    setCameraView(view, label, announce = false) {
+      camBtn.dataset.view = view;
+      camBtn.setAttribute('aria-label', `Camera view: ${label}`);
+      if (announce) this.callout(label.toUpperCase(), 'cam');
     },
 
     callout(text, kind = '') {

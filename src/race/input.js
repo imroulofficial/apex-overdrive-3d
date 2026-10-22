@@ -1,7 +1,8 @@
 // Driving input: three touch control schemes (Settings → Controls) plus the keyboard.
 //
 //   touch  Touch Drive (default): a steering pad split into left/right halves, so a thumb can
-//          slide across without lifting. Auto-accelerate applies.
+//          slide across without lifting. It is analog: a thumb near the middle of the pad
+//          steers gently and the outer part of each half is full lock. Auto-accelerate applies.
 //   tilt   Tilt-to-Steer: roll the phone like a wheel. Gravity from the accelerometer gives the
 //          absolute angle and the gyroscope's rate keeps it quick and steady (a complementary
 //          filter); GAS and BRAKE pedals on screen.
@@ -11,6 +12,8 @@
 // The drift button doubles as the brake (Tilt also gets a big BRAKE pedal on the left). Nitro
 // taps are timestamped so the vehicle can judge the double-tap sweet spot. Pedal schemes, or
 // Auto-accelerate off, show the GAS pedal and make W / Up the throttle instead of nitro.
+// The GAS and BRAKE pedals are analog too: slide the thumb up the pedal to press harder, so
+// the throttle can be feathered out of a corner and the brake trailed into one.
 
 import { CONTROL_SCHEMES } from '../data/controls.js';
 
@@ -21,6 +24,27 @@ const DEG = Math.PI / 180;
 
 export const TILT = { full: 24 * DEG, deadzone: 1.5 * DEG, gyroWeight: 0.92, slew: 14 }; // slew: steer units/s
 export const WHEEL = { lock: 120, full: 95, returnRate: 9 }; // degrees; spring-back per second
+// Touch Drive pad: distance from the pad's centre line as a fraction of a half's width.
+// Inside `deadzone` nothing happens, from there steering starts at `min` and reaches full
+// lock at `full`, so most of each half is still full lock for a quick tap.
+export const PAD = { deadzone: 0.05, full: 0.6, min: 0.4 };
+// Pedal depth from where the thumb sits: the bottom edge is `min`, full travel is reached
+// `full` of the way up (so a tap in the middle is near full). The throttle rises at `rise`/s
+// toward the pedal and drops straight back.
+export const PEDAL = { min: 0.3, full: 0.6, rise: 9 };
+
+// Touch Drive: horizontal finger offset u (-1 left edge .. 1 right edge, 0 = centre) -> steer.
+export function padToSteer(u) {
+  const a = Math.abs(u);
+  if (a <= PAD.deadzone) return 0;
+  const k = Math.min(1, (a - PAD.deadzone) / (PAD.full - PAD.deadzone));
+  return Math.sign(u) * (PAD.min + (1 - PAD.min) * k * (2 - k)); // ease-out toward full lock
+}
+
+// Pedal depth 0..1 from the finger's height on the pedal (fromBottom 0 = bottom edge, 1 = top).
+export function pedalDepth(fromBottom) {
+  return PEDAL.min + (1 - PEDAL.min) * clamp(fromBottom / PEDAL.full, 0, 1);
+}
 
 // Roll of the screen's horizontal axis away from level, in radians (+ = turned clockwise, i.e.
 // steering right), from accelerationIncludingGravity in device axes and the screen rotation
@@ -123,8 +147,9 @@ export function createRaceInput({ steerPad, wheel, brakes, nitro, gas, hud }) {
   const st = {
     touchLeft: false,
     touchRight: false,
-    brakesDown: new Set(),
-    touchGas: false,
+    padSteer: 0,
+    brakesDown: new Map(), // button -> depth
+    touchGas: 0, // pedal depth, 0 = up
     brakePressed: false,
     taps: [],
     steer: 0,
@@ -133,33 +158,41 @@ export function createRaceInput({ steerPad, wheel, brakes, nitro, gas, hud }) {
     auto: true,
     scheme: 'touch',
   };
-  const out = { steer: 0, throttle: 1, brake: false, brakePressed: false, nitroTaps: [] };
+  // brake is 0..1 (the vehicle also accepts a bool).
+  const out = { steer: 0, throttle: 1, brake: 0, brakePressed: false, nitroTaps: [] };
   const tilt = createTilt();
   const manual = () => st.scheme !== 'touch' || !st.auto;
 
   // ---- Touch Drive pad ----
-  const sideOf = (e) => {
-    const r = steerPad.getBoundingClientRect();
-    return e.clientX < r.left + r.width / 2 ? -1 : 1;
+  // Each finger steers by its offset from the pad's centre line; the pad's box is read on
+  // touch-down (it does not move during a race) so a move costs no layout.
+  let pad = null;
+  const steerOf = (e) => {
+    const half = pad.width / 2 || 1;
+    return padToSteer(clamp((e.clientX - (pad.left + half)) / half, -1, 1));
   };
   const refresh = () => {
-    const sides = [...pointers.values()];
-    st.touchLeft = sides.includes(-1);
-    st.touchRight = sides.includes(1);
+    let sum = 0;
+    for (const v of pointers.values()) sum += v;
+    st.padSteer = clamp(sum, -1, 1);
+    st.touchLeft = st.padSteer < 0;
+    st.touchRight = st.padSteer > 0;
     steerPad.classList.toggle('left-on', st.touchLeft);
     steerPad.classList.toggle('right-on', st.touchRight);
+    steerPad.style.setProperty?.('--steer', Math.abs(st.padSteer).toFixed(2));
   };
   steerPad.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     steerPad.setPointerCapture(e.pointerId);
-    pointers.set(e.pointerId, sideOf(e));
+    pad = steerPad.getBoundingClientRect();
+    pointers.set(e.pointerId, steerOf(e));
     refresh();
   });
   steerPad.addEventListener('pointermove', (e) => {
     if (!pointers.has(e.pointerId)) return;
-    const side = sideOf(e);
-    if (side !== pointers.get(e.pointerId)) {
-      pointers.set(e.pointerId, side);
+    const v = steerOf(e);
+    if (v !== pointers.get(e.pointerId)) {
+      pointers.set(e.pointerId, v);
       refresh();
     }
   });
@@ -201,34 +234,58 @@ export function createRaceInput({ steerPad, wheel, brakes, nitro, gas, hud }) {
   ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((t) => wheel.addEventListener(t, wheelUp));
 
   // ---- Pedals and buttons ----
-  const brakeDown = (btn) => {
+  // Pedals (.pedal) read their depth from the thumb's height and follow it while held; the
+  // DRIFT button is all or nothing.
+  const isPedal = (btn) => btn.classList.contains?.('pedal') ?? false;
+  const depthOf = (btn, e, box) => (isPedal(btn) ? pedalDepth((box.top + box.height - e.clientY) / (box.height || 1)) : 1);
+  const showDepth = (btn, d) => btn.style.setProperty?.('--depth', d.toFixed(2));
+  const boxes = new Map();
+  const brakeDown = (btn, d) => {
     if (!st.brakesDown.size) st.brakePressed = true;
-    st.brakesDown.add(btn);
+    st.brakesDown.set(btn, d);
     btn.classList.add('is-pressed');
+    showDepth(btn, d);
   };
   const brakeUp = (btn) => {
     st.brakesDown.delete(btn);
     btn.classList.remove('is-pressed');
+    showDepth(btn, 0);
   };
   for (const btn of brakes) {
     btn.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       btn.setPointerCapture(e.pointerId);
-      brakeDown(btn);
+      boxes.set(btn, btn.getBoundingClientRect());
+      brakeDown(btn, depthOf(btn, e, boxes.get(btn)));
+    });
+    btn.addEventListener('pointermove', (e) => {
+      if (st.brakesDown.has(btn) && isPedal(btn)) {
+        const d = depthOf(btn, e, boxes.get(btn));
+        st.brakesDown.set(btn, d);
+        showDepth(btn, d);
+      }
     });
     ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((t) => btn.addEventListener(t, () => brakeUp(btn)));
   }
 
+  let gasBox = null;
   const gasUp = () => {
-    st.touchGas = false;
+    st.touchGas = 0;
     gas.classList.remove('is-pressed');
+    showDepth(gas, 0);
+  };
+  const gasAt = (e) => {
+    st.touchGas = depthOf(gas, e, gasBox);
+    showDepth(gas, st.touchGas);
   };
   gas.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     gas.setPointerCapture(e.pointerId);
-    st.touchGas = true;
+    gasBox = gas.getBoundingClientRect();
+    gasAt(e);
     gas.classList.add('is-pressed');
   });
+  gas.addEventListener('pointermove', (e) => st.touchGas > 0 && gasAt(e));
   ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((t) => gas.addEventListener(t, gasUp));
 
   const tap = () => {
@@ -325,7 +382,7 @@ export function createRaceInput({ steerPad, wheel, brakes, nitro, gas, hud }) {
 
       // Touch is applied the frame it arrives: the pad and the wheel are direct, with no
       // smoothing between the finger and the front wheels (the car's own yaw response is the
-      // only easing). Tilt keeps a fast slew to hide sensor jitter; keys still ramp, since a
+      // only easing). The pad is analog by finger position (padToSteer). Tilt keeps a fast slew to hide sensor jitter; keys still ramp, since a
       // keyboard has no half-press.
       if (keyLeft || keyRight) {
         st.steer = rampDigital(st.steer, (keyRight ? 1 : 0) - (keyLeft ? 1 : 0), dt);
@@ -335,13 +392,16 @@ export function createRaceInput({ steerPad, wheel, brakes, nitro, gas, hud }) {
       } else if (st.scheme === 'wheel') {
         st.steer = clamp(wh.angle / WHEEL.full, -1, 1);
       } else {
-        st.steer = (st.touchRight ? 1 : 0) - (st.touchLeft ? 1 : 0);
+        st.steer = st.padSteer;
       }
       out.steer = st.enabled ? st.steer : 0;
-      out.brake = st.enabled && (st.brakesDown.size > 0 || anyKey(KEY_BRAKE));
-      // The pedal eases in and snaps off, like a throttle body.
-      const pedal = !manual() || st.touchGas || anyKey(KEY_GAS) ? 1 : 0;
-      st.throttle = pedal ? Math.min(1, st.throttle + dt * 6) : 0;
+      let brake = anyKey(KEY_BRAKE) ? 1 : 0;
+      for (const d of st.brakesDown.values()) brake = Math.max(brake, d);
+      out.brake = st.enabled ? brake : 0;
+      // The throttle rises quickly toward the pedal and lifts the instant the pedal does, so a
+      // half-pressed GAS pedal holds a part throttle.
+      const pedal = !manual() || anyKey(KEY_GAS) ? 1 : st.touchGas;
+      st.throttle = pedal > st.throttle ? Math.min(pedal, st.throttle + dt * PEDAL.rise) : pedal;
       out.throttle = st.enabled ? st.throttle : 0;
       out.brakePressed = st.enabled && st.brakePressed;
       st.brakePressed = false;

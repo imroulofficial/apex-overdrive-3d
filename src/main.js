@@ -5,6 +5,7 @@ import { createSettings } from './ui/settings.js';
 import { createRaceHud } from './ui/raceHud.js';
 import { Race } from './race/Race.js';
 import { createRaceInput } from './race/input.js';
+import { CAMERA_VIEWS, CAMERA_LABELS } from './data/controls.js';
 import { createStore } from './ui/store.js';
 import { createCloudBadge } from './ui/cloudBadge.js';
 import { PAINTS, fxById, DEFAULT_SMOKE, DEFAULT_NITRO } from './data/catalog.js';
@@ -230,7 +231,22 @@ const raceHud = createRaceHud({
   onRaceAgain: () => restartRace(),
   onNext: () => exitToMap({ next: true }),
   onDoubleCoins: () => doubleCoins(),
+  onCameraView: () => cycleCameraView(),
 });
+
+// HUD camera toggle: chase -> close follow -> hood, remembered per device.
+function applyCameraView(announce = false) {
+  const view = state.settings.cameraView;
+  race?.setCameraView(view);
+  raceHud.setCameraView(view, CAMERA_LABELS[view], announce);
+}
+function cycleCameraView() {
+  if (mode !== 'race' || !race) return;
+  const i = CAMERA_VIEWS.indexOf(state.settings.cameraView);
+  state.settings.cameraView = CAMERA_VIEWS[(i + 1) % CAMERA_VIEWS.length];
+  save();
+  applyCameraView(true);
+}
 
 // ---------------------------------------------------------------------------
 // Garage ⇄ track transition (a skewed wipe that covers loading and shader compiles)
@@ -265,6 +281,7 @@ const playerFx = () => ({ smoke: fxById(activeCar().smoke, DEFAULT_SMOKE), nitro
 function beginRace() {
   raceInput.setAutoAccelerate(state.settings.autoAccelerate);
   raceInput.setScheme(state.settings.controls);
+  applyCameraView();
   race.begin({
     earnedStars: state.career.stageStars[raceStage.index],
     stats: playerStats(),

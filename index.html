@@ -127,6 +127,10 @@
         <div class="rh-progress glass angled" aria-label="Race progress">
           <div class="rh-track"><div class="rh-lapmarks" id="rh-lapmarks"></div><div id="rh-dots"></div></div>
         </div>
+        <button id="rh-cam" class="icon-btn glass angled rh-cam" aria-label="Camera view: Chase cam" data-view="chase">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8.5A1.5 1.5 0 0 1 4.5 7h2L8 5h8l1.5 2h2A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z" /><circle cx="12" cy="13" r="3.5" /></svg>
+          <i class="rh-cam-pips" aria-hidden="true"><b></b><b></b><b></b></i>
+        </button>
         <button id="rh-pause" class="icon-btn glass angled" aria-label="Pause">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14" /></svg>
         </button>
@@ -286,15 +290,23 @@
           <input type="checkbox" class="switch" id="opt-music" />
         </label>
         <div class="setting">
-          <span>Controls <small id="controls-hint">Touch Drive: tap left / right to steer</small></span>
+          <span>Controls <small id="controls-hint">Touch Drive: press left / right to steer, further out for more lock</small></span>
           <div class="segmented" id="control-options" role="radiogroup" aria-label="Control scheme">
             <button data-controls="touch" role="radio">Touch</button>
             <button data-controls="tilt" role="radio">Tilt</button>
             <button data-controls="wheel" role="radio">Wheel</button>
           </div>
         </div>
+        <div class="setting">
+          <span>Camera <small>Also the camera button in a race, or C</small></span>
+          <div class="segmented" id="camera-options" role="radiogroup" aria-label="Camera view">
+            <button data-camera="chase" role="radio">Chase</button>
+            <button data-camera="close" role="radio">Close</button>
+            <button data-camera="hood" role="radio">Hood</button>
+          </div>
+        </div>
         <label class="setting">
-          <span>Auto-accelerate <small>Touch Drive. Off: hold GAS (or W / Up) to drive</small></span>
+          <span>Auto-accelerate <small>Touch Drive. Off: hold GAS (or W / Up) to drive, slide up the pedal for more throttle</small></span>
           <input type="checkbox" class="switch" id="opt-auto" />
         </label>
         <label class="setting">

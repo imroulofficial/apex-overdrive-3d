@@ -9,8 +9,8 @@ import { toast } from './hud.js';
 import { requestTiltPermission, probeTilt } from '../race/input.js';
 
 const CONTROL_HINTS = {
-  touch: 'Touch Drive: tap left / right to steer',
-  tilt: 'Tilt-to-Steer: roll the phone like a wheel, GAS and BRAKE pedals',
+  touch: 'Touch Drive: press left / right to steer, further out for more lock',
+  tilt: 'Tilt-to-Steer: roll the phone like a wheel; slide up the GAS and BRAKE pedals to press harder',
   wheel: 'Steering Wheel: turn the wheel on the left, pedals on the right',
 };
 
@@ -24,6 +24,7 @@ export function createSettings(garage, { onFpsToggle, onEntitlementsChanged, onC
   const fps = dialog.querySelector('#opt-fps');
   const controlButtons = [...dialog.querySelectorAll('[data-controls]')];
   const controlsHint = dialog.querySelector('#controls-hint');
+  const cameraButtons = [...dialog.querySelectorAll('[data-camera]')];
 
   const renderAbout = () =>
     (dialog.querySelector('#about').textContent =
@@ -81,6 +82,7 @@ export function createSettings(garage, { onFpsToggle, onEntitlementsChanged, onC
     bloomButtons.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.bloom === state.settings.bloom)));
     controlButtons.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.controls === state.settings.controls)));
     controlsHint.textContent = CONTROL_HINTS[state.settings.controls] ?? CONTROL_HINTS.touch;
+    cameraButtons.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.camera === state.settings.cameraView)));
     sound.checked = state.settings.sound;
     music.checked = state.settings.music;
     auto.checked = state.settings.autoAccelerate;
@@ -125,6 +127,14 @@ export function createSettings(garage, { onFpsToggle, onEntitlementsChanged, onC
       save();
       render();
       if (scheme === 'tilt' && !(await probeTilt())) toast('No motion sensor found on this device: steer with the arrow keys instead.', 3200);
+    })
+  );
+  cameraButtons.forEach((btn) =>
+    btn.addEventListener('click', () => {
+      state.settings.cameraView = btn.dataset.camera;
+      save();
+      render();
+      sfx.tap();
     })
   );
   sound.addEventListener('change', () => {
