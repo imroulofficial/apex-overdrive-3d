@@ -19,7 +19,7 @@ const now = () => performance.now() / 1000;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const DEG = Math.PI / 180;
 
-export const TILT = { full: 24 * DEG, deadzone: 1.5 * DEG, gyroWeight: 0.92 };
+export const TILT = { full: 24 * DEG, deadzone: 1.5 * DEG, gyroWeight: 0.92, slew: 14 }; // slew: steer units/s
 export const WHEEL = { lock: 120, full: 95, returnRate: 9 }; // degrees; spring-back per second
 
 // Roll of the screen's horizontal axis away from level, in radians (+ = turned clockwise, i.e.
@@ -37,6 +37,14 @@ export function rollFromGravity({ x, y, z }, screenAngle, flip = 1) {
 export function tiltToSteer(angle) {
   const m = Math.max(0, Math.abs(angle) - TILT.deadzone) / (TILT.full - TILT.deadzone);
   return Math.sign(angle) * Math.min(1, m);
+}
+
+// Keyboard steering eases toward full lock (faster back through centre) so a tap is a nudge.
+export function rampDigital(steer, target, dt) {
+  const reversing = target !== 0 && Math.sign(target) !== Math.sign(steer) && steer !== 0;
+  const rate = target === 0 ? 8 : reversing ? 12 : 5.5;
+  const d = target - steer;
+  return steer + Math.sign(d) * Math.min(Math.abs(d), rate * dt);
 }
 
 const IOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -300,7 +308,7 @@ export function createRaceInput({ steerPad, wheel, brakes, nitro, gas, hud }) {
       st.brakePressed = false;
       st.steer = 0;
     },
-    // Smoothed input for this frame. Edge events (brake press, nitro taps) are consumed.
+    // Input for this frame. Edge events (brake press, nitro taps) are consumed.
     read(dt) {
       const keyLeft = anyKey(KEY_LEFT);
       const keyRight = anyKey(KEY_RIGHT);
@@ -315,23 +323,19 @@ export function createRaceInput({ steerPad, wheel, brakes, nitro, gas, hud }) {
         wheelRim.style.transform = `rotate(${shown}deg)`;
       }
 
-      let analog = null;
-      if (!keyLeft && !keyRight) {
-        if (st.scheme === 'tilt' && tilt.available) analog = tilt.steer;
-        else if (st.scheme === 'wheel') analog = clamp(wh.angle / WHEEL.full, -1, 1);
-      }
-      if (analog !== null) {
-        // Analog schemes: follow the hand closely, with just enough smoothing to hide jitter.
-        const d = analog - st.steer;
-        st.steer += Math.sign(d) * Math.min(Math.abs(d), 14 * dt);
+      // Touch is applied the frame it arrives: the pad and the wheel are direct, with no
+      // smoothing between the finger and the front wheels (the car's own yaw response is the
+      // only easing). Tilt keeps a fast slew to hide sensor jitter; keys still ramp, since a
+      // keyboard has no half-press.
+      if (keyLeft || keyRight) {
+        st.steer = rampDigital(st.steer, (keyRight ? 1 : 0) - (keyLeft ? 1 : 0), dt);
+      } else if (st.scheme === 'tilt' && tilt.available) {
+        const d = tilt.steer - st.steer;
+        st.steer += Math.sign(d) * Math.min(Math.abs(d), TILT.slew * dt);
+      } else if (st.scheme === 'wheel') {
+        st.steer = clamp(wh.angle / WHEEL.full, -1, 1);
       } else {
-        const left = st.touchLeft || keyLeft;
-        const right = st.touchRight || keyRight;
-        const target = (right ? 1 : 0) - (left ? 1 : 0);
-        const reversing = target !== 0 && Math.sign(target) !== Math.sign(st.steer) && st.steer !== 0;
-        const rate = target === 0 ? 8 : reversing ? 12 : 5.5;
-        const d = target - st.steer;
-        st.steer += Math.sign(d) * Math.min(Math.abs(d), rate * dt);
+        st.steer = (st.touchRight ? 1 : 0) - (st.touchLeft ? 1 : 0);
       }
       out.steer = st.enabled ? st.steer : 0;
       out.brake = st.enabled && (st.brakesDown.size > 0 || anyKey(KEY_BRAKE));
