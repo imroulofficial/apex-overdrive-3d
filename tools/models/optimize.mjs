@@ -246,6 +246,40 @@ function sloppyTo(doc, target) {
   }
 }
 
+// Per-primitive edge collapse for the race LOD: the body gets most of the budget and wheel
+// parts (seen edge-on, a few pixels across) a third of their share, so a detailed rim cannot
+// starve the body the way one global ratio does.
+function collapseTo(doc, target, wheels) {
+  const wheelSet = new Set(Object.values(wheels));
+  const prims = [];
+  for (const node of doc.getRoot().listNodes()) {
+    const mesh = node.getMesh();
+    if (!mesh) continue;
+    let inWheel = false;
+    for (let p = node; p; p = p.getParentNode()) if (wheelSet.has(p)) inWheel = true;
+    for (const prim of mesh.listPrimitives()) {
+      const idx = prim.getIndices();
+      if (!idx || !prim.getAttribute('POSITION')) continue;
+      prims.push({ prim, tris: idx.getCount() / 3, weight: inWheel ? 1 / 3 : 1 });
+    }
+  }
+  const weighted = prims.reduce((n, p) => n + p.tris * p.weight, 0);
+  const scale = Math.min(1, target / weighted);
+  for (const { prim, tris, weight } of prims) {
+    const want = Math.max(weight < 1 ? 64 : 12, Math.floor(tris * weight * scale)) * 3;
+    if (want >= tris * 3) continue;
+    const idx = prim.getIndices();
+    const pos = prim.getAttribute('POSITION');
+    const [out] = MeshoptSimplifier.simplify(new Uint32Array(idx.getArray()), new Float32Array(pos.getArray()), 3, want, 0.05, []);
+    if (out.length < 3) {
+      prim.dispose();
+      continue;
+    }
+    idx.setArray(out);
+    compactPrimitive(prim);
+  }
+}
+
 // Column-major 4x4 helpers (gltf-transform matrices).
 function multiply(a, b) {
   const out = new Array(16).fill(0);
@@ -317,8 +351,9 @@ async function flattenMaterials(doc) {
     mat.setBaseColorTexture(null).setMetallicRoughnessTexture(null).setNormalTexture(null);
     mat.setOcclusionTexture(null).setEmissiveTexture(null);
     for (const ext of mat.listExtensions()) {
-      // Transmissive glass becomes plain blended glass.
-      if (ext.extensionName === 'KHR_materials_transmission') mat.setAlphaMode('BLEND').setBaseColorFactor([...mat.getBaseColorFactor().slice(0, 3), 0.35]);
+      // Transmissive glass becomes plain blended, smoked glass (its tint came from the
+      // transmission, so the base colour is usually near white).
+      if (ext.extensionName === 'KHR_materials_transmission') mat.setAlphaMode('BLEND').setBaseColorFactor([0.03, 0.045, 0.06, 0.7]);
       mat.setExtension(ext.extensionName, null);
     }
     // Alpha-tested decals and grilles have nothing left to cut out.
@@ -349,7 +384,10 @@ async function build(entry, kind) {
     }
   }
   await doc.transform(dedup(), prune(), join({ keepNamed: false }), weld());
-  if (kind === 'race') sloppyTo(doc, entry.raceTris);
+  // Clustering suits bodies built from many open panels; models with closed, welded panels
+  // keep their shape better with edge collapse (manifest `raceSimplify: "collapse"`).
+  if (kind === 'race' && entry.raceSimplify !== 'collapse') sloppyTo(doc, entry.raceTris);
+  else if (kind === 'race') collapseTo(doc, entry.raceTris, wheels);
   else await simplifyTo(doc, entry.garageTris);
   if (kind === 'race') creaseNormals(doc);
   await doc.transform(prune());

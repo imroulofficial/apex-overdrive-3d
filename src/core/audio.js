@@ -6,6 +6,12 @@ import { createMixer, MUSIC_LEVEL } from '../audio/mixer.js';
 import { ui, race, nitroIgnite, rainBed } from '../audio/sfx.js';
 import { EngineVoice, Gearbox, playEngineEvents, revEngine } from '../audio/engine.js';
 import { Music } from '../audio/music.js';
+import { isNative } from './platform.js';
+
+// Android's 'interactive' latency asks for the smallest hardware buffer, which underruns
+// (crackles) whenever a frame of rendering starves the audio thread. 'balanced' doubles the
+// buffer for a few milliseconds of latency nobody hears in a racer.
+const LATENCY = isNative ? 'balanced' : 'interactive';
 
 let mix = null;
 let music = null;
@@ -16,7 +22,7 @@ function ensure() {
   if (!mix) {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return null;
-    mix = createMixer(new AC({ latencyHint: 'interactive' }));
+    mix = createMixer(new AC({ latencyHint: LATENCY }));
     applyAudioSettings();
   }
   if (mix.ac.state === 'suspended') mix.ac.resume();
@@ -28,6 +34,16 @@ const fx = (fn) => (...args) => {
   if (!state.settings.sound) return;
   const m = ensure();
   if (m) fn(m, ...args);
+};
+
+// Impacts can fire on consecutive physics steps (a cone field, grinding a rail). Stacked
+// copies only add level and nodes, so each one is held off briefly after it plays.
+const lastHit = new Map();
+const spaced = (name, gap, fn) => (m, ...args) => {
+  const t = m.ac.currentTime;
+  if (t - (lastHit.get(name) ?? -1) < gap) return;
+  lastHit.set(name, t);
+  fn(m, ...args);
 };
 
 // Applies the Sound and Music switches from Settings.
@@ -71,10 +87,10 @@ export const raceSfx = {
     duckFor(0.4, 1.6);
   }),
   empty: fx((m) => race.empty(m)),
-  smash: fx((m, big) => race.smash(m, big)),
-  wall: fx((m, k) => race.wall(m, k)),
-  bump: fx((m) => race.bump(m)),
-  land: fx((m, k) => race.land(m, k)),
+  smash: fx(spaced('smash', 0.06, (m, big) => race.smash(m, big))),
+  wall: fx(spaced('wall', 0.09, (m, k) => race.wall(m, k))),
+  bump: fx(spaced('bump', 0.08, (m) => race.bump(m))),
+  land: fx(spaced('land', 0.12, (m, k) => race.land(m, k))),
   chirp: fx((m) => race.chirp(m)),
   driftBank: fx((m) => race.driftBank(m)),
   combo: fx((m, level) => race.combo(m, level)),
@@ -82,7 +98,7 @@ export const raceSfx = {
     race.perfect(m);
     duckFor(0.5, 0.9);
   }),
-  shatter: fx((m, kind) => race.shatter(m, kind)),
+  shatter: fx(spaced('shatter', 0.06, (m, kind) => race.shatter(m, kind))),
   lap: fx((m) => race.lap(m)),
   finish: fx((m) => race.finish(m)),
   coin: fx((m, i) => race.coin(m, i)),

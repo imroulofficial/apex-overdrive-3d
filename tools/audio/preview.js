@@ -145,6 +145,26 @@ const clips = {
       return log;
     },
   },
+  // Worst case for the output stage: redline on pulse nitro, the music drop, and a pile of
+  // impacts stacked on the same frames. The peak must stay under the clipper ceiling.
+  'pileup': {
+    seconds: 8,
+    build(mix) {
+      const music = new Music(mix);
+      music.dropPending = true;
+      music.start(0.05);
+      music.schedule(7.5);
+      nitroIgnite(mix, 2, 2);
+      for (let i = 0; i < 6; i++) race.smash(mix, i % 2 === 0, 3 + i * 0.012);
+      race.shatter(mix, 'neon', 3);
+      race.wall(mix, 20, 3.01);
+      race.land(mix, 14, 3.02);
+      race.bump(mix, 3.03);
+      race.perfect(mix, 3.05);
+      race.finish(mix, 4);
+      return driveEngine(mix, 7.5, (t) => ({ speed: 1.3, throttle: 1, tier: t > 2 ? 2 : 0, skid: 1, slip: 0.5, duck: 1 }));
+    },
+  },
   'ui-and-race-sfx': {
     seconds: 12,
     build(mix) {

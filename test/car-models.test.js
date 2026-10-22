@@ -7,7 +7,10 @@ import path from 'node:path';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from 'meshoptimizer';
+import './dom-stub.js';
 import { CARS } from '../src/data/cars.js';
+import { createSwapWheel, RACE_DETAIL } from '../src/garage/carModel.js';
+import { RIM_IDS } from '../src/garage/rims.js';
 
 const dir = path.resolve(import.meta.dirname, '../public');
 const manifest = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../tools/models/manifest.json'), 'utf8'));
@@ -38,5 +41,30 @@ test('imported models are credited, phone-sized and within the triangle budgets'
       for (const w of ['wheel_FL', 'wheel_FR', 'wheel_RL', 'wheel_RR']) assert.ok(names.includes(w), `${url} has ${w}`);
       assert.ok(doc.getRoot().listMaterials().some((m) => /paint/i.test(m.getName())), `${url} has a paint material`);
     }
+  }
+});
+
+// Aftermarket rims on an imported car replace the model's four wheels with procedural ones.
+test('imported race LODs stay under 10,000 triangles with every rim', async () => {
+  const meshTris = (root) => {
+    let n = 0;
+    root.traverse((o) => o.isMesh && (n += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3));
+    return n;
+  };
+  const swap = Math.max(...RIM_IDS.filter((id) => id !== 'stock').map((id) => {
+    const w = createSwapWheel(id, 1, 0.34, RACE_DETAIL);
+    return meshTris(w.spin) + meshTris(w.still);
+  }));
+  for (const entry of manifest.cars) {
+    const car = CARS.find((c) => c.id === entry.id);
+    const doc = await io.read(path.join(dir, car.model.raceUrl));
+    let wheelTris = 0;
+    for (const node of doc.getRoot().listNodes().filter((n) => /^wheel_/.test(n.getName()))) {
+      node.traverse((n) => {
+        for (const p of n.getMesh()?.listPrimitives() ?? []) wheelTris += (p.getIndices() ?? p.getAttribute('POSITION')).getCount() / 3;
+      });
+    }
+    const tris = triangles(doc) - wheelTris + 4 * swap;
+    assert.ok(tris < 10000, `${entry.id} with procedural rims: ${tris}`);
   }
 });
