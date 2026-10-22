@@ -1,0 +1,42 @@
+// External car models in public/assets/models/: credited, phone-sized, within the race LOD
+// triangle budget and following the loader conventions (four wheel nodes, a paint material).
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { NodeIO } from '@gltf-transform/core';
+import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
+import { MeshoptDecoder } from 'meshoptimizer';
+import { CARS } from '../src/data/cars.js';
+
+const dir = path.resolve(import.meta.dirname, '../public');
+const manifest = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../tools/models/manifest.json'), 'utf8'));
+const credits = fs.readFileSync(path.join(dir, 'assets/models/CREDITS.md'), 'utf8');
+
+await MeshoptDecoder.ready;
+const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder });
+
+const triangles = (doc) =>
+  doc.getRoot().listMeshes().reduce((n, m) => n + m.listPrimitives().reduce((k, p) => k + (p.getIndices() ?? p.getAttribute('POSITION')).getCount() / 3, 0), 0);
+
+test('every car has a race LOD slot next to its showroom model', () => {
+  for (const car of CARS) assert.equal(car.model.raceUrl, car.model.url.replace(/\.glb$/, '_race.glb'), car.id);
+});
+
+test('imported models are credited, phone-sized and within the triangle budgets', async () => {
+  for (const entry of manifest.cars) {
+    const car = CARS.find((c) => c.id === entry.id);
+    assert.ok(car, `${entry.id} is a roster car`);
+    assert.ok(credits.includes(entry.source), `${entry.id} is in CREDITS.md`);
+    assert.doesNotMatch(entry.license, /-NC|-ND/, `${entry.id} licence allows commercial use`);
+    for (const [url, maxTris, maxMb] of [[car.model.url, 60000, 3], [car.model.raceUrl, 10000, 0.5]]) {
+      const file = path.join(dir, url);
+      assert.ok(fs.statSync(file).size < maxMb * 1e6, `${url} under ${maxMb} MB`);
+      const doc = await io.read(file);
+      assert.ok(triangles(doc) < maxTris, `${url}: ${triangles(doc)} triangles`);
+      const names = doc.getRoot().listNodes().map((n) => n.getName());
+      for (const w of ['wheel_FL', 'wheel_FR', 'wheel_RL', 'wheel_RR']) assert.ok(names.includes(w), `${url} has ${w}`);
+      assert.ok(doc.getRoot().listMaterials().some((m) => /paint/i.test(m.getName())), `${url} has a paint material`);
+    }
+  }
+});

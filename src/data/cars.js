@@ -51,7 +51,7 @@ const car = (id, tier, className, stats, style, feel, unlock, { length = 4.5, ..
   stats,
   feel,
   procedural: { style },
-  model: { url: `assets/models/${id.replace(/-/g, '_')}.glb`, length },
+  model: { url: `assets/models/${id.replace(/-/g, '_')}.glb`, raceUrl: `assets/models/${id.replace(/-/g, '_')}_race.glb`, length },
   unlock,
   released: true,
   ...extra,
@@ -61,7 +61,7 @@ const car = (id, tier, className, stats, style, feel, unlock, { length = 4.5, ..
 export const CARS = [
   // ---- Tier D · Street Tuners ----
   car('rp1-vanta', 'D', 'Starter Coupe', BASE_STATS, 'coupe', { weight: 1, power: 2, drift: 1 }, { type: 'starter' }, {
-    model: { url: 'assets/models/rp1_vanta.glb', length: 4.6 }, // metres, nose to tail; the loader scales the model to fit
+    model: { url: 'assets/models/rp1_vanta.glb', raceUrl: 'assets/models/rp1_vanta_race.glb', length: 4.6 }, // metres, nose to tail; the loader scales the model to fit
   }),
   car('kz-kestrel', 'D', 'Hot Hatch', { speed: 50, accel: 62, handling: 64, nitro: 42 }, 'hatch', { weight: 0.86, power: 1.6, drift: 0.9 }, { type: 'coins', price: 3000 }, { length: 4.2 }),
   car('rz-sakura', 'D', 'Compact Coupe', { speed: 57, accel: 55, handling: 60, nitro: 46 }, 'zcoupe', { weight: 1.02, power: 2.2, drift: 1.2 }, { type: 'coins', price: 6500 }, { length: 4.3 }),
@@ -81,7 +81,7 @@ export const CARS = [
   // up to 0.7.0). Its id keeps the old name on purpose: saves, Firestore documents and the
   // Play grant all refer to 'rpx-hyperion', so renaming the car never needs a migration.
   car('rpx-hyperion', 'A', 'Hypercar', { speed: 74, accel: 72, handling: 70, nitro: 66 }, 'hyper', { weight: 1.0, power: 2.5, drift: 1.05 }, { type: 'iap', product: 'supercar_bundle' }, {
-    model: { url: 'assets/models/valkyrie_gtr.glb', length: 4.7 },
+    model: { url: 'assets/models/valkyrie_gtr.glb', raceUrl: 'assets/models/valkyrie_gtr_race.glb', length: 4.7 },
   }),
   car('tm-tempesta', 'A', 'Track Hypercar', { speed: 76, accel: 75, handling: 78, nitro: 68 }, 'senna', { weight: 0.88, power: 2.8, drift: 0.85 }, { type: 'stars', stars: 120, price: 60000 }, { length: 4.75 }),
   car('zn-zenith', 'A', 'V12 Hypercar', { speed: 84, accel: 76, handling: 70, nitro: 74 }, 'wedge', { weight: 1.12, power: 3.2, drift: 1.1 }, { type: 'coins', price: 75000 }, { length: 4.75 }),

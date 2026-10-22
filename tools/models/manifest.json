@@ -1,0 +1,24 @@
+{
+  "cars": [
+    {
+      "id": "tm-tempesta",
+      "src": "Car 3.glb",
+      "title": "2024 | Peugeot 9X8 EVO",
+      "author": "kevin (ケビン) (https://sketchfab.com/sohyalebret)",
+      "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)",
+      "source": "https://sketchfab.com/3d-models/2024-peugeot-9x8-evo-b3efbf3a774c4411983e630d764c8cea",
+      "drop": "RIM_BLUR",
+      "paint": [
+        "EXT_CARPAINT"
+      ],
+      "garageTris": 60000,
+      "raceTris": 9000,
+      "headlights": [
+        "EXT_LIGHTS"
+      ],
+      "taillights": [
+        "EXT_LIGHTS_REAR"
+      ]
+    }
+  ]
+}
