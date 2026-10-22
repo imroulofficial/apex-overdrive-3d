@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { createCar } from '../garage/carModel.js';
+import { createCar, createSwapWheel } from '../garage/carModel.js';
 import { createCarPaint } from '../garage/carPaint.js';
 
 // Vehicle spawner. Every car in src/data/cars.js resolves to the same "car rig" interface,
@@ -13,8 +13,9 @@ import { createCarPaint } from '../garage/carPaint.js';
 //     lightsOn, setLights(on), spinWheels(speed), update(dt),
 //     rim, setRim(id), spoiler, setSpoiler(id), door: { anchor, normal, open, toggle(), close() } | null }
 //
-// A .glb brings its own wheels, wing and doors, so on a model the rim and wing setters only
-// record the choice and `door` is null (no hotspot).
+// A .glb brings its own wheels, wing and doors. Its 'stock' rim is the model's own wheel and
+// the other five rim designs swap in procedural wheels (carModel.js createSwapWheel); the wing
+// setter only records the choice and `door` is null (no hotspot).
 //
 // The garage turntable, the paint system and the race baker (raceCars.js) only talk to that
 // interface, and vehicle physics never looks at meshes at all, so swapping a procedural car
@@ -146,14 +147,24 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', spoiler = '
   const partSize = new THREE.Vector3();
   model.traverse((o) => {
     if (!o.isMesh) return;
-    o.castShadow = true;
     o.receiveShadow = false;
     // Small parts stay out of the showroom floor reflection (see Garage.js), which renders
-    // the whole car a second time.
+    // the whole car a second time, and out of the shadow map: the body's shadow covers them.
+    // Wheels get their shadow back below (one mesh each).
     part.setFromObject(o).getSize(partSize);
-    if (Math.max(partSize.x, partSize.y, partSize.z) < size.x * fit.scale.x * 0.3) o.userData.noReflect = true;
+    const small = Math.max(partSize.x, partSize.y, partSize.z) < size.x * fit.scale.x * 0.3;
+    o.castShadow = !small;
+    if (small) o.userData.noReflect = true;
     const swap = (mat) => {
       const name = mat?.name ?? '';
+      // Transmission makes three.js render the whole scene again into a transmission target
+      // every frame; tinted blended glass looks the same on a car window.
+      if (mat?.transmission > 0) {
+        mat.transmission = 0;
+        mat.transparent = true;
+        mat.opacity = Math.min(mat.opacity, 0.45);
+        mat.depthWrite = false;
+      }
       if (paintNames ? paintNames.includes(name) : PAINT_PATTERN.test(name)) {
         paintFound = true;
         return paint;
@@ -187,10 +198,45 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', spoiler = '
     wheel.add(spin);
     wheel.updateMatrixWorld(true);
     spin.attach(node);
+    // The wheel's biggest mesh (the tyre) keeps its contact shadow.
+    let biggest = null;
+    let biggestSize = 0;
+    node.traverse((o) => {
+      if (!o.isMesh) return;
+      const s = part.setFromObject(o).getSize(partSize).length();
+      if (s > biggestSize) [biggest, biggestSize] = [o, s];
+    });
+    if (biggest) biggest.castShadow = true;
     wheel.traverse((o) => (o.userData.wheelIndex = index));
-    wheels.push({ wheel, spin });
+    wheels.push({ wheel, spin, stock: node, swap: null });
     if (index === 0) wheelRadius = wb.getSize(new THREE.Vector3()).y / 2;
   });
+
+  // Aftermarket rims: the model's wheel comes out of the spinning group and a procedural
+  // wheel of the same radius goes in; 'stock' puts the model's wheel back.
+  const lod = /_race\.glb$/.test(url) ? 0.5 : 1;
+  const fitRim = (id) => {
+    wheels.forEach((w, index) => {
+      if (w.swap) {
+        w.spin.remove(w.swap.spin);
+        w.wheel.remove(w.swap.still);
+        for (const part of [w.swap.spin, w.swap.still]) part.traverse((o) => o.isMesh && o.geometry.dispose());
+        w.swap = null;
+      }
+      if (id === 'stock') {
+        if (!w.stock.parent) w.spin.add(w.stock);
+        return;
+      }
+      w.spin.remove(w.stock);
+      w.swap = createSwapWheel(id, Math.sign(w.wheel.position.z) || 1, wheelRadius, lod);
+      // Seat the swap wheel in the same frame as the model's (spin group is still unrotated
+      // in its own frame; only spin.rotation.z ever changes).
+      w.spin.add(w.swap.spin);
+      w.wheel.add(w.swap.still);
+      w.wheel.traverse((o) => (o.userData.wheelIndex = index));
+    });
+  };
+  if (rim !== 'stock') fitRim(rim);
 
   // Nitro flames come out of nodes named "exhaust…", else the middle of the rear bumper.
   car.updateMatrixWorld(true);
@@ -219,7 +265,10 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', spoiler = '
     rim,
     spoiler,
     setRim(id) {
+      if (id === this.rim) return;
       this.rim = id;
+      fitRim(id);
+      wheelSpeed = Math.max(wheelSpeed, 10);
     },
     setSpoiler(id) {
       this.spoiler = id;

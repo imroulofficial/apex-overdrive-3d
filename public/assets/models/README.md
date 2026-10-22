@@ -24,8 +24,9 @@ Each car can also have a race LOD next to it, `<file>_race.glb` (for example
 so keep the race file under 10k triangles. Six cars race at once.
 
 File names follow the permanent car ids, not the display names. A `.glb` brings its own
-wheels, wing and doors: the Rims and Kit choices and the door hotspot only apply to the
-procedural cars.
+wheels, wing and doors. The Stock rim shows the model's own wheels; the other five rims swap
+in procedural wheels at the model's tyre size. The Kit choices and the door hotspot only apply
+to the procedural cars.
 
 ## Importing source models
 
@@ -33,7 +34,11 @@ procedural cars.
 every car listed in `tools/models/manifest.json`. It simplifies to the triangle budgets, turns
 textures into WebP of up to 1024 px, drops the interior and bakes flat colours for the race
 LOD, turns the nose to +X, renames the wheels and the paint material to the conventions below,
-and applies meshopt compression. It also rewrites `CREDITS.md` from the manifest, so add each
+and applies meshopt compression. Per-car manifest options: `drop` (parts removed from both
+files), `raceDrop` (parts removed from the race file), `raceTris` / `garageTris` (budgets) and
+`raceSimplify: "collapse"` for bodies with closed, welded panels, which keep their shape
+better with edge collapse than with the default vertex clustering. Transmissive glass is
+turned into tinted blended glass in the game, because transmission renders the scene twice. It also rewrites `CREDITS.md` from the manifest, so add each
 model's author, licence and source there. Only use models whose licence allows commercial use,
 because the game has ads and in-app purchases.
 

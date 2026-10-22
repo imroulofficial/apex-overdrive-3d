@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createCarPaint } from './carPaint.js';
 import { shapeFor } from './carShapes.js';
 import { buildRim } from './rims.js';
+import { createVertexPbrMaterial, describeMaterial, mergePainted, paintVertices } from '../render/vertexPbr.js';
 
 // Procedural cars, built so the garage ships with zero downloaded assets. All twelve launch
 // cars come from one lofted construction driven by a body style (carShapes.js): body and
@@ -378,6 +379,50 @@ function fillSpin(spin, m, side, sharedTire, rimId, detail) {
   tire.castShadow = true;
   spin.add(tire);
   for (const part of buildRim(rimId, side, m.chrome, detail)) spin.add(part);
+}
+
+// An aftermarket wheel for an imported (.glb) car: the same tyre, rim, disc and caliper as a
+// procedural wheel, scaled to `radius`. The loader puts `spin` in the model's spinning group
+// in place of the model's own wheel and `still` in its steering pivot. In the showroom each
+// group is folded into one vertex-PBR mesh (two draws a wheel); the race keeps plain
+// materials so raceCars.js can batch the wheels itself.
+let swapMaterials = null;
+let swapAtlas = null;
+export function createSwapWheel(rimId, side, radius, detail = 1) {
+  swapMaterials ??= createMaterials(0xffffff, 'gloss', { caliper: 0x9a1020 });
+  const res = Math.max(8, Math.round((40 * detail) / 4) * 4);
+  const w = createWheel(swapMaterials, side, tireGeometry(res, detail < 1 ? 3 : 6), rimId, radius / REF_RADIUS, detail);
+  const [spin, still] = w.wheel.children;
+  if (detail < 1) mergeSiblings(spin);
+  else {
+    swapAtlas ??= createVertexPbrMaterial({ envMapIntensity: 1.3 });
+    for (const group of [spin, still]) bakeToAtlas(group, swapAtlas);
+  }
+  // Like the model wheels they stand in for: out of the showroom floor mirror.
+  w.wheel.traverse((o) => (o.userData.noReflect = true));
+  return { spin, still };
+}
+
+// Replaces a group's meshes with one mesh in `atlas`, keeping the group's own transform.
+function bakeToAtlas(group, atlas) {
+  group.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
+  const m = new THREE.Matrix4();
+  const geos = [];
+  let shadow = false;
+  group.traverse((o) => {
+    if (!o.isMesh) return;
+    m.multiplyMatrices(inv, o.matrixWorld);
+    geos.push(paintVertices(o.geometry.clone().applyMatrix4(m), describeMaterial(o.material)));
+    shadow ||= o.castShadow;
+  });
+  for (const child of [...group.children]) {
+    group.remove(child);
+    child.traverse((o) => o.isMesh && o.geometry.dispose());
+  }
+  const mesh = new THREE.Mesh(mergePainted(geos), atlas);
+  mesh.castShadow = shadow;
+  group.add(mesh);
 }
 
 // ---------------------------------------------------------------------------
