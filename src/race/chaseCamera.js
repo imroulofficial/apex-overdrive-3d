@@ -157,7 +157,11 @@ export class ChaseCamera {
       this.idealFor(car, this.pos, this.look);
       // Smooth vertical so jumps feel weighty rather than glued.
       this.camY += (this.pos.y - this.camY) * Math.min(1, dt * (car.airborne ? 3 : 8));
+      // ...but never so far behind that a big jump leaves the camera under the car.
+      const floor = car.pos.y + F.height * 0.6;
+      this.camY = Math.max(this.camY, floor);
       cam.position.lerp(this._v.set(this.pos.x, this.camY, this.pos.z), Math.min(1, dt * 12));
+      cam.position.y = Math.max(cam.position.y, floor);
       this.look.y = this.look.y * 0.6 + (this.camY - 1.2) * 0.4;
       const speedK = Math.min(1, car.speed / 70);
       const targetFov = BASE_FOV + F.fov + speedK * 10 + (boostTier === 2 ? 18 : boostTier === 1 ? 8 : 0);
