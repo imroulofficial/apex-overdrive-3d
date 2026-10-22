@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { surfaceMix, blendSurface, dominantSurface, trailMix, deckMix } from './surface.js';
+import { surfaceMix, blendSurface, dominantSurface, trailMix, deckMix, ICE } from './surface.js';
 import { proximityFactor, PROXIMITY } from './modes/rules.js';
 import { TRAIL } from './trails.js';
 import { wetGrip, PUDDLE } from '../data/weather.js';
@@ -218,6 +218,16 @@ export class Vehicle {
           S.steer *= 1 + (PUDDLE.steer - 1) * p;
           S.drag += PUDDLE.drag * p;
         }
+      }
+    }
+    // Black ice on the tarmac.
+    if (!pr.trail && !this.onWood && track.iceLevel > 0) {
+      const ice = track.iceAt(pr.s) * this.mix.asphalt;
+      if (ice > 0) {
+        S.grip *= 1 + (ICE.grip - 1) * ice;
+        S.driftGrip *= 1 + (ICE.driftGrip - 1) * ice;
+        S.steer *= 1 + (ICE.steer - 1) * ice;
+        if (ice > 0.3) this.surface = 'ice';
       }
     }
   }

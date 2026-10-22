@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { VERGE } from './surface.js';
+import { VERGE, ICE } from './surface.js';
 import { Trail } from './trails.js';
 
 // Race spline: a closed Catmull-Rom loop resampled every ~2 m. All driving queries (lap
@@ -76,6 +76,12 @@ export class Track {
       const k = Math.abs(this.curv[i]);
       this.vmax[i] = Math.min(MAX_PROFILE_SPEED, Math.sqrt(LATERAL_ACCEL / Math.max(k, 1e-5)));
     }
+    // Black ice (track def `ice`, lap fractions): the AI's profile takes those stretches at the
+    // speed the ice allows at its slickest.
+    this.iceSpans = (def.ice ?? []).map((r) => ({ s0: r.from * this.length, s1: r.to * this.length }));
+    for (const r of this.iceSpans) {
+      for (let i = 0; i < n; i++) if (this.s[i] >= r.s0 - ICE.ramp && this.s[i] <= r.s1) this.vmax[i] *= Math.sqrt(ICE.grip);
+    }
     // Braking passes so the profile slows down *before* each corner.
     for (let pass = 0; pass < 2; pass++) {
       for (let k = n - 1; k >= 0; k--) {
@@ -95,6 +101,20 @@ export class Track {
     // Weather: `wet` 0..1 (grip, puddles), set per stage by the race.
     this.wet = 0;
     this.puddles = [];
+    // How slick the black ice is today (0..1), set per stage from the weather.
+    this.iceLevel = 0;
+  }
+
+  // 0..1: how icy the road is at s (0 off the ice; patches fade in and out over ICE.ramp m).
+  iceAt(s) {
+    if (this.iceLevel <= 0) return 0;
+    const ss = this.wrapS(s);
+    for (const r of this.iceSpans) {
+      if (ss < r.s0 || ss > r.s1) continue;
+      const edge = Math.min(ss - r.s0, r.s1 - ss) / ICE.ramp;
+      return this.iceLevel * Math.min(1, edge);
+    }
+    return 0;
   }
 
   onBridge(s) {

@@ -4,23 +4,62 @@
 //   engine voice ─┐
 //   race / ui sfx ─┼─ sfx bus ──────────────┐
 //                  └─ space (slap delay) ───┤
-//   music ─ glue comp ─ duck ─ music bus ───┼─ master ─ limiter ─ speakers
+//   music ─ glue comp ─ duck ─ music bus ───┼─ master ─ bus comp ─ limiter ─ trim ─ clipper ─ speakers
+//
+// The output stage is built for phone speakers. Every voice sums into `master` at a modest
+// level, a gentle bus compressor holds the mix together, a fast limiter catches the stacks
+// (pulse nitro over a smash over the music drop) and a soft clipper is the last word, so the
+// samples that reach the DAC never come near full scale: small Android speaker amps and their
+// DSP crackle well before 0 dBFS. DynamicsCompressorNode adds automatic make-up gain, which
+// `trim` takes back out.
 //
 // The mixer accepts any BaseAudioContext, so tools/audio renders the same code offline.
 
 // Soundtrack level under the engine and effects.
 export const MUSIC_LEVEL = 0.38;
 
+// Output stage tuning. CEILING is the clipper's hard maximum (about -2.5 dBFS); the clipper
+// is linear up to KNEE, so normal play never touches it.
+export const OUTPUT = {
+  master: 0.6,
+  bus: { threshold: -20, knee: 12, ratio: 2.5, attack: 0.012, release: 0.25 },
+  limiter: { threshold: -9, knee: 0, ratio: 20, attack: 0.001, release: 0.12 },
+  trim: 0.7,
+  knee: 0.55,
+  ceiling: 0.75,
+};
+
+function compressor(ac, o) {
+  const c = ac.createDynamicsCompressor();
+  for (const k of ['threshold', 'knee', 'ratio', 'attack', 'release']) c[k].value = o[k];
+  return c;
+}
+
+// Transfer curve for the safety clipper: unity up to `knee`, then a tanh shoulder that never
+// exceeds `ceiling`. WaveShaper clamps input beyond ±1 to the curve's ends, so even a wild
+// overshoot stays at the ceiling.
+export function softClipCurve(knee = OUTPUT.knee, ceiling = OUTPUT.ceiling, n = 1025) {
+  const c = new Float32Array(n);
+  const room = ceiling - knee;
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    const a = Math.abs(x);
+    c[i] = Math.sign(x) * (a <= knee ? a : knee + room * Math.tanh((a - knee) / room));
+  }
+  return c;
+}
+
 export function createMixer(ac) {
   const master = ac.createGain();
-  master.gain.value = 0.85;
-  const limiter = ac.createDynamicsCompressor();
-  limiter.threshold.value = -8;
-  limiter.knee.value = 6;
-  limiter.ratio.value = 14;
-  limiter.attack.value = 0.002;
-  limiter.release.value = 0.18;
-  master.connect(limiter).connect(ac.destination);
+  master.gain.value = OUTPUT.master;
+  const bus = compressor(ac, OUTPUT.bus);
+  const limiter = compressor(ac, OUTPUT.limiter);
+  const trim = ac.createGain();
+  trim.gain.value = OUTPUT.trim;
+  const clipper = ac.createWaveShaper();
+  clipper.curve = softClipCurve();
+  clipper.oversample = 'none';
+  master.connect(bus).connect(limiter).connect(trim).connect(clipper).connect(ac.destination);
 
   const sfx = ac.createGain();
   sfx.connect(master);

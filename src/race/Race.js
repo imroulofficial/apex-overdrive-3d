@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Track } from './track.js';
 import { buildTrackMeshes, buildDirectional } from './trackMeshes.js';
 import { buildScenery } from './scenery.js';
+import { buildAlpineScenery } from './alpineScenery.js';
 import { buildNeonScenery } from './neonScenery.js';
 import { loadEnvAssets } from '../render/envAssets.js';
 import { SmashProps } from './props.js';
@@ -51,7 +52,7 @@ const SPRAY = new THREE.Color(0xd9e0e4);
 const COAST_INPUT = { steer: 0, throttle: 0, brake: false, brakePressed: false, nitroTaps: [] };
 const now = () => performance.now() / 1000;
 // World builders by track biome (data/tracks.js `biome`); the coast is the default.
-const SCENERY = { coast: buildScenery, neon: buildNeonScenery };
+const SCENERY = { coast: buildScenery, alpine: buildAlpineScenery, neon: buildNeonScenery };
 
 export class Race {
   constructor(renderer, def, { onFps } = {}) {
@@ -209,7 +210,11 @@ export class Race {
     const fwd = this.tracks.forward;
     fwd.setPuddles(puddles ? this.puddleList : []);
     this.tracks.reverse?.setPuddles(puddles ? reversePuddles(this.puddleList, this.tracks.reverse.length) : []);
-    for (const t of Object.values(this.tracks)) if (t) t.wet = w.wet;
+    for (const t of Object.values(this.tracks)) {
+      if (!t) continue;
+      t.wet = w.wet;
+      t.iceLevel = t.iceSpans.length ? Math.max(this.def.iceBase ?? 0, w.ice ?? 0) : 0;
+    }
     this.rain.set(w.rain);
     this.lightning.enabled = w.lightning;
     this.lightning.reset();
@@ -428,6 +433,27 @@ export class Race {
     if (this.baseExposure != null) this.renderer.toneMappingExposure = this.baseExposure;
     this.renderer.setRenderTarget(null);
     raceMusic.stop();
+  }
+
+  // Frees the GPU side of this track (geometries, materials, textures, render targets) when
+  // the player moves to a race on another track. The race cannot be used afterwards.
+  dispose() {
+    this.exit();
+    window.removeEventListener('resize', this.resize);
+    const textures = new Set();
+    this.scene?.traverse((o) => {
+      o.geometry?.dispose();
+      for (const m of [].concat(o.material ?? [])) {
+        for (const v of Object.values(m)) if (v?.isTexture) textures.add(v);
+        for (const u of Object.values(m.uniforms ?? {})) if (u?.value?.isTexture) textures.add(u.value);
+        m.dispose();
+      }
+    });
+    // Shared photo assets (render/envAssets.js) stay loaded for the next track.
+    for (const t of textures) if (!t.userData?.shared) t.dispose();
+    this.scene?.environment?.dispose();
+    this.scene = null;
+    this.ready = false;
   }
 
   frame(nowMs) {

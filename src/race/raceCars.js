@@ -26,9 +26,23 @@ function sliceGroups(mesh) {
   });
 }
 
+// Plain float copy of an attribute. Meshopt-compressed models arrive quantized (normalized
+// int16 positions, int8 normals); transforming those in place clamps every vertex to the
+// [-1, 1] range of the integer type and shreds the mesh.
+function toFloat(attr) {
+  const k = attr.itemSize;
+  const out = new Float32Array(attr.count * k);
+  const get = ['getX', 'getY', 'getZ', 'getW'];
+  for (let i = 0; i < attr.count; i++) for (let c = 0; c < k; c++) out[i * k + c] = attr[get[c]](i);
+  return new THREE.BufferAttribute(out, k);
+}
+
 function normalize(geo, matrix) {
   let g = geo.index ? geo.toNonIndexed() : geo.clone();
-  for (const name of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(name)) g.deleteAttribute(name);
+  for (const name of Object.keys(g.attributes)) {
+    if (!['position', 'normal', 'uv'].includes(name)) g.deleteAttribute(name);
+    else if (!(g.attributes[name].array instanceof Float32Array) || g.attributes[name].normalized || g.attributes[name].isInterleavedBufferAttribute) g.setAttribute(name, toFloat(g.attributes[name]));
+  }
   if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
   if (!g.attributes.normal) g.computeVertexNormals();
   g.applyMatrix4(matrix);

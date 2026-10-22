@@ -369,7 +369,8 @@ export function buildTrackMeshes(track, renderer, { groundMaterial, env = null }
   }
 
   const hardware = createVertexPbrMaterial({ envMapIntensity: 0.9 });
-  const trackside = urban ? [] : [...buildGuardrails(track), buildLampPosts(track)];
+  const trackside = urban ? [] : [...buildGuardrails(track)];
+  if (!urban && track.def.lampPosts !== false) trackside.push(buildLampPosts(track));
   const start0 = buildStartLine(track);
   trackside.push(start0.steel);
   const side = new THREE.Mesh(mergePainted(trackside), hardware);

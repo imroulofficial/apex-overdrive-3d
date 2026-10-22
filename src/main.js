@@ -292,8 +292,10 @@ async function startRace(s = stage, { startNitro = false } = {}) {
   const track = trackFor(s);
   await wipe.cover(`LOADING ${TRACK_SEGMENTS[s.trackSegment].name.toUpperCase()}`);
   try {
-    // One track exists today; when a second lands, switching tracks builds a new Race.
+    // Switching tracks builds a new Race and frees the old one's GPU resources.
     if (!race || race.def !== track) {
+      race?.dispose();
+      race = null;
       race = new Race(garage.renderer, track, { onFps: showFps });
       await race.prepare({ quality: garage.qualityLevel, paint: currentPaint(), car: carById(state.car), look: carLook(state, state.car), stage: s });
     } else {

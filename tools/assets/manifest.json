@@ -9,6 +9,10 @@
     { "id": "metasequoia_bark", "key": "redwood_bark", "maps": { "diff": 512 }, "use": "Redwood trunks" },
     { "id": "palm_tree_bark", "key": "palm_bark", "maps": { "diff": 256 }, "use": "Palm trunks" },
     { "id": "fern_02", "key": "fronds", "maps": { "rgba": 512 }, "use": "Frond atlas shared by fern, redwood spray and palm leaf cards" },
+    { "id": "snow_field_aerial", "key": "snow", "maps": { "diff": 512 }, "use": "Alpine Summit snowfields and snow banks" },
+    { "id": "rock_face_04", "key": "alpine_rock", "maps": { "diff": 512 }, "use": "Alpine Summit cliffs, canyon walls and peaks" },
+    { "id": "castle_wall_slates", "key": "tunnel_stone", "maps": { "diff": 512 }, "use": "Summit Tunnel lining and portals, village walls" },
+    { "id": "pine_bark", "key": "pine_bark", "maps": { "diff": 256 }, "use": "Alpine pine trunks" },
     { "id": "concrete_wall_008", "key": "concrete", "maps": { "diff": 512 }, "use": "Neon City viaducts, barriers, overpasses and bridge pylons" },
     { "id": "concrete_pavement", "key": "pavement", "maps": { "diff": 512 }, "use": "Neon City hard shoulders and pavements" }
   ],

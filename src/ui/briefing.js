@@ -38,6 +38,10 @@ const WEATHER_ICONS = {
   NeonRain: '<path d="M14 3a5.5 5.5 0 1 0 5.5 8.5A4.6 4.6 0 0 1 14 3z" /><path d="m7 15-1.2 3M11 15l-1.2 3M15 15l-1.2 3M9 19l-1 2.5M13 19l-1 2.5" />',
   NeonHaze: '<path d="M15 3a5 5 0 1 0 5 7.5A4.2 4.2 0 0 1 15 3z" /><path d="M3 15h14M5 18.5h16M3 22h12" />',
   NeonStorm: '<path d="M7 13.5a4 4 0 0 1-.4-8 5.5 5.5 0 0 1 10.6 1.2A3.4 3.4 0 0 1 17 13.5z" /><path d="m12.5 13.5-2.5 4h3l-2 4.5" /><path d="M19.5 2.5a2.5 2.5 0 1 0 2 3.8" />',
+  // Alpine Summit: cloud on the peaks, falling snow and the finale blizzard.
+  MountainFog: '<path d="m2.5 16 6-9 4 5.5 2.5-3 6.5 6.5" /><path d="M4 19.5h16M7 22.5h10" />',
+  Snowfall: '<path d="M7 12.5a4 4 0 0 1-.4-8 5.5 5.5 0 0 1 10.6 1.2A3.4 3.4 0 0 1 17 12.5z" /><path d="M8 16v.01M12 18v.01M16 16v.01M10 21v.01M14 21v.01" />',
+  Blizzard: '<path d="M3 8h11a2.5 2.5 0 1 0-2.5-2.5M3 12h16a2.5 2.5 0 1 1-2.5 2.5M3 16h8" /><path d="M14 19v.01M18 20v.01M8 20v.01" />',
 };
 const icon = (paths) => `<svg viewBox="0 0 24 24" aria-hidden="true">${paths}</svg>`;
 const TRACK_ICON = '<path d="M4 20c0-6 4-7 8-7s8-1 8-7" /><path d="M4 20h3M17 6h3" />';

@@ -18,6 +18,10 @@ and meshopt-compressed by the script. They are bundled into the app, so nothing 
 | `redwood_bark_diff.webp` | [Metasequoia Bark](https://polyhaven.com/a/metasequoia_bark) (texture) | Charlotte Baglioni | Redwood trunks |
 | `palm_bark_diff.webp` | [Palm Tree Bark](https://polyhaven.com/a/palm_tree_bark) (texture) | Dimitrios Savva, Rico Cilliers | Palm trunks |
 | `fronds_rgba.webp` | [Fern 02](https://polyhaven.com/a/fern_02) (model) | Rob Tuytel, Rico Cilliers | Frond atlas shared by fern, redwood spray and palm leaf cards |
+| `snow_diff.webp` | [Snow Field Aerial](https://polyhaven.com/a/snow_field_aerial) (texture) | Rob Tuytel | Alpine Summit snowfields and snow banks |
+| `alpine_rock_diff.webp` | [Rock Face 04](https://polyhaven.com/a/rock_face_04) (texture) | Dimitrios Savva | Alpine Summit cliffs, canyon walls and peaks |
+| `tunnel_stone_diff.webp` | [Castle Wall Slates](https://polyhaven.com/a/castle_wall_slates) (texture) | Rob Tuytel | Summit Tunnel lining and portals, village walls |
+| `pine_bark_diff.webp` | [Pine Bark](https://polyhaven.com/a/pine_bark) (texture) | Dimitrios Savva | Alpine pine trunks |
 | `concrete_diff.webp` | [Concrete Wall 008](https://polyhaven.com/a/concrete_wall_008) (texture) | Dario Barresi, Charlotte Baglioni | Neon City viaducts, barriers, overpasses and bridge pylons |
 | `pavement_diff.webp` | [Concrete Pavement](https://polyhaven.com/a/concrete_pavement) (texture) | Charlotte Baglioni | Neon City hard shoulders and pavements |
 | `boulder.glb` | [Rock 07](https://polyhaven.com/a/rock_07) (model) | Jenelle van Heerden | Coastal boulders and sea stacks |
