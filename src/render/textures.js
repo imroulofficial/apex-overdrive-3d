@@ -78,8 +78,14 @@ function normalsFromHeight(height, w, h, strength) {
 // Asphalt. u runs across the road (0 = left edge, 1 = right edge of a `widthM` road) and
 // v along it (`tileM` metres per repeat). Painted edge lines and dashed lane dividers are
 // part of the texture; tyre-polished wheel tracks are darker and smoother.
+//
+// With `overlay`, returns a single texture to lay over a photographic asphalt (envAssets.js)
+// instead: R = paint coverage, G = albedo multiplier / 2 (wheel tracks, cracks, patches and
+// large blotches; 0.5 = unchanged), B = roughness offset + 0.5, plus the matching normal map
+// (aggregate, cracks, paint edges: what makes a wet road glint). The overlay repeats every
+// `tileM` metres, so it hides the much shorter repeat of the photo underneath.
 // ---------------------------------------------------------------------------
-export function asphaltTextures({ widthM = 18, tileM = 40, lanes = 3, w = 512, h = 1024, maxAniso = 4 } = {}) {
+export function asphaltTextures({ widthM = 18, tileM = 40, lanes = 3, w = 512, h = 1024, maxAniso = 4, overlay = false } = {}) {
   const rand = mulberry32(17);
   const blotch = tileFbm(23, w, h, 128, 4);
   const grain = tileFbm(29, w, h, 4, 2);
@@ -157,8 +163,19 @@ export function asphaltTextures({ widthM = 18, tileM = 40, lanes = 3, w = 512, h
       for (let k = 1; k < lanes; k++) {
         if (vm % 10 < 4) paint = Math.max(paint, line(u, k * laneW, 0.07));
       }
+      const worn = Math.min(1, Math.max(0, 0.75 + (g - 0.5) * 1.6 - (stone > 0.9 ? 0.4 : 0)));
+      if (overlay) {
+        // Grain and stones come from the photo; keep only the large-scale and road-specific
+        // marks, exaggerated a little since the photo carries its own contrast.
+        const mul = 1 + ((v - 0.07 - (stone > 0.86 ? (stone - 0.86) * 0.55 : 0) + (stone < 0.05 ? 0.02 : 0)) / 0.07) * 1.1;
+        albedo[i * 4] = Math.round(paint * worn * 255);
+        albedo[i * 4 + 1] = Math.round(Math.max(0, Math.min(1, mul * 0.5)) * 255);
+        albedo[i * 4 + 2] = Math.round(Math.max(0, Math.min(1, r - 0.9 + 0.5)) * 255);
+        albedo[i * 4 + 3] = 255;
+        height[i] = hgt + paint * worn * 0.6;
+        continue;
+      }
       if (paint > 0) {
-        const worn = Math.min(1, Math.max(0, 0.75 + (g - 0.5) * 1.6 - (stone > 0.9 ? 0.4 : 0)));
         const a = paint * worn;
         v = v + (0.72 - v) * a;
         r = r + (0.55 - r) * a;
@@ -174,6 +191,12 @@ export function asphaltTextures({ widthM = 18, tileM = 40, lanes = 3, w = 512, h
       rough[i * 4 + 3] = 255;
       height[i] = hgt;
     }
+  }
+  if (overlay) {
+    const tex = dataTexture(albedo, w, h);
+    const normalMap = dataTexture(normalsFromHeight(height, w, h, 1.6), w, h);
+    tex.anisotropy = normalMap.anisotropy = maxAniso;
+    return { overlay: tex, normalMap };
   }
   const map = dataTexture(albedo, w, h, { srgb: true });
   const normalMap = dataTexture(normalsFromHeight(height, w, h, 1.6), w, h);

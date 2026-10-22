@@ -1,0 +1,17 @@
+{
+  "textures": [
+    { "id": "asphalt_04", "key": "asphalt", "maps": { "diff": 1024 }, "use": "Highway asphalt (4 m tile, under procedural lines, cracks and wear)" },
+    { "id": "rocky_trail", "key": "gravel", "maps": { "diff": 512, "nor_gl": 512 }, "use": "Gravel shoulders" },
+    { "id": "leafy_grass", "key": "grass", "maps": { "diff": 512 }, "use": "Terrain grass, verges" },
+    { "id": "cliff_side", "key": "cliff", "maps": { "diff": 512 }, "use": "Terrain cliffs and steep banks" },
+    { "id": "coast_sand_01", "key": "sand", "maps": { "diff": 512 }, "use": "Beaches" },
+    { "id": "forest_ground_04", "key": "forest", "maps": { "diff": 512 }, "use": "Redwood trail dirt" },
+    { "id": "metasequoia_bark", "key": "redwood_bark", "maps": { "diff": 512 }, "use": "Redwood trunks" },
+    { "id": "palm_tree_bark", "key": "palm_bark", "maps": { "diff": 256 }, "use": "Palm trunks" },
+    { "id": "fern_02", "key": "fronds", "maps": { "rgba": 512 }, "use": "Frond atlas shared by fern, redwood spray and palm leaf cards" }
+  ],
+  "models": [
+    { "id": "rock_07", "key": "boulder", "ratio": 0.018, "error": 0.05, "texture": 512, "use": "Coastal boulders and sea stacks" },
+    { "id": "rock_09", "key": "rock", "ratio": 0.03, "error": 0.05, "texture": 512, "use": "Roadside rocks" }
+  ]
+}

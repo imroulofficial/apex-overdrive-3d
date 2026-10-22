@@ -4,11 +4,14 @@ import { createNoise2D, fbm, mulberry32, smoothstep } from './noise.js';
 import { grassTexture, rockTexture } from '../render/textures.js';
 import { bothFaces, createVertexPbrMaterial, mergePainted, paintVertices } from '../render/vertexPbr.js';
 import { installHeightFog } from '../render/heightFog.js';
+import { fernGeometry, foliageMaterials, NearInstances, palmGeometry as photoPalm, redwoodGeometry as photoRedwood } from './foliage.js';
 
 // Emerald Coast biome: sky, sun, glinting ocean with emerald shallows, layered grass/cliff
 // terrain carved around the road (and the redwood trails, and the sea gorge under the timber
 // bridge), coast redwoods, palms, undergrowth, rocks, a lighthouse headland and sailboats.
-// Everything is generated from a fixed seed at load time; no textures are downloaded.
+// Everything is placed from a fixed seed at load time. With the bundled CC0 scans loaded
+// (render/envAssets.js) the ground, trees, ferns and rocks are photo-textured; without them
+// the procedural textures and vertex-coloured meshes below are used.
 // Sky, sun, fog, clouds and sea follow the stage's weather preset (applyWeather, below).
 
 const SKY = {
@@ -171,19 +174,24 @@ function waterNormalMap(size = 128) {
 // One program for the terrain, the road embankments and (rock-only) the boulders.
 // ---------------------------------------------------------------------------
 
-export function createGroundMaterial({ rockOnly = false } = {}) {
+export function createGroundMaterial({ rockOnly = false, env = null } = {}) {
+  // Procedural grass always supplies the macro variation (alpha: lush vs dry patches); with
+  // the photo assets loaded, scanned grass, cliff and sand provide the detail.
   const grassMap = grassTexture();
-  const rockMap = rockTexture();
+  const photo = Boolean(env?.tex.grass && env.tex.cliff && env.tex.sand);
   const mat = new THREE.MeshLambertMaterial({ color: 0xffffff });
   const uniforms = {
     grassMap: { value: grassMap },
-    rockMap: { value: rockMap },
+    rockMap: { value: photo ? env.tex.cliff : rockTexture() },
+    photoGrass: { value: photo ? env.tex.grass : null },
+    photoSand: { value: photo ? env.tex.sand : null },
     sandColor: { value: new THREE.Color(0xcdb98c) },
     grassTint: { value: new THREE.Color(0xc4d6a0) },
   };
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     if (rockOnly) shader.defines = { ...shader.defines, ROCK_ONLY: '' };
+    if (photo) shader.defines = { ...shader.defines, PHOTO_GROUND: '' };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;\nvarying vec3 vWNormal;')
       .replace(
@@ -204,6 +212,8 @@ export function createGroundMaterial({ rockOnly = false } = {}) {
         `#include <common>
         uniform sampler2D grassMap;
         uniform sampler2D rockMap;
+        uniform sampler2D photoGrass;
+        uniform sampler2D photoSand;
         uniform vec3 sandColor;
         uniform vec3 grassTint;
         varying vec3 vWPos;
@@ -211,9 +221,20 @@ export function createGroundMaterial({ rockOnly = false } = {}) {
         vec3 rockTriplanar(vec3 n, vec3 p) {
           vec3 bw = pow(abs(n), vec3(4.0));
           bw /= (bw.x + bw.y + bw.z);
-          return texture2D(rockMap, p.zy * vec2(0.07, 0.11)).rgb * bw.x
-            + texture2D(rockMap, p.xz * 0.07).rgb * bw.y
-            + texture2D(rockMap, p.xy * vec2(0.07, 0.11)).rgb * bw.z;
+          #ifdef PHOTO_GROUND
+            // Scanned sedimentary cliff (about 1.8 m): 9 m strata across, plus a coarser
+            // sample to break up the repeat; cooled to the coast's grey-brown stone.
+            vec2 sx = p.zy * vec2(0.11, 0.16), sy = p.xz * 0.11, sz = p.xy * vec2(0.11, 0.16);
+            vec3 c = texture2D(rockMap, sx).rgb * bw.x + texture2D(rockMap, sy).rgb * bw.y + texture2D(rockMap, sz).rgb * bw.z;
+            vec3 c2 = texture2D(rockMap, sx * 0.23 + 0.31).rgb * bw.x + texture2D(rockMap, sy * 0.23 + 0.31).rgb * bw.y + texture2D(rockMap, sz * 0.23 + 0.31).rgb * bw.z;
+            c = mix(c, c2, 0.4);
+            float l = dot(c, vec3(0.3, 0.55, 0.15));
+            return mix(vec3(l), c, 0.45) * vec3(1.02, 0.98, 0.94) * 1.15;
+          #else
+            return texture2D(rockMap, p.zy * vec2(0.07, 0.11)).rgb * bw.x
+              + texture2D(rockMap, p.xz * 0.07).rgb * bw.y
+              + texture2D(rockMap, p.xy * vec2(0.07, 0.11)).rgb * bw.z;
+          #endif
         }`
       )
       .replace(
@@ -226,7 +247,16 @@ export function createGroundMaterial({ rockOnly = false } = {}) {
           vec4 gA = texture2D(grassMap, vWPos.xz * 0.11);
           vec4 gB = texture2D(grassMap, vWPos.xz * 0.013 + 0.37);
           float macro = gB.a;
-          vec3 grass = mix(gA.rgb, gB.rgb, 0.35) * grassTint;
+          #ifdef PHOTO_GROUND
+            // Scanned grass at two scales (2.5 m and 11 m) so no repeat lines up. The scan is a
+            // dry, tan meadow: its light and shade carry the detail, the procedural greens the
+            // colour, with a quarter of the scan's own colour for the dry stalks.
+            vec3 pg = mix(texture2D(photoGrass, vWPos.xz * 0.4).rgb, texture2D(photoGrass, vWPos.xz * 0.09 + 0.5).rgb, 0.4);
+            vec3 grass = mix(gA.rgb, gB.rgb, 0.35) * grassTint * (dot(pg, vec3(0.3, 0.59, 0.11)) / 0.23);
+            grass = mix(grass, pg * 0.9, 0.25);
+          #else
+            vec3 grass = mix(gA.rgb, gB.rgb, 0.35) * grassTint;
+          #endif
           // Golden dry grass vs lush green patches, drier on the high ground.
           grass *= mix(vec3(1.25, 1.08, 0.72), vec3(0.86, 1.06, 0.9), macro);
           grass = mix(grass, grass * vec3(1.3, 1.12, 0.75), smoothstep(45.0, 90.0, vWPos.y) * 0.6);
@@ -234,14 +264,18 @@ export function createGroundMaterial({ rockOnly = false } = {}) {
           vec3 col = grass;
           if (rockW > 0.001) col = mix(grass, rockTriplanar(nW, vWPos), rockW);
           float sandW = 1.0 - smoothstep(0.8, 3.2, vWPos.y + (macro - 0.5) * 2.5);
-          vec3 sand = sandColor * (0.85 + 0.3 * gA.a);
+          #ifdef PHOTO_GROUND
+            vec3 sand = texture2D(photoSand, vWPos.xz * 0.12).rgb * 1.25;
+          #else
+            vec3 sand = sandColor * (0.85 + 0.3 * gA.a);
+          #endif
           sand *= mix(0.6, 1.0, smoothstep(-0.6, 0.9, vWPos.y));
           col = mix(col, sand, sandW * (1.0 - rockW * 0.7));
           diffuseColor.rgb *= col;
         #endif`
       );
   };
-  mat.customProgramCacheKey = () => (rockOnly ? 'ground-rock' : 'ground');
+  mat.customProgramCacheKey = () => (rockOnly ? 'ground-rock' : 'ground') + (photo ? '-photo' : '');
   return mat;
 }
 
@@ -599,7 +633,7 @@ function scatter(mesh, transforms, tint = null) {
   mesh.computeBoundingSphere();
 }
 
-function buildVegetation(def, terrain, quality, track) {
+function buildVegetation(def, terrain, quality, track, env) {
   const group = new THREE.Group();
   const rand = mulberry32(42);
   const density = quality === 'low' ? 0.5 : quality === 'medium' ? 0.75 : 1;
@@ -648,6 +682,21 @@ function buildVegetation(def, terrain, quality, track) {
     }
   }
 
+  const photo = env && foliageMaterials(env);
+  if (photo) {
+    // Scanned bark and frond cards: trunks and leaves are two draw calls per species, and the
+    // ferns only exist near the camera.
+    const tree = new THREE.InstancedMesh(photoRedwood(), [photo.redwoodBark, photo.fronds], redwoods.length);
+    scatter(tree, redwoods, (t, i) => [0.0, 0.0, 0.88 + ((i * 0.37) % 1) * 0.3]);
+    const palm = new THREE.InstancedMesh(photoPalm(), [photo.palmBark, photo.fronds], palms.length);
+    scatter(palm, palms, (t, i) => [0.0, 0.0, 0.9 + ((i * 0.53) % 1) * 0.2]);
+    const ferns = bushes.map((b) => ({ ...b, scale: b.scale * 1.5, stretch: 0.8 + (b.stretch - 0.6) * 0.5 }));
+    const fern = new THREE.InstancedMesh(fernGeometry(), photo.fronds, ferns.length);
+    fern.name = 'ferns';
+    group.userData.near = [new NearInstances(fern, ferns, 170)];
+    group.add(tree, palm, fern);
+    return group;
+  }
   const foliage = new THREE.MeshLambertMaterial({ vertexColors: true });
   const tree = new THREE.InstancedMesh(redwoodGeometry(), foliage, redwoods.length);
   scatter(tree, redwoods, (t, i) => [0.0, 0.0, 0.88 + ((i * 0.37) % 1) * 0.3]);
@@ -659,7 +708,7 @@ function buildVegetation(def, terrain, quality, track) {
   return group;
 }
 
-function buildRocks(def, terrain) {
+function buildRocks(def, terrain, env) {
   const rand = mulberry32(77);
   const geo = new THREE.IcosahedronGeometry(1, 1);
   const p = geo.attributes.position;
@@ -685,9 +734,51 @@ function buildRocks(def, terrain) {
     const z = def.coastZ(x) + 40 + rand() * 160;
     items.push({ x, y: -2, z, rot: rand() * 6.28, scale: 5 + rand() * 8, stretch: 1.4 + rand() * 1.4 });
   }
+  const boulder = env?.models.boulder;
+  if (boulder) {
+    // Scanned boulder (1 m footprint, flat base): twice the old rock's radius, sunk a little,
+    // and stretched up into sea stacks offshore. Random tilt hides that they are one rock.
+    const placed = items.map((t) => ({ ...t, scale: t.scale * 2, stretch: (t.stretch * 0.8) / boulder.height, y: t.y - t.scale * 0.25, tilt: (rand() - 0.5) * 0.5 }));
+    // Lift the scan a little to sit with the sunlit terrain.
+    boulder.material.color.setRGB(1.2, 1.17, 1.15);
+    const mesh = new THREE.InstancedMesh(boulder.geometry, boulder.material, placed.length);
+    placed.forEach((t, i) => mesh.setMatrixAt(i, rockMatrix(t)));
+    mesh.computeBoundingSphere();
+    mesh.name = 'boulders';
+    const group = new THREE.Group();
+    group.add(mesh);
+    const roadside = env.models.rock && roadsideRocks(terrain, env.models.rock, rand);
+    if (roadside) {
+      group.add(roadside.mesh);
+      group.userData.near = [roadside.near];
+    }
+    return group;
+  }
   const mesh = new THREE.InstancedMesh(geo, createGroundMaterial({ rockOnly: true }), items.length);
   scatter(mesh, items);
   return mesh;
+}
+
+function rockMatrix(t) {
+  const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(t.tilt ?? 0, t.rot, (t.tilt ?? 0) * 0.7, 'YXZ'));
+  return new THREE.Matrix4().compose(new THREE.Vector3(t.x, t.y, t.z), q, new THREE.Vector3(t.scale, t.scale * (t.stretch ?? 1), t.scale));
+}
+
+// Scanned rocks half-buried in the grass beyond the verges, drawn only near the camera.
+function roadsideRocks(terrain, rock, rand) {
+  const items = [];
+  for (let i = 0; i < 6000 && items.length < 420; i++) {
+    const x = -1100 + rand() * 2200;
+    const z = -900 + rand() * 1250;
+    const { h, road, steep } = terrain.sample(x, z);
+    if (road < 17 || road > 70 || h < 2 || steep > 0.35) continue;
+    const scale = 0.6 + rand() ** 2 * 2.6;
+    items.push({ x, y: h - 0.2 - scale * rock.height * 0.3, z, rot: rand() * 6.28, scale, stretch: 0.8 + rand() * 0.5, tilt: (rand() - 0.5) * 0.6 });
+  }
+  rock.material.color.setRGB(1.3, 1.25, 1.2);
+  const mesh = new THREE.InstancedMesh(rock.geometry, rock.material, items.length);
+  mesh.name = 'roadside-rocks';
+  return { mesh, near: new NearInstances(mesh, items, 220, rockMatrix) };
 }
 
 // Lighthouse headland: tower, gallery, lamp room, keeper's cottage, in one vertex-PBR mesh.
@@ -867,7 +958,7 @@ function oceanMaterial(normalMap, sunDir) {
   });
 }
 
-export function buildScenery(scene, renderer, track, def, quality) {
+export function buildScenery(scene, renderer, track, def, quality, env = null) {
   installHeightFog();
   const sunDir = sunDirection(def.sun);
   const sky = new THREE.Mesh(new THREE.SphereGeometry(3000, 32, 16), skyMaterial(skyUniforms(sunDir, cloudTexture())));
@@ -906,13 +997,16 @@ export function buildScenery(scene, renderer, track, def, quality) {
   scene.add(ocean);
   scene.add(buildShallows(def));
 
-  const ground = createGroundMaterial();
+  const ground = createGroundMaterial({ env });
   const atlas = createVertexPbrMaterial({ envMapIntensity: 0.8 });
   const terrain = buildTerrain(track, def, quality, ground);
   scene.add(...terrain.meshes);
-  const vegetation = buildVegetation(def, terrain, quality, track);
+  const vegetation = buildVegetation(def, terrain, quality, track, env);
   scene.add(vegetation);
-  scene.add(buildRocks(def, terrain));
+  const rocks = buildRocks(def, terrain, env);
+  scene.add(rocks);
+  // Small props drawn only near the camera, re-packed as it moves.
+  const near = [...(vegetation.userData.near ?? []), ...(rocks.userData.near ?? [])];
   const lighthouse = buildLighthouse(def, terrain, atlas);
   scene.add(lighthouse);
   const boats = buildBoats(def, atlas);
@@ -981,6 +1075,7 @@ export function buildScenery(scene, renderer, track, def, quality) {
     },
     update(t, camera) {
       sky.position.copy(camera.position);
+      for (const n of near) n.update(camera.position);
       skyU.time.value = t;
       oceanU.time.value = t;
       boats.userData.update(t);
@@ -1011,8 +1106,16 @@ export function buildScenery(scene, renderer, track, def, quality) {
       const land = basic(0x587a3c);
       for (const m of terrain.meshes) env.add(new THREE.Mesh(m.geometry, land));
       const leaves = new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(envLight, envLight, envLight) });
+      // Textured (photo) vegetation keeps its maps and cut-outs in the reflections.
+      const unlit = new Map();
+      const proxy = (mat) => {
+        if (!mat.map) return leaves;
+        if (!unlit.has(mat)) unlit.set(mat, new THREE.MeshBasicMaterial({ map: mat.map, alphaTest: mat.alphaTest, side: mat.side, vertexColors: true, color: leaves.color }));
+        return unlit.get(mat);
+      };
       for (const m of vegetation.children) {
-        const copy = new THREE.InstancedMesh(m.geometry, leaves, m.count);
+        if (m.name === 'ferns') continue; // near-only props, invisible from a reflection probe
+        const copy = new THREE.InstancedMesh(m.geometry, Array.isArray(m.material) ? m.material.map(proxy) : proxy(m.material), m.count);
         copy.instanceMatrix = m.instanceMatrix;
         copy.instanceColor = m.instanceColor;
         copy.count = m.count;
@@ -1025,6 +1128,7 @@ export function buildScenery(scene, renderer, track, def, quality) {
       envSky.material.dispose();
       land.dispose();
       leaves.dispose();
+      for (const mat of unlit.values()) mat.dispose();
       envTarget?.dispose();
       envTarget = rt;
       scene.environment = rt.texture;

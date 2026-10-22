@@ -200,19 +200,77 @@ const ribbons = (track, cols, list, opts) => {
 
 // Rain on the road: `wet` (shared uniform, 0..1) darkens the surface and turns it glossy, so
 // it mirrors the sky and the lights through the baked environment map.
+// It runs the material's own onBeforeCompile first (vertex PBR, the photo road's overlay) and
+// hooks in once albedo and roughness are final: after the colour chunk, before the normals.
 export function wettable(material, wet, { darken = 0.45, key }) {
-  material.onBeforeCompile = (shader) => {
+  const own = material.onBeforeCompile;
+  material.onBeforeCompile = (shader, renderer) => {
+    own.call(material, shader, renderer);
     shader.uniforms.uWet = wet;
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nuniform float uWet;')
-      .replace('#include <map_fragment>', `#include <map_fragment>\n diffuseColor.rgb *= 1.0 - ${darken.toFixed(3)} * uWet;`)
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n roughnessFactor = mix(roughnessFactor, 0.07 + roughnessFactor * 0.22, uWet);');
+      .replace('#include <color_fragment>', `#include <color_fragment>\n diffuseColor.rgb *= 1.0 - ${darken.toFixed(3)} * uWet;`);
+    if (material.isMeshStandardMaterial) {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <normal_fragment_begin>',
+        'roughnessFactor = mix(roughnessFactor, 0.07 + roughnessFactor * 0.22, uWet);\n#include <normal_fragment_begin>'
+      );
+    }
   };
   material.customProgramCacheKey = () => `wet-${key}`;
   return material;
 }
 
-export function buildTrackMeshes(track, renderer, { groundMaterial } = {}) {
+// Photographic asphalt (a few metres per repeat, from envAssets.js) under the procedural
+// overlay: painted lines, rubbered wheel tracks, sealed cracks and patches (and their relief)
+// repeat only every ROAD_TILE metres, which hides the photo's short repeat.
+function photoRoadMaterial(env, { widthM, maxAniso }) {
+  const PHOTO_TILE = 4; // metres per repeat of the asphalt_04 scan
+  const map = env.tex.asphalt.clone();
+  map.repeat.set(widthM / PHOTO_TILE, ROAD_TILE / PHOTO_TILE);
+  // The scan's own normals are too fine to survive mipmapping, which leaves a wet road
+  // reflecting flat fog; the procedural relief (40 m tile) keeps the rain glints.
+  const { overlay, normalMap } = asphaltTextures({ widthM, tileM: ROAD_TILE, lanes: 3, maxAniso, overlay: true });
+  const material = new THREE.MeshStandardMaterial({
+    map,
+    normalMap,
+    normalScale: new THREE.Vector2(0.6, 0.6),
+    roughness: 0.86,
+    metalness: 0,
+    envMapIntensity: 0.6,
+  });
+  const uniforms = {
+    roadMarks: { value: overlay },
+    // The scan is a pale, clean grey; real highway asphalt is darker and slightly blue.
+    asphaltTint: { value: new THREE.Color(0.48, 0.49, 0.54) },
+    paintColor: { value: new THREE.Color(0.78, 0.78, 0.76) },
+  };
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vRoadUv;')
+      .replace('#include <uv_vertex>', '#include <uv_vertex>\nvRoadUv = uv;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform sampler2D roadMarks;\nuniform vec3 asphaltTint, paintColor;\nvarying vec2 vRoadUv;\nvec4 roadMk;')
+      .replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
+        roadMk = texture2D(roadMarks, vRoadUv);
+        // The scan is fine-grained and soft; stretch its contrast so the aggregate reads.
+        diffuseColor.rgb = max(vec3(0.0), (diffuseColor.rgb - 0.22) * 1.5 + 0.22);
+        diffuseColor.rgb *= asphaltTint * roadMk.g * 2.0;
+        diffuseColor.rgb = mix(diffuseColor.rgb, paintColor, roadMk.r);`
+      )
+      .replace(
+        '#include <roughnessmap_fragment>',
+        `#include <roughnessmap_fragment>
+        roughnessFactor = mix(clamp(roughnessFactor + (roadMk.b - 0.5), 0.3, 1.0), 0.55, roadMk.r);`
+      );
+  };
+  return material;
+}
+
+export function buildTrackMeshes(track, renderer, { groundMaterial, env = null } = {}) {
   const group = new THREE.Group();
   group.name = 'track';
   const hw = track.halfWidth;
@@ -224,10 +282,13 @@ export function buildTrackMeshes(track, renderer, { groundMaterial } = {}) {
 
   // Asphalt: albedo with painted lines, tyre-polished wheel tracks, cracks and patches, plus
   // matching normal and roughness maps so the sun glints off the smooth lines.
-  const asphalt = asphaltTextures({ widthM: hw * 2, tileM: ROAD_TILE, lanes: 3, maxAniso });
-  const road = new THREE.Mesh(
-    ribbons(track, [[-hw, 0, 0], [0, 0, 0.5], [hw, 0, 1]], noRoad),
-    new THREE.MeshStandardMaterial({
+  // With the photographic assets loaded, a scanned asphalt under the same markings.
+  let roadMaterial;
+  if (env?.tex.asphalt) {
+    roadMaterial = photoRoadMaterial(env, { widthM: hw * 2, maxAniso });
+  } else {
+    const asphalt = asphaltTextures({ widthM: hw * 2, tileM: ROAD_TILE, lanes: 3, maxAniso });
+    roadMaterial = new THREE.MeshStandardMaterial({
       map: asphalt.map,
       normalMap: asphalt.normalMap,
       normalScale: new THREE.Vector2(0.6, 0.6),
@@ -235,9 +296,10 @@ export function buildTrackMeshes(track, renderer, { groundMaterial } = {}) {
       roughness: 1,
       metalness: 0,
       envMapIntensity: 0.6,
-    })
-  );
-  wettable(road.material, wet, { darken: 0.5, key: 'road' });
+    });
+  }
+  const road = new THREE.Mesh(ribbons(track, [[-hw, 0, 0], [0, 0, 0.5], [hw, 0, 1]], noRoad), roadMaterial);
+  wettable(road.material, wet, { darken: 0.5, key: env?.tex.asphalt ? 'road-photo' : 'road' });
   road.receiveShadow = true;
   group.add(road);
   group.add(buildRacingLine(track, noRoad, wet));
@@ -245,7 +307,12 @@ export function buildTrackMeshes(track, renderer, { groundMaterial } = {}) {
   // Gravel shoulders, then the grass verge up to the rail and the embankment falling away to
   // the terrain, both in the terrain's layered ground shader (grass on the flat).
   const gv = LAYOUT.gravel;
-  const gravel = wettable(new THREE.MeshStandardMaterial({ map: gravelTexture(), roughness: 1 }), wet, { darken: 0.4, key: 'gravel' });
+  // Scanned gravel tiles about every 2 m (u spans the shoulder, v runs 8 m per unit).
+  const gravelMat = env?.tex.gravel
+    ? new THREE.MeshStandardMaterial({ map: env.tex.gravel.clone(), normalMap: env.tex.gravelNormal?.clone() ?? null, roughness: 0.95, color: 0xd8d0c4 })
+    : new THREE.MeshStandardMaterial({ map: gravelTexture(), roughness: 1 });
+  if (env?.tex.gravel) for (const t of [gravelMat.map, gravelMat.normalMap]) t?.repeat.set(gv / 2, 4);
+  const gravel = wettable(gravelMat, wet, { darken: 0.4, key: 'gravel' });
   const shoulders = mergeGeometries([
     ribbons(track, [[hw, 0, 0], [hw + gv, -0.02, 1]], noRoad, { vScale: 8 }),
     ribbons(track, [[-hw - gv, -0.02, 1], [-hw, 0, 0]], noRoad, { vScale: 8 }),
