@@ -29,6 +29,9 @@ export const TEXTURES = {
   alpineRock: ['alpine_rock_diff.webp', true],
   tunnelStone: ['tunnel_stone_diff.webp', true],
   pineBark: ['pine_bark_diff.webp', true],
+  // Neon City: viaducts, barriers and pylons; hard shoulders and pavements.
+  concrete: ['concrete_diff.webp', true],
+  pavement: ['pavement_diff.webp', true],
 };
 export const MODELS = { boulder: 'boulder.glb', rock: 'rock.glb' };
 

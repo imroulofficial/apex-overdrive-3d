@@ -3,6 +3,7 @@ import { Track } from './track.js';
 import { buildTrackMeshes, buildDirectional } from './trackMeshes.js';
 import { buildScenery } from './scenery.js';
 import { buildAlpineScenery } from './alpineScenery.js';
+import { buildNeonScenery } from './neonScenery.js';
 import { loadEnvAssets } from '../render/envAssets.js';
 import { SmashProps } from './props.js';
 import { Vehicle, statsToParams, NITRO } from './vehicle.js';
@@ -48,10 +49,10 @@ const EMBER = new THREE.Color(0xffc23a);
 const SOOT = new THREE.Color(0x2a2b30);
 const RED_DIRT = new THREE.Color(0xb4532c);
 const SPRAY = new THREE.Color(0xd9e0e4);
-// Scenery builder per biome (track def `biome`); the coast is the default.
-const SCENERY = { alpine: buildAlpineScenery };
 const COAST_INPUT = { steer: 0, throttle: 0, brake: false, brakePressed: false, nitroTaps: [] };
 const now = () => performance.now() / 1000;
+// World builders by track biome (data/tracks.js `biome`); the coast is the default.
+const SCENERY = { coast: buildScenery, alpine: buildAlpineScenery, neon: buildNeonScenery };
 
 export class Race {
   constructor(renderer, def, { onFps } = {}) {
@@ -540,7 +541,7 @@ export class Race {
     this.sparks.update(dt, 9);
     this.props.update(dt);
     this.modeProps.update(dt, this.time);
-    this.scenery.update(this.time, this.camera);
+    this.scenery.update(this.time, this.camera, player, this.racers);
     this.scenery.follow(player.pos);
     this.updateAtmosphere(dt, player, simulate);
 

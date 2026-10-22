@@ -33,6 +33,11 @@ const WEATHER_ICONS = {
   Midday: '<circle cx="12" cy="12" r="4.5" /><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8" />',
   Dusk: '<path d="M6 17a4 4 0 0 1-.3-8A5.5 5.5 0 0 1 16 9.8 3.6 3.6 0 0 1 16.4 17z" /><path d="M3 21h18" />',
   Storm: '<path d="M7 13.5a4 4 0 0 1-.4-8 5.5 5.5 0 0 1 10.6 1.2A3.4 3.4 0 0 1 17 13.5z" /><path d="m12.5 13.5-2.5 4h3l-2 4.5" />',
+  // Neon City nights: a moon over wet streets, in rain, in smog and in the finale storm.
+  NeonNight: '<path d="M15.5 3.5a7 7 0 1 0 5 11.5 6 6 0 0 1-5-11.5z" /><path d="M3 21h7M13 21h8" />',
+  NeonRain: '<path d="M14 3a5.5 5.5 0 1 0 5.5 8.5A4.6 4.6 0 0 1 14 3z" /><path d="m7 15-1.2 3M11 15l-1.2 3M15 15l-1.2 3M9 19l-1 2.5M13 19l-1 2.5" />',
+  NeonHaze: '<path d="M15 3a5 5 0 1 0 5 7.5A4.2 4.2 0 0 1 15 3z" /><path d="M3 15h14M5 18.5h16M3 22h12" />',
+  NeonStorm: '<path d="M7 13.5a4 4 0 0 1-.4-8 5.5 5.5 0 0 1 10.6 1.2A3.4 3.4 0 0 1 17 13.5z" /><path d="m12.5 13.5-2.5 4h3l-2 4.5" /><path d="M19.5 2.5a2.5 2.5 0 1 0 2 3.8" />',
   // Alpine Summit: cloud on the peaks, falling snow and the finale blizzard.
   MountainFog: '<path d="m2.5 16 6-9 4 5.5 2.5-3 6.5 6.5" /><path d="M4 19.5h16M7 22.5h10" />',
   Snowfall: '<path d="M7 12.5a4 4 0 0 1-.4-8 5.5 5.5 0 0 1 10.6 1.2A3.4 3.4 0 0 1 17 12.5z" /><path d="M8 16v.01M12 18v.01M16 16v.01M10 21v.01M14 21v.01" />',

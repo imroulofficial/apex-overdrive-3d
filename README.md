@@ -26,6 +26,16 @@ Blueprint section 04. All twelve launch cars are in the garage, every one built 
 - **Draw calls** (headless, 1280×720): garage 108-110 on High (mirror pass skips floor decals, the cockpit, brake discs and arch liners via a render layer), 65 on Medium, 61 on Low.
 - **Save**: per-car `spoiler`, `spoilers`, `smoke`, `nitroFx` inside the existing v2 car entries. The Firestore rules do not check car entry fields, so no rules change or redeploy is needed. Version 0.13.0.
 
+## Biome 3: Neon City (stages 41-60)
+
+Chapter 3 now races on its own track instead of borrowing Emerald Coast.
+
+- **Track** (`src/data/neonCity.js`, 2.9 km, `biome: 'neon'`): an elevated night freeway on concrete piers (the Neon Mile start straight, the Eastern Interchange), the cable-stayed **Harbour Bridge** over the inlet (28 m up), a drop to street level through the **Arcade District** (night-market stalls, underpasses) and the **Skyline Switchbacks** back up to the line. Five crossing freeways pass overhead with green name boards and ambient traffic; each ends in a portal tower.
+- **World** (`src/race/neonScenery.js`, `src/race/neonPieces.js`): a block-grid city of lit towers (textured facades, per-tower occupancy, LED crowns, corner neon, aviation lights), flickering neon billboards for fictional brands, blade signs, wet streets with sodium glows, the harbour, a skyline ring, LED-lined jersey barriers, street lights with pools of light that spread on a wet road, and the player's headlight beam. Moonlight is the one shadow light; the environment cubemap is baked from the city so paint and wet asphalt reflect the neon. Concrete and pavement are CC0 Poly Haven scans (`tools/assets/manifest.json`). Measured 53-91 draw calls headless.
+- **Weather**: Wet Neon Night, Midnight Downpour, Violet Smog and, for the finale, Neon Thunderstorm (rain and lightning).
+- **Stages 41-60** re-tabled over the full circuit, the reversed road and four sprints (Harbour Bridge Run, Arcade District, Skyline Switchbacks, Skyline Descent) with all five modes. Stage 60 is the **Grand Finale Boss Duel against Kage**: three laps of the Neon Grand Prix in the thunderstorm, with Kage streaming a magenta light trail. A new stage 55 scene and an epilogue close the story.
+- Shared hooks other biomes use: `Race` picks the world builder from `def.biome`; `track.def.urban` gives paved shoulders and skips the coast guardrails and lamps.
+
 ## Phases 11-12: atmosphere pipeline, weather and Biome 1
 
 Blueprint sections 03 and 04. Emerald Coast is now a complete biome with four weathers and four ways to drive it.
@@ -221,6 +231,7 @@ src/
   data/career.js       chapters, track segments, 60 stages, star objectives, milestones
   data/economy.js      coin rewards and costs
   data/tracks.js       Emerald Coast definition (waypoints, ramps, props, coastline)
+  data/neonCity.js     Neon City definition (freeway, Harbour Bridge, overpasses, harbour)
   data/rivals.js       AI rivals per chapter, bosses and rival sets
   garage/              renderer + quality, sunset showroom, procedural cars (body styles, rims,
                        wings, doors), paint shader, camera rig + auto-showcase

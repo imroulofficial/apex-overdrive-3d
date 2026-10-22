@@ -22,5 +22,7 @@ and meshopt-compressed by the script. They are bundled into the app, so nothing 
 | `alpine_rock_diff.webp` | [Rock Face 04](https://polyhaven.com/a/rock_face_04) (texture) | Dimitrios Savva | Alpine Summit cliffs, canyon walls and peaks |
 | `tunnel_stone_diff.webp` | [Castle Wall Slates](https://polyhaven.com/a/castle_wall_slates) (texture) | Rob Tuytel | Summit Tunnel lining and portals, village walls |
 | `pine_bark_diff.webp` | [Pine Bark](https://polyhaven.com/a/pine_bark) (texture) | Dimitrios Savva | Alpine pine trunks |
+| `concrete_diff.webp` | [Concrete Wall 008](https://polyhaven.com/a/concrete_wall_008) (texture) | Dario Barresi, Charlotte Baglioni | Neon City viaducts, barriers, overpasses and bridge pylons |
+| `pavement_diff.webp` | [Concrete Pavement](https://polyhaven.com/a/concrete_pavement) (texture) | Charlotte Baglioni | Neon City hard shoulders and pavements |
 | `boulder.glb` | [Rock 07](https://polyhaven.com/a/rock_07) (model) | Jenelle van Heerden | Coastal boulders and sea stacks |
 | `rock.glb` | [Rock 09](https://polyhaven.com/a/rock_09) (model) | Jenelle van Heerden | Roadside rocks |

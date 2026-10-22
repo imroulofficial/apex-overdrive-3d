@@ -308,11 +308,19 @@ export function buildTrackMeshes(track, renderer, { groundMaterial, env = null }
   // the terrain, both in the terrain's layered ground shader (grass on the flat).
   const gv = LAYOUT.gravel;
   // Scanned gravel tiles about every 2 m (u spans the shoulder, v runs 8 m per unit).
-  const gravelMat = env?.tex.gravel
-    ? new THREE.MeshStandardMaterial({ map: env.tex.gravel.clone(), normalMap: env.tex.gravelNormal?.clone() ?? null, roughness: 0.95, color: 0xd8d0c4 })
-    : new THREE.MeshStandardMaterial({ map: gravelTexture(), roughness: 1 });
-  if (env?.tex.gravel) for (const t of [gravelMat.map, gravelMat.normalMap]) t?.repeat.set(gv / 2, 4);
-  const gravel = wettable(gravelMat, wet, { darken: 0.4, key: 'gravel' });
+  // Urban tracks (Neon City) run concrete hard shoulders instead.
+  const urban = Boolean(track.def.urban);
+  let gravelMat;
+  if (urban) {
+    gravelMat = new THREE.MeshStandardMaterial({ map: env?.tex.pavement?.clone() ?? null, roughness: 0.8, color: env?.tex.pavement ? 0x8a8c92 : 0x55585e });
+    gravelMat.map?.repeat.set(gv / 3, 2.6);
+  } else if (env?.tex.gravel) {
+    gravelMat = new THREE.MeshStandardMaterial({ map: env.tex.gravel.clone(), normalMap: env.tex.gravelNormal?.clone() ?? null, roughness: 0.95, color: 0xd8d0c4 });
+    for (const t of [gravelMat.map, gravelMat.normalMap]) t?.repeat.set(gv / 2, 4);
+  } else {
+    gravelMat = new THREE.MeshStandardMaterial({ map: gravelTexture(), roughness: 1 });
+  }
+  const gravel = wettable(gravelMat, wet, { darken: 0.4, key: urban ? 'pavement' : 'gravel' });
   const shoulders = mergeGeometries([
     ribbons(track, [[hw, 0, 0], [hw + gv, -0.02, 1]], noRoad, { vScale: 8 }),
     ribbons(track, [[-hw - gv, -0.02, 1], [-hw, 0, 0]], noRoad, { vScale: 8 }),
@@ -321,11 +329,15 @@ export function buildTrackMeshes(track, renderer, { groundMaterial, env = null }
   shoulderMesh.receiveShadow = true;
   group.add(shoulderMesh);
 
-  const bank = mergeGeometries([
+  // Urban: the shoulder runs on to the barrier (paved alike) and the biome builds the deck.
+  const bank = urban ? mergeGeometries([
+    ribbons(track, [[hw + gv, -0.02, 0], [hw + sh + 0.5, -0.02, 1]], noRoad, { vScale: 8 }),
+    ribbons(track, [[-hw - sh - 0.5, -0.02, 0], [-hw - gv, -0.02, 1]], noRoad, { vScale: 8 }),
+  ]) : mergeGeometries([
     ribbons(track, [[hw + gv, -0.02, 0], [hw + sh, -0.05, 0.2], [hw + sh + 2, -0.6, 0.5], [hw + sh + 6.5, -4.2, 1]], noRoad, { step: 2, vScale: 10 }),
     ribbons(track, [[-hw - sh - 6.5, -4.2, 0], [-hw - sh - 2, -0.6, 0.5], [-hw - sh, -0.05, 0.8], [-hw - gv, -0.02, 1]], noRoad, { step: 2, vScale: 10 }),
   ]);
-  const bankMesh = new THREE.Mesh(bank, groundMaterial ?? new THREE.MeshLambertMaterial({ color: 0x5f7f3a }));
+  const bankMesh = new THREE.Mesh(bank, urban ? gravel : groundMaterial ?? new THREE.MeshLambertMaterial({ color: 0x5f7f3a }));
   bankMesh.receiveShadow = true;
   group.add(bankMesh);
 
@@ -357,8 +369,8 @@ export function buildTrackMeshes(track, renderer, { groundMaterial, env = null }
   }
 
   const hardware = createVertexPbrMaterial({ envMapIntensity: 0.9 });
-  const trackside = [...buildGuardrails(track)];
-  if (track.def.lampPosts !== false) trackside.push(buildLampPosts(track));
+  const trackside = urban ? [] : [...buildGuardrails(track)];
+  if (!urban && track.def.lampPosts !== false) trackside.push(buildLampPosts(track));
   const start0 = buildStartLine(track);
   trackside.push(start0.steel);
   const side = new THREE.Mesh(mergePainted(trackside), hardware);
