@@ -5,7 +5,7 @@ export const GAME = {
   title: 'Apex Overdrive',
   subtitle: '3D Racing',
   studio: 'Red Pen Studio',
-  version: '0.11.0',
+  version: '0.13.0',
   appId: 'com.redpenstudio.apexoverdrive',
 };
 

@@ -7,7 +7,7 @@ import { Vehicle, statsToParams, NITRO } from './vehicle.js';
 import { DriftChain } from './driftChain.js';
 import { AIDriver } from './ai.js';
 import { CarFactory, FLAME } from './raceCars.js';
-import { createCar } from '../garage/carModel.js';
+import { createCar, RACE_DETAIL } from '../garage/carModel.js';
 import { loadCar } from '../assets/modelLoader.js';
 import { ChaseCamera } from './chaseCamera.js';
 import { Particles, SkidMarks, SpeedLines, softDotTexture } from './effects.js';
@@ -33,6 +33,8 @@ import { MobileBloom } from '../render/bloom.js';
 
 const STEP = 1 / 60;
 const SMOKE = new THREE.Color(0xe9ebee);
+// The player's car is rebuilt when its body, rim or wing changes.
+const lookKey = (car, look) => `${car.id}|${look.rim ?? 'stock'}|${look.spoiler ?? 'factory'}`;
 const DUST = new THREE.Color(0xc9b48a);
 const GRASS_BITS = new THREE.Color(0x8a9a52);
 const SPARK = new THREE.Color(0xffb347);
@@ -60,7 +62,8 @@ export class Race {
   }
 
   // Builds the world once (procedural, a few hundred ms) and pre-compiles its shaders.
-  async prepare({ quality, paint, car, stage }) {
+  // `look` is the player's rim and rear wing ({ rim, spoiler }, from inventory.carLook).
+  async prepare({ quality, paint, car, look = {}, stage }) {
     if (this.ready) return;
     const renderer = this.renderer;
     this.quality = quality;
@@ -99,9 +102,10 @@ export class Race {
     this.weather = null;
 
     // Rivals share the procedural coupe; the player's car comes from the spawner (.glb or procedural).
-    this.rivalFactory = new CarFactory(createCar({ paintColor: paint.color, finish: paint.finish, detail: 0.6 }));
-    this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, detail: 0.6 }));
-    this.playerCarId = car.id;
+    this.rivalFactory = new CarFactory(createCar({ paintColor: paint.color, finish: paint.finish, detail: RACE_DETAIL }));
+    this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, detail: RACE_DETAIL, ...look }));
+    this.playerCarKey = lookKey(car, look);
+    this.playerFeel = car.feel;
     for (const f of [this.rivalFactory, this.factory]) this.scene.add(...f.sharedMeshes);
     this.skids = new SkidMarks(this.scene);
     const dot = softDotTexture();
@@ -213,12 +217,13 @@ export class Race {
 
   // Swaps the player's car between races (garage selection changed). Physics is untouched:
   // the Vehicle keeps simulating and the new visual just follows it.
-  async setPlayerCar(car, paint) {
-    if (car.id === this.playerCarId) return;
+  async setPlayerCar(car, paint, look = {}) {
+    this.playerFeel = car.feel;
+    if (lookKey(car, look) === this.playerCarKey) return;
     const old = this.player.visual;
     const oldFactory = this.factory;
-    this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, detail: 0.6 }));
-    this.playerCarId = car.id;
+    this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, detail: RACE_DETAIL, ...look }));
+    this.playerCarKey = lookKey(car, look);
     this.player.visual = this.factory.build({ player: true });
     this.scene.remove(old.root, ...oldFactory.sharedMeshes);
     this.scene.add(this.player.visual.root, ...this.factory.sharedMeshes);
@@ -266,7 +271,7 @@ export class Race {
       const s = track.wrapS(course.startS - back);
       const d = slot < 0 ? 0 : slot % 2 ? 4.2 : -4.2;
       let params;
-      if (r.isPlayer) params = statsToParams(base);
+      if (r.isPlayer) params = statsToParams(base, this.playerFeel);
       else {
         params = statsToParams({
           speed: BASE.speed + r.stats.speed + boost,
@@ -327,7 +332,8 @@ export class Race {
 
   // earnedStars: the stage's stars already held, for the intro card's objective list.
   // `startNitro`: the briefing's rewarded "Fill Nitrous Tank" perk (100% nitro on the grid).
-  begin({ stats, paint, input, hud, onFinish, autoQuality = false, earnedStars = 0, startNitro = false, bloom = 'low' }) {
+  // `fx`: the player's tyre smoke and nitro trail colours ({ smoke, nitro } FX_COLORS entries).
+  begin({ stats, paint, fx = null, input, hud, onFinish, autoQuality = false, earnedStars = 0, startNitro = false, bloom = 'low' }) {
     this.autoQuality = autoQuality;
     this.bloom.setLevel(bloom);
     FLAME.hdr = this.bloom.enabled ? 2.6 : 1;
@@ -339,6 +345,8 @@ export class Race {
     this.onFinish = onFinish;
     this.factory.setPlayerPaint(paint.color, paint.finish);
     this.player.color = paint.color;
+    this.playerSmoke = fx?.smoke ? new THREE.Color(fx.smoke.color) : SMOKE;
+    this.player.visual.setNitroFx(fx?.nitro ?? null);
     if (this.shadowState !== this.renderer.shadowMap.enabled) {
       this.shadowState = this.renderer.shadowMap.enabled;
       this.scene.traverse((o) => o.material && [].concat(o.material).forEach((m) => (m.needsUpdate = true)));
@@ -964,7 +972,7 @@ export class Race {
           const x = v.pos.x - fx * 1.3 + -fz * side * 0.86;
           const z = v.pos.z - fz * 1.3 + fx * side * 0.86;
           this.smoke.emit(x, v.pos.y + 0.25, z, v.vel.x * 0.15 + (Math.random() - 0.5) * 2, 0.8 + Math.random(), v.vel.y * 0.15 + (Math.random() - 0.5) * 2, {
-            color: SMOKE,
+            color: r.isPlayer ? this.playerSmoke ?? SMOKE : SMOKE,
             size: 0.7,
             life: 1.1 + Math.random() * 0.5,
             grow: 2.2,

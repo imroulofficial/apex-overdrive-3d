@@ -37,15 +37,27 @@ export const PERFECT = {
 };
 
 // Car stats (0-100, the four garage bars) -> physics. Lateral grip follows handling.
-export function statsToParams({ speed, accel, handling, nitro }) {
+// `feel` (data/cars.js) gives each car its character on top of the numbers:
+//   weight  heavier: slower turn-in and launch, but it carries speed (less rolling drag off
+//           the asphalt)
+//   power   torque curve exponent in the throttle falloff (1 - (v/top)^power): low pulls hard
+//           off the line and fades early, high keeps pulling right up to top speed
+//   drift   how readily the tail slides and how loose it stays mid-drift
+// The default feel (1, 2, 1) reproduces the Phase 2-12 tuning exactly.
+export const DEFAULT_FEEL = { weight: 1, power: 2, drift: 1 };
+export function statsToParams({ speed, accel, handling, nitro }, feel = DEFAULT_FEEL) {
+  const { weight = 1, power = 2, drift = 1 } = feel ?? DEFAULT_FEEL;
   return {
     topSpeed: 46 + speed * 0.2,
-    accel: 11 + accel * 0.06,
-    launch: 1.1 + accel * 0.006,
-    grip: 6 + handling * 0.06,
-    steerRate: 1.25 + handling * 0.006,
-    driftRate: 1.1 + handling * 0.0065,
-    driftGrip: 3.0 + handling * 0.012,
+    accel: (11 + accel * 0.06) / Math.sqrt(weight),
+    launch: 1.1 + accel * 0.006 + (2 - power) * 0.12,
+    power,
+    grip: (6 + handling * 0.06) / Math.pow(drift, 0.35),
+    steerRate: (1.25 + handling * 0.006) / Math.pow(weight, 0.4),
+    yawResponse: 10 / Math.pow(weight, 0.7),
+    momentum: 1 / weight,
+    driftRate: (1.1 + handling * 0.0065) * Math.pow(drift, 0.3),
+    driftGrip: (3.0 + handling * 0.012) / Math.pow(drift, 0.5),
     nitroTime: 0.8 + nitro / 200,
     nitroPower: 0.85 + nitro / 300,
   };
@@ -360,7 +372,7 @@ export class Vehicle {
         gripK = P.driftGrip * S.driftGrip;
       } else {
         const target = -steer * P.steerRate * S.steer * auth * Math.sign(vF || 1);
-        this.yawRate += (target - this.yawRate) * Math.min(1, dt * 10);
+        this.yawRate += (target - this.yawRate) * Math.min(1, dt * (P.yawResponse ?? 10));
         gripK = P.grip * S.grip;
       }
       // Loose surfaces tug the car about a little.
@@ -378,11 +390,11 @@ export class Vehicle {
       const top = P.topSpeed * topMul * S.top;
       const throttle = input.brake && !this.drifting ? 0 : input.throttle ?? 1;
       let a = 0;
-      if (throttle > 0 && vF < top) a += P.accel * throttle * (1 - (Math.max(0, vF) / top) ** 2) * (vF < 18 ? P.launch : 1);
+      if (throttle > 0 && vF < top) a += P.accel * throttle * (1 - (Math.max(0, vF) / top) ** (P.power ?? 2)) * (vF < 18 ? P.launch : 1);
       if (vF > top) a -= (vF - top) * 1.4;
       if (this.tier > 0) a += (this.tier === 2 ? NITRO.pulseAccel : NITRO.blueAccel) * P.nitroPower;
       if (this.perfectT > 0) a += PERFECT.accel;
-      a -= S.drag * Math.max(0, vF); // rolling resistance off the asphalt
+      a -= S.drag * Math.max(0, vF) * (P.momentum ?? 1); // rolling resistance off the asphalt
       this.braking = false;
       if (input.brake && !this.drifting) {
         this.braking = vF > 0.5;

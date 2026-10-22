@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createShowroom, createStudioEnvironment } from './showroom.js';
+import { createShowroom, createStudioEnvironment, NO_REFLECT } from './showroom.js';
 import { createCar } from './carModel.js';
 import { loadCar } from '../assets/modelLoader.js';
 import { createCameraRig, SHOTS } from './cameraRig.js';
@@ -19,11 +19,20 @@ const AUTO_START = isNative || matchMedia('(pointer: coarse)').matches ? 'medium
 const AUTO_ORDER = ['high', 'medium', 'low'];
 const TAP_SLOP_PX = 8;
 
+// Cockpit, brake discs and arch liners stay out of the floor mirror (see showroom.js).
+const skipMirror = (root) =>
+  root.traverse((o) => {
+    if (o.isMesh && (o.userData.noReflect || [].concat(o.material).every((m) => m.name === 'skip'))) o.layers.set(NO_REFLECT);
+  });
+
 export class Garage {
-  constructor(canvas, { car, paintColor, finish, quality, onTap, onFps }) {
+  constructor(canvas, { car, paintColor, finish, look = {}, quality, onTap, onFps, onHotspot, onShowcase }) {
     this.canvas = canvas;
     this.onTap = onTap;
     this.onFps = onFps;
+    // Door hotspot screen position each frame: { x, y, visible, open }.
+    this.onHotspot = onHotspot;
+    this.onShowcase = onShowcase;
 
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -38,23 +47,27 @@ export class Garage {
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x05070d);
-    this.scene.fog = new THREE.FogExp2(0x05070d, 0.045);
+    this.scene.background = new THREE.Color(0x1c2552); // under the sky dome
     this.scene.environment = createStudioEnvironment(this.renderer);
     this.scene.environmentIntensity = 0.9;
 
-    this.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 80);
+    this.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 1200);
     this.showroom = createShowroom(this.scene);
+    this.showroom.bindCamera(this.camera);
     // The procedural car shows instantly; setCar() then swaps in an external model if one exists.
-    this.car = createCar({ paintColor, finish, kit: car.procedural?.kit });
+    this.car = createCar({ paintColor, finish, style: car.procedural?.style, ...look });
     this.carId = null; // car on the turntable once setCar() resolves
     this.wantedCarId = null; // latest requested car
     this.carToken = 0;
     this.car.group.position.y = 0.06; // on the turntable deck
+    skipMirror(this.car.group);
     this.showroom.turntable.add(this.car.group);
     this.paint = new PaintTransition(this.car.paintMaterial);
 
-    this.rig = createCameraRig(this.camera, canvas);
+    this.rig = createCameraRig(this.camera, canvas, { onShowcase: (on) => this.onShowcase?.(on) });
+    this.hotspot = { x: 0, y: 0, visible: false, open: false };
+    this.tmp = new THREE.Vector3();
+    this.tmpN = new THREE.Vector3();
     this.raycaster = new THREE.Raycaster();
 
     this.qualityMode = quality;
@@ -85,7 +98,14 @@ export class Garage {
   stop() {
     this.running = false;
     this.rig.controls.enabled = false;
+    this.rig.endShowcase(false);
+    this.car.door?.close();
     this.renderer.setAnimationLoop(null);
+  }
+
+  // Any touch on the garage UI counts as activity (it holds off the idle showcase).
+  poke() {
+    this.rig.poke();
   }
 
   intro() {
@@ -126,16 +146,17 @@ export class Garage {
   }
 
   // Spawns `def` on the turntable (external .glb when present, procedural otherwise).
-  async setCar(def, { color, finish }) {
+  async setCar(def, { color, finish, rim, spoiler }) {
     const token = ++this.carToken;
     this.wantedCarId = def.id;
-    const rig = await loadCar(def, { paintColor: color, finish });
+    const rig = await loadCar(def, { paintColor: color, finish, rim, spoiler });
     if (token !== this.carToken) return; // a newer selection won
     const old = this.car;
     this.showroom.turntable.remove(old.group);
     // glTF clones share geometry with the loader cache, so only procedural meshes are freed.
     if (old.source === 'procedural') old.group.traverse((o) => o.isMesh && o.geometry.dispose());
     rig.group.position.y = 0.06;
+    skipMirror(rig.group);
     rig.setLights(old.lightsOn);
     this.showroom.turntable.add(rig.group);
     this.car = rig;
@@ -147,6 +168,46 @@ export class Garage {
     this.paint.start(color, finish);
   }
 
+  // Rim and rear wing on the turntable car (the race bakes whatever the save says).
+  setRim(id) {
+    this.car.setRim?.(id);
+    skipMirror(this.car.group);
+  }
+
+  setSpoiler(id) {
+    this.car.setSpoiler?.(id);
+  }
+
+  // Opens or shuts the driver door and frames it. Returns the new state (null: no door).
+  toggleDoor() {
+    const door = this.car.door;
+    if (!door) return null;
+    const open = door.toggle();
+    this.rig.snapTo(open ? SHOTS.door : SHOTS.body, 1.2);
+    return open;
+  }
+
+  // Projects the door hotspot to the screen, hidden when the door faces away.
+  updateHotspot() {
+    const door = this.car.door;
+    const h = this.hotspot;
+    let visible = false;
+    if (door && !this.rig.showcasing) {
+      const p = this.tmp.copy(door.anchor).applyMatrix4(this.car.group.matrixWorld);
+      const n = this.tmpN.copy(door.normal).transformDirection(this.car.group.matrixWorld);
+      const toCam = this.camera.position.clone().sub(p).normalize();
+      if (n.dot(toCam) > 0.25) {
+        p.project(this.camera);
+        visible = p.z < 1 && Math.abs(p.x) < 0.95 && Math.abs(p.y) < 0.95;
+        h.x = (p.x * 0.5 + 0.5) * window.innerWidth;
+        h.y = (-p.y * 0.5 + 0.5) * window.innerHeight;
+      }
+    }
+    h.visible = visible;
+    h.open = Boolean(door?.open);
+    this.onHotspot?.(h);
+  }
+
   toggleLights() {
     this.car.setLights(!this.car.lightsOn);
     return this.car.lightsOn;
@@ -154,6 +215,7 @@ export class Garage {
 
   snap(name) {
     const shot = typeof name === 'number' ? SHOTS.wheel(name, this.car.wheels[name]?.wheel.position, this.car.wheelRadius) : SHOTS[name];
+    if (name !== 'door' && this.car.door?.open) this.car.door.close();
     if (shot) this.rig.snapTo(shot);
   }
 
@@ -177,6 +239,7 @@ export class Garage {
       if (!hit) return;
       const o = hit.object;
       if (o.userData.wheelIndex !== undefined) this.onTap?.({ type: 'wheel', index: o.userData.wheelIndex });
+      else if (o.name === 'door') this.onTap?.({ type: 'door' });
       else if (o.name === 'headlight' || o.name === 'taillight') this.onTap?.({ type: 'lights' });
       else this.onTap?.({ type: 'body' });
     });
@@ -216,6 +279,7 @@ export class Garage {
     this.car.update(dt);
     this.paint.update(dt);
     this.rig.update(dt);
+    this.updateHotspot();
     this.renderer.render(this.scene, this.camera);
   }
 }

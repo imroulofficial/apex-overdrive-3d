@@ -7,7 +7,7 @@ import { Race } from './race/Race.js';
 import { createRaceInput } from './race/input.js';
 import { createStore } from './ui/store.js';
 import { createCloudBadge } from './ui/cloudBadge.js';
-import { PAINTS } from './data/catalog.js';
+import { PAINTS, fxById, DEFAULT_SMOKE, DEFAULT_NITRO } from './data/catalog.js';
 import { carById } from './data/cars.js';
 import { EMERALD_COAST, TRACKS } from './data/tracks.js';
 import { STAGES, TRACK_SEGMENTS, stageById, chapterById } from './data/career.js';
@@ -22,7 +22,7 @@ import { createMapHud } from './ui/mapHud.js';
 import { createBriefing } from './ui/briefing.js';
 import { createDialogue } from './ui/dialogue.js';
 import { RELEASE } from './config.js';
-import { carStats } from './core/inventory.js';
+import { carStats, carLook } from './core/inventory.js';
 import { ads } from './monetization/ads.js';
 import { billing } from './monetization/billing.js';
 import { cloud } from './core/cloud.js';
@@ -59,6 +59,7 @@ const garage = new Garage(canvas, {
   car: carById(state.car),
   paintColor: currentPaint().color,
   finish: currentPaint().finish,
+  look: carLook(state, state.car),
   quality: state.settings.quality,
   onFps: showFps,
 });
@@ -259,6 +260,7 @@ const wipe = {
 };
 
 const playerStats = () => carStats(state, state.car);
+const playerFx = () => ({ smoke: fxById(activeCar().smoke, DEFAULT_SMOKE), nitro: fxById(activeCar().nitroFx, DEFAULT_NITRO) });
 
 function beginRace() {
   raceInput.setAutoAccelerate(state.settings.autoAccelerate);
@@ -267,6 +269,7 @@ function beginRace() {
     earnedStars: state.career.stageStars[raceStage.index],
     stats: playerStats(),
     paint: currentPaint(),
+    fx: playerFx(),
     input: raceInput,
     hud: raceHud,
     autoQuality: state.settings.quality === 'auto',
@@ -292,9 +295,9 @@ async function startRace(s = stage, { startNitro = false } = {}) {
     // One track exists today; when a second lands, switching tracks builds a new Race.
     if (!race || race.def !== track) {
       race = new Race(garage.renderer, track, { onFps: showFps });
-      await race.prepare({ quality: garage.qualityLevel, paint: currentPaint(), car: carById(state.car), stage: s });
+      await race.prepare({ quality: garage.qualityLevel, paint: currentPaint(), car: carById(state.car), look: carLook(state, state.car), stage: s });
     } else {
-      await race.setPlayerCar(carById(state.car), currentPaint());
+      await race.setPlayerCar(carById(state.car), currentPaint(), carLook(state, state.car));
       if (race.stage !== s) await race.setStage(s);
     }
     raceStage = s;

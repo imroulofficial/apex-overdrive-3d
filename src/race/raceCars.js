@@ -273,9 +273,16 @@ export class CarVisual {
     this.flameMat = flameMat;
     this.roll = 0;
     this.squat = 0;
+    this.nitroFx = null; // { color, pulse: [a, b] } colours, or null for the stock blue
+    this.fxColors = null;
     this.steerVis = 0;
     this.lastForward = 0;
     root.rotation.order = 'YZX';
+  }
+
+  // Nitro trail colour (FX_COLORS entry) for this car's flames; null keeps the stock blue.
+  setNitroFx(fx) {
+    this.fxColors = fx ? { blue: new THREE.Color(fx.color), a: new THREE.Color(fx.pulse[0]), b: new THREE.Color(fx.pulse[1]) } : null;
   }
 
   update(v, dt, time) {
@@ -311,8 +318,9 @@ export class CarVisual {
       }
     }
     if (on) {
-      if (v.tier === 2) this.flameMat.color.copy(ORANGE).lerp(PURPLE, 0.5 + 0.5 * Math.sin(time * 18));
-      else this.flameMat.color.copy(BLUE);
+      const c = this.fxColors;
+      if (v.tier === 2) this.flameMat.color.copy(c?.a ?? ORANGE).lerp(c?.b ?? PURPLE, 0.5 + 0.5 * Math.sin(time * 18));
+      else this.flameMat.color.copy(c?.blue ?? BLUE);
       this.flameMat.color.multiplyScalar(FLAME.hdr);
     }
   }

@@ -50,6 +50,8 @@ export const sfx = {
     ui.relay(m);
     revEngine(m, 'stab');
   }),
+  // Driver door: hydraulic strut open / close.
+  door: fx((m, open) => ui.door(m, open)),
   // Race Start: blip and pull.
   rev: fx((m) => revEngine(m, 'double')),
 };

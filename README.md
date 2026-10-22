@@ -9,7 +9,24 @@ Offline-first 3D arcade racer for Android by **Red Pen Studio**.
 | Stack | Three.js (WebGL2) + Vite, wrapped with Capacitor 8 |
 | Audience | 13+, no sign-up, no analytics; gameplay is offline, cloud save, ads and Play Billing use the network when available |
 
-## Phases 11-12: atmosphere pipeline, weather and Biome 1 (this release)
+## Phases 13-14: 12-car roster and the sunset showroom (this release)
+
+Blueprint section 04. All twelve launch cars are in the garage, every one built procedurally on the device (no downloaded assets), and the garage is now the architectural showroom from blueprint 4.4.
+
+- **Roster** (`src/data/cars.js`): Tier D Street Tuners **RP-1 Vanta** (starter), **Fujin Type-R**, **Kaze 370**; Tier C Offroad & Muscle **Trailblazer Rally**, **Mustang Bandit**, **Apex WRX**; Tier B Grand Tourers **Monza GT3**, **Stuttgart Carrera**, **Bavaria M-Sport**; Tier A Hypercars **Valkyrie GT-R** (Supercar Bundle), **Chimera Senna**, **Revuelto Storm**. Car ids are unchanged (the Valkyrie is still `rpx-hyperion`), so saves and the Play grant keep working. Display names live on one line each in `DISPLAY_NAMES`; several echo real model names (see the PR notes), so they can be swapped there without touching ids.
+- **Bodies** (`src/garage/carShapes.js`): eleven silhouettes from one lofted construction: hot hatch, long-hood Z coupe, raised rally crossover (light pod, roof rails, mud flaps), modern muscle (blunt nose, quad pipes), four-door rally sedan, rear-engined GT and its GT3 track version, front-engined grand tourer, cab-forward track hypercar, a sharp wedge, and the original coupe (Vanta, and the Valkyrie with its aero kit). Smooth fender peaks rise over the wheels where the hood is low; arches are cut open cleanly.
+- **Performance profiles**: unique base stats per car plus a `feel` (weight, torque curve, drift balance) fed to `statsToParams` in `src/race/vehicle.js`: heavy cars turn in slower but carry speed, low-exponent torque curves launch hard and fade, high ones pull to the limiter. The default feel reproduces the previous tuning exactly. The Stats tab shows each car's weight, power band and balance.
+- **Mobile budget**: race cars build at `RACE_DETAIL` (0.5): 8.8k to 9.8k triangles per car with every rim and wing (a test fails above 10,000). Race draw calls stay at 99 with a Tier A car, swan-neck wing and coloured FX.
+- **Rims tab**: six 3D rim designs (`src/garage/rims.js`): Stock Split-5, Classic Mesh, Turbofan, Twin Blade, Forged Monoblock, Carbon Aero. Tap to preview on the turntable, then buy per car (500-1,500 coins). The race bakes the fitted rim into the instanced wheels.
+- **Kit tab**: rear wings (Factory, Ducktail Lip 800, GT Wing 1,500, Swan-Neck Wing 2,200) bought per car; a new wing rises into place on the deck or, on hatches, the roof edge. Tyre smoke and nitro trail colours per car (free): Factory White, Nitro Blue, Crimson Fury, Neon Green, Midas Gold, Electric Violet. They colour the player's drift smoke and Blue/Pulse nitro flames on track.
+- **Showroom** (`src/garage/showroom.js`): a glass pavilion on a cliff over the ocean at sunset: vertex-coloured sky dome with a low sun, cloud streaks, headlands, an ocean shader with a moving glitter path, a slatted timber back wall with warm LED coves, a ceiling of warm recessed spotlights with light shafts and floor pools, and a polished epoxy floor (planar mirror on High, glossy env reflections on Medium/Low). The paint reflection cubemap is baked from the same sunset. One shadowed key light, one unshadowed low sun for warm rim light, hemisphere fill.
+- **Door inspection**: a pulsing hotspot follows the driver-door handle on screen; tap it (or the door) to open the door on a hydraulic strut with a synthesized latch, hiss and pump SFX. Swing doors on most cars, scissor doors on the Revuelto Storm, butterfly doors on the Chimera Senna; behind the door a cockpit (tub, seats, wheel) that never ships into the race mesh.
+- **Auto-showcase**: after 8 seconds without a touch the HUD fades and the camera eases into a slow cinematic orbit, then hard cuts to low, overhead, rear, wheel and tracking-profile angles with slow dollies. Any touch brings the HUD back and reframes the car.
+- **Tab camera**: Paint frames the body, Rims swings to the front wheel, Kit to the rear wing, Stats to the side profile, all with the eased orbit snap. The Cars tab is grouped by tier and previews any car on the turntable before you own it.
+- **Draw calls** (headless, 1280×720): garage 108-110 on High (mirror pass skips floor decals, the cockpit, brake discs and arch liners via a render layer), 65 on Medium, 61 on Low.
+- **Save**: per-car `spoiler`, `spoilers`, `smoke`, `nitroFx` inside the existing v2 car entries. The Firestore rules do not check car entry fields, so no rules change or redeploy is needed. Version 0.13.0.
+
+## Phases 11-12: atmosphere pipeline, weather and Biome 1
 
 Blueprint sections 03 and 04. Emerald Coast is now a complete biome with four weathers and four ways to drive it.
 
@@ -199,13 +216,14 @@ src/
   audio/               synthesis: mixer, engine + gearbox, one-shot SFX, race soundtrack
   assets/              GLTF vehicle spawner with procedural fallback
   monetization/        AdMob service (+ browser simulator), Play Billing and entitlements
-  data/catalog.js      paints, finishes, rims, upgrades, prices
-  data/cars.js         12-car roster: tier, stats, procedural kit, .glb path, unlock rule
+  data/catalog.js      paints, finishes, rims, rear wings, smoke/nitro colours, upgrades, prices
+  data/cars.js         12-car roster: tier, stats, handling feel, body style, .glb path, unlock rule
   data/career.js       chapters, track segments, 60 stages, star objectives, milestones
   data/economy.js      coin rewards and costs
   data/tracks.js       Emerald Coast definition (waypoints, ramps, props, coastline)
   data/rivals.js       AI rivals per chapter, bosses and rival sets
-  garage/              renderer + quality, showroom, procedural car, paint shader, camera rig
+  garage/              renderer + quality, sunset showroom, procedural cars (body styles, rims,
+                       wings, doors), paint shader, camera rig + auto-showcase
   render/              batching material (vertex PBR) and procedural surface textures
   race/                track spline + meshes, scenery, props, vehicle physics, AI, race cars,
                        effects, chase camera, input and the Race host (course.js: stage courses)

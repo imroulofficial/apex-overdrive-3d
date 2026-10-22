@@ -81,6 +81,23 @@ export const ui = {
     }
   },
 
+  // Driver door on hydraulic struts: the latch pops, the strut hisses and its pump whines
+  // through the travel, then a damped thunk as it reaches the stop (a firmer latch on close).
+  door(mix, open = true, at) {
+    const t = now(mix, at);
+    const travel = 0.85;
+    burst(mix, mix.ui, { t, type: 'bandpass', freq: open ? 1900 : 1400, q: 3, peak: 0.7, decay: 0.03 });
+    tone(mix, mix.ui, { t, type: 'sine', freq: 150, to: 70, peak: 0.3, decay: 0.08 });
+    burst(mix, mix.ui, { t: t + 0.04, type: 'bandpass', freq: open ? 3200 : 1300, to: open ? 1100 : 2800, q: 2.2, attack: 0.08, hold: travel * 0.5, peak: 0.24, decay: travel * 0.5, glide: travel });
+    const lp = filter(mix.ac, 'lowpass', 900, 2);
+    lp.connect(mix.ui);
+    tone(mix, lp, { t: t + 0.05, type: 'sawtooth', freq: open ? 120 : 190, to: open ? 210 : 115, glide: travel, attack: 0.1, hold: travel * 0.55, peak: 0.07, decay: travel * 0.35 });
+    const end = t + travel + 0.05;
+    tone(mix, mix.ui, { t: end, type: 'sine', freq: open ? 95 : 130, to: 50, peak: open ? 0.35 : 0.55, decay: open ? 0.14 : 0.1 });
+    burst(mix, mix.ui, { t: end, type: 'lowpass', freq: 700, to: 160, peak: open ? 0.25 : 0.5, decay: 0.12 });
+    if (!open) burst(mix, mix.ui, { t: end + 0.01, type: 'bandpass', freq: 2600, q: 4, peak: 0.55, decay: 0.025 });
+  },
+
   // Relay clunk for the headlight switch (the rev that follows is an engine one-shot).
   relay(mix, at) {
     const t = now(mix, at);

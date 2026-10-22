@@ -92,12 +92,16 @@ test('damaged saves are repaired, never thrown', () => {
     assert.equal(s.career.stageStars.length, STAGES.length);
   }
   assert.equal(migrate({ upgrades: { engine: 99 } }).cars['rp1-vanta'].upgrades.topSpeed, 5);
-  const s = normalize({ v: 2, car: 'ghost', cars: { ghost: {}, 'rp1-vanta': { upgrades: { nitro: -3 }, paint: 'nope', rim: 'gold' } }, career: { stageStars: [9, 3.4, -1], milestones: ['ec-15', 'fake', 'stars-10', 'ec-15'] } });
+  const s = normalize({ v: 2, car: 'ghost', cars: { ghost: {}, 'rp1-vanta': { upgrades: { nitro: -3 }, paint: 'nope', rim: 'gold', spoiler: 'jet', spoilers: ['jet', 'gt-wing'], smoke: 'plaid', nitroFx: 7 } }, career: { stageStars: [9, 3.4, -1], milestones: ['ec-15', 'fake', 'stars-10', 'ec-15'] } });
   assert.equal(s.car, 'rp1-vanta');
   assert.equal(s.cars.ghost, undefined);
   assert.equal(s.cars['rp1-vanta'].upgrades.nitro, 0);
   assert.equal(s.cars['rp1-vanta'].paint, 'apex-red');
   assert.equal(s.cars['rp1-vanta'].rim, 'stock');
+  assert.equal(s.cars['rp1-vanta'].spoiler, 'factory');
+  assert.deepEqual(s.cars['rp1-vanta'].spoilers, ['factory', 'gt-wing']);
+  assert.equal(s.cars['rp1-vanta'].smoke, 'white');
+  assert.equal(s.cars['rp1-vanta'].nitroFx, 'blue');
   assert.deepEqual(s.career.stageStars.slice(0, 3), [7, 3, 0]);
   assert.deepEqual(s.career.milestones, ['ec-15']);
 });

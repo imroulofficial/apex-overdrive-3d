@@ -8,7 +8,8 @@ rules_version = '2';
 //   appVersion   game version that wrote it (string)
 //   economy      { coins, noAdsPurchased, supercarBundlePurchased, purchases[], granted[], crateClaimedAt }
 //   progression  { unlockedStage, stageStars[] (one 0-7 star bitmask per stage), best{}, milestones[] }
-//   garage       { car, ownedPaints[], cars{ carId: { unlockedBy, upgrades{}, paint, rim, rims[] } } }
+//   garage       { car, ownedPaints[], cars{ carId: { unlockedBy, upgrades{}, paint, rim, rims[],
+//                spoiler, spoilers[], smoke, nitroFx } } }   (car entries are not field-checked)
 //
 // Schema v1 (Phases 4-6): { v: 1, save: JSON string <= 16 KB, updatedAt, appVersion }.
 // Old apps may still create v1 documents, but a document can never go back to a lower

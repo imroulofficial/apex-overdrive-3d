@@ -9,7 +9,10 @@
 //   cars         per-car progression, one entry per car the player has ever owned:
 //                { unlockedBy: 'starter'|'coins'|'stars'|'iap',
 //                  upgrades: { topSpeed, acceleration, handling, nitro } (0 stock .. 5),
-//                  paint, rim, rims: [owned rim ids] }
+//                  paint, rim, rims: [owned rim ids], spoiler, spoilers: [owned wing ids],
+//                  smoke, nitroFx (tyre smoke / nitro trail colour ids) }
+//                (spoiler/smoke/nitroFx arrived in 0.13.0 inside the existing car map, so
+//                the v2 Firestore rules accept them without a schema bump)
 //   ownedPaints  coin paints bought (shared by every car; each car equips its own)
 //   career       { unlockedStage (1-60), stageStars: [star bitmask per stage, bit 0 = star 1],
 //                  best: { [stageId]: { time, score, plays } }, milestones: [claimed ids] }
@@ -24,7 +27,7 @@
 import { PRODUCTS } from '../config.js';
 import { STARTING_COINS } from '../data/economy.js';
 import { CARS, STARTER_CAR } from '../data/cars.js';
-import { PAINTS, RIMS, UPGRADES } from '../data/catalog.js';
+import { PAINTS, RIMS, UPGRADES, SPOILERS, FX_COLORS, DEFAULT_SMOKE, DEFAULT_NITRO } from '../data/catalog.js';
 import { STAGES, MILESTONES } from '../data/career.js';
 import { CONTROL_SCHEMES, DEFAULT_CONTROLS } from '../data/controls.js';
 import { BLOOM_LEVELS, DEFAULT_BLOOM } from '../data/weather.js';
@@ -36,6 +39,7 @@ export const SAVE_VERSION = 2;
 const DEFAULT_PAINTS = PAINTS.filter((p) => p.price === 0 && !p.product && !p.milestone).map((p) => p.id);
 const DEFAULT_PAINT = DEFAULT_PAINTS[0];
 const DEFAULT_RIM = RIMS[0].id;
+const DEFAULT_SPOILER = SPOILERS[0].id;
 const UNLOCKED_BY = ['starter', 'coins', 'stars', 'iap'];
 const MAX_LEVEL = Math.max(...UPGRADES.map((u) => u.maxLevel));
 // v1 upgrade ids -> v2. Tires were "grip and launch", which is now Acceleration.
@@ -53,6 +57,8 @@ const uniq = (list, valid) => [...new Set((Array.isArray(list) ? list : []).filt
 const carIds = new Set(CARS.map((c) => c.id));
 const paintIds = new Set(PAINTS.map((p) => p.id));
 const rimIds = new Set(RIMS.map((r) => r.id));
+const spoilerIds = new Set(SPOILERS.map((x) => x.id));
+const fxIds = new Set(FX_COLORS.map((f) => f.id));
 const stageIds = new Set(STAGES.map((s) => s.stageId));
 const milestoneIds = new Set(MILESTONES.map((m) => m.id));
 const sceneIds = new Set(Object.keys(SCENES));
@@ -60,7 +66,17 @@ const sceneIds = new Set(Object.keys(SCENES));
 export const emptyUpgrades = () => Object.fromEntries(UPGRADES.map((u) => [u.id, 0]));
 
 export function newCarEntry(unlockedBy, { paint = DEFAULT_PAINT, upgrades } = {}) {
-  return { unlockedBy, upgrades: { ...emptyUpgrades(), ...upgrades }, paint, rim: DEFAULT_RIM, rims: [DEFAULT_RIM] };
+  return {
+    unlockedBy,
+    upgrades: { ...emptyUpgrades(), ...upgrades },
+    paint,
+    rim: DEFAULT_RIM,
+    rims: [DEFAULT_RIM],
+    spoiler: DEFAULT_SPOILER,
+    spoilers: [DEFAULT_SPOILER],
+    smoke: DEFAULT_SMOKE,
+    nitroFx: DEFAULT_NITRO,
+  };
 }
 
 export function defaults() {
@@ -91,12 +107,17 @@ function normalizeCar(entry, fallbackBy) {
   const upgrades = emptyUpgrades();
   for (const id of Object.keys(upgrades)) upgrades[id] = int(e.upgrades?.[id], 0, MAX_LEVEL, 0);
   const rims = uniq([DEFAULT_RIM, ...(e.rims ?? [])], (r) => rimIds.has(r));
+  const spoilers = uniq([DEFAULT_SPOILER, ...(e.spoilers ?? [])], (x) => spoilerIds.has(x));
   return {
     unlockedBy: UNLOCKED_BY.includes(e.unlockedBy) ? e.unlockedBy : fallbackBy,
     upgrades,
     paint: paintIds.has(e.paint) ? e.paint : DEFAULT_PAINT,
     rim: rims.includes(e.rim) ? e.rim : DEFAULT_RIM,
     rims,
+    spoiler: spoilers.includes(e.spoiler) ? e.spoiler : DEFAULT_SPOILER,
+    spoilers,
+    smoke: fxIds.has(e.smoke) ? e.smoke : DEFAULT_SMOKE,
+    nitroFx: fxIds.has(e.nitroFx) ? e.nitroFx : DEFAULT_NITRO,
   };
 }
 

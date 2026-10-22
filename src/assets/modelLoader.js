@@ -10,7 +10,11 @@ import { createCarPaint } from '../garage/carPaint.js';
 // builder in carModel.js:
 //
 //   { group, source, paintMaterial, wheels: [{ wheel, spin }], wheelRadius, exhausts,
-//     lightsOn, setLights(on), spinWheels(speed), update(dt) }
+//     lightsOn, setLights(on), spinWheels(speed), update(dt),
+//     rim, setRim(id), spoiler, setSpoiler(id), door: { anchor, normal, open, toggle(), close() } | null }
+//
+// A .glb brings its own wheels, wing and doors, so on a model the rim and wing setters only
+// record the choice and `door` is null (no hotspot).
 //
 // The garage turntable, the paint system and the race baker (raceCars.js) only talk to that
 // interface, and vehicle physics never looks at meshes at all, so swapping a procedural car
@@ -76,16 +80,16 @@ export async function hasExternalModel(def) {
 }
 
 // Spawns a car rig for a catalog entry. `detail` only affects the procedural fallback.
-export async function loadCar(def, { paintColor, finish, detail = 1 } = {}) {
+export async function loadCar(def, { paintColor, finish, detail = 1, rim, spoiler } = {}) {
   const gltf = def.model?.url ? await fetchGltf(resolveUrl(def.model.url)) : null;
   if (gltf) {
     try {
-      return adaptGltf(gltf.scene, def, { paintColor, finish });
+      return adaptGltf(gltf.scene, def, { paintColor, finish, rim, spoiler });
     } catch (err) {
       console.warn(`[models] ${def.model.url} does not follow the car conventions, using the procedural car`, err);
     }
   }
-  return createCar({ paintColor, finish, detail, kit: def.procedural?.kit });
+  return createCar({ paintColor, finish, detail, style: def.procedural?.style, rim, spoiler });
 }
 
 // ---------------------------------------------------------------------------
@@ -101,7 +105,7 @@ function findNode(root, name, pattern) {
   return hit;
 }
 
-function adaptGltf(source, def, { paintColor, finish }) {
+function adaptGltf(source, def, { paintColor, finish, rim = 'stock', spoiler = 'factory' }) {
   const opts = def.model;
   const car = new THREE.Group();
   car.name = def.id;
@@ -203,6 +207,15 @@ function adaptGltf(source, def, { paintColor, finish }) {
     wheels,
     wheelRadius,
     exhausts,
+    rim,
+    spoiler,
+    setRim(id) {
+      this.rim = id;
+    },
+    setSpoiler(id) {
+      this.spoiler = id;
+    },
+    door: null,
     get lightsOn() {
       return lightsOn;
     },

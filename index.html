@@ -49,7 +49,9 @@
       <aside class="customizer glass angled" aria-label="Garage">
         <div class="tabs" role="tablist">
           <button class="tab is-active" role="tab" aria-selected="true" data-tab="paint">Paint</button>
-          <button class="tab" role="tab" aria-selected="false" data-tab="upgrades">Upgrades</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="rims">Rims</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="kit">Kit</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="stats">Stats</button>
           <button class="tab" role="tab" aria-selected="false" data-tab="cars">Cars</button>
         </div>
         <section class="tab-panel" data-panel="paint" role="tabpanel">
@@ -59,7 +61,23 @@
             <button id="paint-action" class="pill-btn"></button>
           </div>
         </section>
-        <section class="tab-panel" data-panel="upgrades" role="tabpanel" hidden>
+        <section class="tab-panel" data-panel="rims" role="tabpanel" hidden>
+          <div class="rim-grid" id="rim-grid"></div>
+          <div class="paint-footer">
+            <div class="paint-meta"><strong id="rim-name"></strong><span id="rim-note"></span></div>
+            <button id="rim-action" class="pill-btn"></button>
+          </div>
+        </section>
+        <section class="tab-panel" data-panel="kit" role="tabpanel" hidden>
+          <h3 class="kit-head">Rear wing</h3>
+          <ul class="wing-list" id="wing-list"></ul>
+          <h3 class="kit-head">Tyre smoke</h3>
+          <div class="fx-row" id="fx-smoke" data-slot="smoke"></div>
+          <h3 class="kit-head">Nitro trail</h3>
+          <div class="fx-row" id="fx-nitro" data-slot="nitroFx"></div>
+        </section>
+        <section class="tab-panel" data-panel="stats" role="tabpanel" hidden>
+          <ul class="feel" id="car-feel"></ul>
           <ul class="upgrade-list" id="upgrade-list"></ul>
         </section>
         <section class="tab-panel" data-panel="cars" role="tabpanel" hidden>
@@ -83,6 +101,10 @@
           <span class="label">Lights</span>
         </button>
       </nav>
+
+      <button id="door-hotspot" class="door-hotspot" aria-label="Open the driver door" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V8l7-4h7v16H5Z" /><path d="M15 12.5h2" /></svg>
+      </button>
 
       <div class="race-launch">
         <button id="btn-stage" class="stage-chip glass angled" aria-label="Continue the campaign">
