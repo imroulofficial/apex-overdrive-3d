@@ -4,29 +4,39 @@
 //   engine voice ─┐
 //   race / ui sfx ─┼─ sfx bus ──────────────┐
 //                  └─ space (slap delay) ───┤
-//   music ─ glue comp ─ duck ─ music bus ───┼─ master ─ bus comp ─ limiter ─ trim ─ clipper ─ speakers
+//   music ─ glue comp ─ duck ─ music bus ───┼─ master ─ high-pass ─ limiter ─ trim ─ clipper ─ speakers
 //
-// The output stage is built for phone speakers. Every voice sums into `master` at a modest
-// level, a gentle bus compressor holds the mix together, a fast limiter catches the stacks
-// (pulse nitro over a smash over the music drop) and a soft clipper is the last word, so the
-// samples that reach the DAC never come near full scale: small Android speaker amps and their
-// DSP crackle well before 0 dBFS. DynamicsCompressorNode adds automatic make-up gain, which
-// `trim` takes back out.
+// The output stage is built for phone speakers, and the levels are set at the source: every
+// voice sums into `master` with headroom to spare, so the dynamics stages stay idle in normal
+// play instead of riding the mix (a limiter doing 10 dB of gain reduction on a dense engine
+// and tyre mix is itself the distortion people hear). The samples that reach the DAC never
+// come near full scale: small Android speaker amps and their DSP crackle well before 0 dBFS.
 //
 // The mixer accepts any BaseAudioContext, so tools/audio renders the same code offline.
 
 // Soundtrack level under the engine and effects.
-export const MUSIC_LEVEL = 0.38;
+export const MUSIC_LEVEL = 0.28;
 
-// Output stage tuning. CEILING is the clipper's hard maximum (about -2.5 dBFS); the clipper
-// is linear up to KNEE, so normal play never touches it.
+// Output stage tuning, for phone speakers.
+// - highpass (Hz): a 4th-order cut under what a phone speaker can play. Below it a small
+//   speaker only moves air it cannot radiate; the energy still swings the cone, overdrives
+//   the amplifier and sets off the phone's speaker-protection DSP (the "blown speaker" buzz),
+//   and it would make the limiter pump the whole mix.
+// - limiter: catches stacks only (pulse nitro over a smash over the music drop). Normal play
+//   peaks around -9 dBFS into it and never reaches the threshold.
+// - trim takes back DynamicsCompressorNode's automatic make-up gain (about +3.4 dB here), so
+//   anything under the threshold passes at master × 0.89 and the limiter's ceiling lands near
+//   -6.7 dBFS.
+// - knee / ceiling: the safety clipper is linear up to `knee` (-6 dBFS), above the limiter's
+//   ceiling, so it only ever rounds off the limiter's overshoot; it never exceeds `ceiling`
+//   (about -3 dBFS). It runs 4x oversampled so even that rounding cannot alias.
 export const OUTPUT = {
-  master: 0.6,
-  bus: { threshold: -20, knee: 12, ratio: 2.5, attack: 0.012, release: 0.25 },
-  limiter: { threshold: -9, knee: 0, ratio: 20, attack: 0.001, release: 0.12 },
-  trim: 0.7,
-  knee: 0.55,
-  ceiling: 0.75,
+  master: 1,
+  highpass: 100,
+  limiter: { threshold: -6, knee: 0, ratio: 20, attack: 0.002, release: 0.25 },
+  trim: 0.6,
+  knee: 0.5,
+  ceiling: 0.7,
 };
 
 function compressor(ac, o) {
@@ -52,14 +62,16 @@ export function softClipCurve(knee = OUTPUT.knee, ceiling = OUTPUT.ceiling, n = 
 export function createMixer(ac) {
   const master = ac.createGain();
   master.gain.value = OUTPUT.master;
-  const bus = compressor(ac, OUTPUT.bus);
+  // Fourth-order Butterworth high-pass (two biquads).
+  const hp1 = filter(ac, 'highpass', OUTPUT.highpass, 0.5412);
+  const hp2 = filter(ac, 'highpass', OUTPUT.highpass, 1.3066);
   const limiter = compressor(ac, OUTPUT.limiter);
   const trim = ac.createGain();
   trim.gain.value = OUTPUT.trim;
   const clipper = ac.createWaveShaper();
   clipper.curve = softClipCurve();
-  clipper.oversample = 'none';
-  master.connect(bus).connect(limiter).connect(trim).connect(clipper).connect(ac.destination);
+  clipper.oversample = '4x';
+  master.connect(hp1).connect(hp2).connect(limiter).connect(trim).connect(clipper).connect(ac.destination);
 
   const sfx = ac.createGain();
   sfx.connect(master);
@@ -99,6 +111,8 @@ export function createMixer(ac) {
     noise: noiseBuffer(ac, 2, 1),
     pink: pinkBuffer(ac, 3),
     wobble: wobbleBuffer(ac, 4, 11),
+    // The output stage, for tools/audio's meters.
+    stage: { highpass: hp2, limiter, trim, clipper },
   };
   return mix;
 }

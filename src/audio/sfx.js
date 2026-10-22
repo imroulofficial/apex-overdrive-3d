@@ -151,24 +151,27 @@ export function nitroIgnite(mix, tier = 1, at) {
   const ac = mix.ac;
   const t = now(mix, at);
   const big = tier >= 2;
+  // The thump sweeps down only as far as a phone speaker can follow it, with drive light
+  // enough to add body without turning it into a buzzing square wave.
   const drive = ac.createWaveShaper();
-  drive.curve = saturation(big ? 3 : 2.2);
+  drive.curve = saturation(big ? 1.8 : 1.4);
+  drive.oversample = '2x';
   drive.connect(mix.sfx);
-  tone(mix, drive, { t, type: 'sine', freq: big ? 150 : 130, to: big ? 30 : 38, glide: 0.4, attack: 0.002, peak: big ? 0.95 : 0.8, decay: big ? 0.6 : 0.42 });
-  tone(mix, drive, { t, type: 'triangle', freq: 75, to: 32, glide: 0.3, peak: 0.35, decay: 0.3 });
-  burst(mix, mix.sfx, { t, type: 'highpass', freq: 2800, peak: 0.5, decay: 0.03 });
-  burst(mix, mix.sfx, { t, type: 'lowpass', freq: 600, to: 120, peak: 0.45, decay: 0.2 });
+  tone(mix, drive, { t, type: 'sine', freq: big ? 190 : 170, to: big ? 55 : 60, glide: 0.4, attack: 0.002, peak: big ? 0.22 : 0.2, decay: big ? 0.6 : 0.42 });
+  tone(mix, drive, { t, type: 'triangle', freq: 110, to: 55, glide: 0.3, peak: 0.1, decay: 0.3 });
+  burst(mix, mix.sfx, { t, type: 'highpass', freq: 2800, peak: 0.3, decay: 0.03 });
+  burst(mix, mix.sfx, { t, type: 'lowpass', freq: 600, to: 160, peak: 0.25, decay: 0.2 });
 
   // Whoosh: pink noise through a widening band that sweeps up.
   const pan = panned(mix, big ? -0.6 : 0);
   if (big) pan.pan.linearRampToValueAtTime(0.6, t + 1.2);
-  const whoosh = burst(mix, pan, { t: t + 0.02, buffer: mix.pink, type: 'bandpass', freq: 260, to: big ? 3600 : 2600, q: 0.9, attack: 0.09, peak: big ? 0.9 : 0.7, hold: 0.25, decay: big ? 1.1 : 0.85, glide: 0.9 });
+  const whoosh = burst(mix, pan, { t: t + 0.02, buffer: mix.pink, type: 'bandpass', freq: 260, to: big ? 3600 : 2600, q: 0.9, attack: 0.09, peak: big ? 0.45 : 0.36, hold: 0.25, decay: big ? 1.1 : 0.85, glide: 0.9 });
   whoosh.connect(mix.space);
 
   // Howl: two resonant bands give the air a vowel-like whistle, with a little vibrato.
   for (const [f0, f1, q, a] of [
-    [420, 1250, 11, 3.2],
-    [640, 1900, 14, 2.2],
+    [420, 1250, 11, 1.5],
+    [640, 1900, 14, 1.0],
   ]) {
     const src = noiseSource(mix);
     const f = filter(ac, 'bandpass', f0, q);
@@ -192,8 +195,8 @@ export function nitroIgnite(mix, tier = 1, at) {
     lp.frequency.exponentialRampToValueAtTime(3800, t + 0.6);
     lp.frequency.exponentialRampToValueAtTime(1200, t + 1.4);
     lp.connect(pan);
-    for (const d of [-14, 14]) tone(mix, lp, { t, type: 'sawtooth', freq: 180, to: 720, glide: 0.7, attack: 0.06, peak: 0.14, hold: 0.3, decay: 0.8, detune: d });
-    tone(mix, mix.sfx, { t: t + 0.05, type: 'sine', freq: 70, to: 26, glide: 0.8, peak: 0.6, decay: 0.8 });
+    for (const d of [-14, 14]) tone(mix, lp, { t, type: 'sawtooth', freq: 180, to: 720, glide: 0.7, attack: 0.06, peak: 0.07, hold: 0.3, decay: 0.8, detune: d });
+    tone(mix, mix.sfx, { t: t + 0.05, type: 'sine', freq: 130, to: 60, glide: 0.8, peak: 0.14, decay: 0.8 });
   }
 }
 
@@ -203,7 +206,7 @@ export const race = {
     const lp = filter(mix.ac, 'lowpass', 2600, 1);
     lp.connect(mix.sfx);
     lp.connect(mix.space);
-    tone(mix, lp, { t, type: 'square', freq: midiHz(69), peak: 0.22, hold: 0.12, decay: 0.12 });
+    tone(mix, lp, { t, type: 'square', freq: midiHz(69), peak: 0.15, hold: 0.12, decay: 0.12 });
     tone(mix, lp, { t, type: 'sine', freq: midiHz(81), peak: 0.12, hold: 0.12, decay: 0.12 });
   },
   go(mix, at) {
@@ -211,8 +214,8 @@ export const race = {
     const lp = filter(mix.ac, 'lowpass', 4200, 1);
     lp.connect(mix.sfx);
     lp.connect(mix.space);
-    for (const m of [81, 88, 93]) tone(mix, lp, { t, type: 'square', freq: midiHz(m), peak: 0.12, hold: 0.35, decay: 0.35 });
-    tone(mix, mix.sfx, { t, type: 'sine', freq: 120, to: 50, peak: 0.5, decay: 0.3 });
+    for (const m of [81, 88, 93]) tone(mix, lp, { t, type: 'square', freq: midiHz(m), peak: 0.07, hold: 0.35, decay: 0.35 });
+    tone(mix, mix.sfx, { t, type: 'sine', freq: 160, to: 70, peak: 0.25, decay: 0.3 });
   },
   empty(mix, at) {
     const t = now(mix, at);
@@ -223,10 +226,10 @@ export const race = {
   smash(mix, big, at) {
     const t = now(mix, at);
     if (big) {
-      burst(mix, mix.sfx, { t, type: 'bandpass', freq: 900, to: 300, q: 0.9, peak: 0.6, decay: 0.28 });
-      tone(mix, mix.sfx, { t, type: 'sine', freq: 110, to: 48, peak: 0.6, decay: 0.25 });
+      burst(mix, mix.sfx, { t, type: 'bandpass', freq: 900, to: 300, q: 0.9, peak: 0.4, decay: 0.28 });
+      tone(mix, mix.sfx, { t, type: 'sine', freq: 150, to: 70, peak: 0.32, decay: 0.25 });
       for (let i = 0; i < 4; i++) {
-        burst(mix, mix.sfx, { t: t + 0.03 + Math.random() * 0.2, type: 'bandpass', freq: 380 + Math.random() * 500, q: 6, peak: 1.0, decay: 0.06 });
+        burst(mix, mix.sfx, { t: t + 0.03 + Math.random() * 0.2, type: 'bandpass', freq: 380 + Math.random() * 500, q: 6, peak: 0.55, decay: 0.06 });
       }
       burst(mix, mix.space, { t, type: 'bandpass', freq: 700, q: 1, peak: 0.3, decay: 0.3 });
     } else {
@@ -241,21 +244,21 @@ export const race = {
   wall(mix, k, at) {
     const t = now(mix, at);
     const a = Math.min(1, 0.25 + k * 0.04);
-    tone(mix, mix.sfx, { t, type: 'sine', freq: 95, to: 45, peak: 0.7 * a, decay: 0.22 });
-    burst(mix, mix.sfx, { t, type: 'lowpass', freq: 1400, to: 300, peak: 0.55 * a, decay: 0.25 });
+    tone(mix, mix.sfx, { t, type: 'sine', freq: 140, to: 65, peak: 0.36 * a, decay: 0.22 });
+    burst(mix, mix.sfx, { t, type: 'lowpass', freq: 1400, to: 300, peak: 0.35 * a, decay: 0.25 });
     for (const f of [523, 1187, 1734]) tone(mix, mix.space, { t, type: 'sine', freq: f, peak: 0.1 * a, decay: 0.35 });
-    burst(mix, mix.sfx, { t, type: 'bandpass', freq: 3200, q: 2, peak: 0.6 * a, hold: 0.1, decay: 0.15 });
+    burst(mix, mix.sfx, { t, type: 'bandpass', freq: 3200, q: 2, peak: 0.4 * a, hold: 0.1, decay: 0.15 });
   },
   bump(mix, at) {
     const t = now(mix, at);
-    tone(mix, mix.sfx, { t, type: 'sine', freq: 120, to: 55, peak: 0.55, decay: 0.18 });
-    burst(mix, mix.sfx, { t, type: 'bandpass', freq: 600, q: 1.2, peak: 0.35, decay: 0.12 });
+    tone(mix, mix.sfx, { t, type: 'sine', freq: 150, to: 70, peak: 0.32, decay: 0.18 });
+    burst(mix, mix.sfx, { t, type: 'bandpass', freq: 600, q: 1.2, peak: 0.25, decay: 0.12 });
     tone(mix, mix.sfx, { t, type: 'sine', freq: 780, peak: 0.06, decay: 0.2 });
   },
   land(mix, k, at) {
     const t = now(mix, at);
     const a = Math.min(1, 0.3 + k * 0.04);
-    tone(mix, mix.sfx, { t, type: 'sine', freq: 80, to: 34, peak: 0.85 * a, decay: 0.3 });
+    tone(mix, mix.sfx, { t, type: 'sine', freq: 130, to: 55, peak: 0.45 * a, decay: 0.3 });
     burst(mix, mix.sfx, { t, type: 'lowpass', freq: 500, to: 120, peak: 0.4 * a, decay: 0.22 });
     burst(mix, mix.sfx, { t: t + 0.02, type: 'bandpass', freq: 1800, q: 3, peak: 0.4 * a, decay: 0.05 });
   },
@@ -283,7 +286,7 @@ export const race = {
   perfect(mix, at) {
     const t = now(mix, at);
     burst(mix, mix.sfx, { t, buffer: mix.pink, type: 'bandpass', freq: 400, to: 3800, q: 1.4, attack: 0.05, peak: 0.9, decay: 0.45, glide: 0.4 });
-    tone(mix, mix.sfx, { t, type: 'sine', freq: 90, to: 160, peak: 0.45, decay: 0.3 });
+    tone(mix, mix.sfx, { t, type: 'sine', freq: 120, to: 200, peak: 0.28, decay: 0.3 });
     [84, 88, 91, 96].forEach((m, i) => {
       tone(mix, mix.sfx, { t: t + 0.04 + i * 0.045, type: 'triangle', freq: midiHz(m), peak: 0.13, decay: 0.32 });
       tone(mix, mix.space, { t: t + 0.04 + i * 0.045, type: 'sawtooth', freq: midiHz(m), peak: 0.03, decay: 0.3 });
@@ -294,17 +297,17 @@ export const race = {
   shatter(mix, kind = 'stall', at) {
     const t = now(mix, at);
     if (kind === 'neon') {
-      burst(mix, mix.sfx, { t, type: 'highpass', freq: 3500, peak: 0.55, decay: 0.35 });
+      burst(mix, mix.sfx, { t, type: 'highpass', freq: 3500, peak: 0.35, decay: 0.35 });
       for (let i = 0; i < 7; i++) {
         tone(mix, mix.space, { t: t + Math.random() * 0.25, type: 'sine', freq: 2500 + Math.random() * 4000, peak: 0.08, decay: 0.12 + Math.random() * 0.2 });
       }
       tone(mix, mix.sfx, { t, type: 'sawtooth', freq: 120, to: 60, peak: 0.12, hold: 0.12, decay: 0.2 });
-      burst(mix, mix.sfx, { t: t + 0.02, type: 'bandpass', freq: 6000, q: 3, peak: 0.4, hold: 0.15, decay: 0.1 });
+      burst(mix, mix.sfx, { t: t + 0.02, type: 'bandpass', freq: 6000, q: 3, peak: 0.25, hold: 0.15, decay: 0.1 });
     } else {
-      burst(mix, mix.sfx, { t, type: 'bandpass', freq: 1100, to: 350, q: 1.1, peak: 0.7, decay: 0.24 });
-      tone(mix, mix.sfx, { t, type: 'sine', freq: 130, to: 50, peak: 0.6, decay: 0.24 });
+      burst(mix, mix.sfx, { t, type: 'bandpass', freq: 1100, to: 350, q: 1.1, peak: 0.45, decay: 0.24 });
+      tone(mix, mix.sfx, { t, type: 'sine', freq: 160, to: 70, peak: 0.32, decay: 0.24 });
       for (let i = 0; i < 6; i++) {
-        tone(mix, mix.sfx, { t: t + 0.05 + Math.random() * 0.4, type: 'sine', freq: 160 + Math.random() * 120, to: 70, peak: 0.3, decay: 0.08 });
+        tone(mix, mix.sfx, { t: t + 0.05 + Math.random() * 0.4, type: 'sine', freq: 180 + Math.random() * 120, to: 90, peak: 0.18, decay: 0.08 });
       }
       burst(mix, mix.space, { t, type: 'bandpass', freq: 800, q: 1, peak: 0.3, decay: 0.3 });
     }
@@ -350,11 +353,12 @@ export const race = {
     const t = now(mix, at);
     const ac = mix.ac;
     const drive = ac.createWaveShaper();
-    drive.curve = saturation(3);
+    drive.curve = saturation(1.6);
+    drive.oversample = '2x';
     drive.connect(mix.sfx);
-    tone(mix, drive, { t, type: 'sine', freq: 90, to: 28, glide: 0.6, peak: big ? 1 : 0.85, decay: 0.7 });
-    burst(mix, mix.sfx, { t, type: 'lowpass', freq: 1800, to: 160, q: 0.7, peak: big ? 1 : 0.8, decay: 0.9, glide: 0.8 });
-    burst(mix, mix.space, { t, buffer: mix.pink, type: 'lowpass', freq: 900, to: 200, peak: 0.5, decay: 1.4 });
+    tone(mix, drive, { t, type: 'sine', freq: 150, to: 50, glide: 0.6, peak: big ? 0.24 : 0.2, decay: 0.7 });
+    burst(mix, mix.sfx, { t, type: 'lowpass', freq: 1800, to: 200, q: 0.7, peak: big ? 0.3 : 0.25, decay: 0.9, glide: 0.8 });
+    burst(mix, mix.space, { t, buffer: mix.pink, type: 'lowpass', freq: 900, to: 220, peak: 0.3, decay: 1.4 });
     for (let i = 0; i < 9; i++) {
       burst(mix, mix.sfx, { t: t + 0.08 + Math.random() * 0.6, type: 'bandpass', freq: 1200 + Math.random() * 3000, q: 4, peak: 0.35, decay: 0.03 });
     }
@@ -370,9 +374,9 @@ export const race = {
     const t = now(mix, at);
     const near = 1 - Math.min(1, Math.max(0, distance));
     if (near > 0.4) burst(mix, mix.sfx, { t, type: 'highpass', freq: 1800, to: 500, peak: 0.5 * near, decay: 0.35, glide: 0.3 });
-    burst(mix, mix.space, { t, buffer: mix.pink, type: 'lowpass', freq: 320 + near * 300, to: 70, q: 0.6, attack: 0.08, peak: 0.9, hold: 0.4, decay: 3.2, glide: 3 });
+    burst(mix, mix.space, { t, buffer: mix.pink, type: 'lowpass', freq: 320 + near * 300, to: 110, q: 0.6, attack: 0.08, peak: 0.6, hold: 0.4, decay: 3.2, glide: 3 });
     for (let i = 0; i < 4; i++) {
-      burst(mix, mix.sfx, { t: t + 0.2 + Math.random() * 1.8, buffer: mix.pink, type: 'lowpass', freq: 160 + Math.random() * 120, q: 1.5, attack: 0.1, peak: 0.5 + near * 0.3, decay: 0.9 });
+      burst(mix, mix.sfx, { t: t + 0.2 + Math.random() * 1.8, buffer: mix.pink, type: 'lowpass', freq: 160 + Math.random() * 120, q: 1.5, attack: 0.1, peak: 0.35 + near * 0.2, decay: 0.9 });
     }
   },
 };
