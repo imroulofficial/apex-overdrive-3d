@@ -79,14 +79,17 @@ export async function hasExternalModel(def) {
   return Boolean(def.model?.url && (await fetchGltf(resolveUrl(def.model.url))));
 }
 
-// Spawns a car rig for a catalog entry. `detail` only affects the procedural fallback.
+// Spawns a car rig for a catalog entry. Below full detail (the race) a model's `raceUrl`
+// LOD is used when present, else the showroom file; `detail` also scales the procedural car.
 export async function loadCar(def, { paintColor, finish, detail = 1, rim, spoiler } = {}) {
-  const gltf = def.model?.url ? await fetchGltf(resolveUrl(def.model.url)) : null;
-  if (gltf) {
+  const urls = [detail < 1 && def.model?.raceUrl, def.model?.url].filter(Boolean);
+  for (const url of urls) {
+    const gltf = await fetchGltf(resolveUrl(url));
+    if (!gltf) continue;
     try {
-      return adaptGltf(gltf.scene, def, { paintColor, finish, rim, spoiler });
+      return adaptGltf(gltf.scene, def, { paintColor, finish, rim, spoiler, url });
     } catch (err) {
-      console.warn(`[models] ${def.model.url} does not follow the car conventions, using the procedural car`, err);
+      console.warn(`[models] ${url} does not follow the car conventions`, err);
     }
   }
   return createCar({ paintColor, finish, detail, style: def.procedural?.style, rim, spoiler });
@@ -105,7 +108,7 @@ function findNode(root, name, pattern) {
   return hit;
 }
 
-function adaptGltf(source, def, { paintColor, finish, rim = 'stock', spoiler = 'factory' }) {
+function adaptGltf(source, def, { paintColor, finish, rim = 'stock', spoiler = 'factory', url }) {
   const opts = def.model;
   const car = new THREE.Group();
   car.name = def.id;
@@ -139,10 +142,16 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', spoiler = '
   tail.userData.tailLight = true;
   const paintNames = opts.paintMaterials ?? null;
   let paintFound = false;
+  const part = new THREE.Box3();
+  const partSize = new THREE.Vector3();
   model.traverse((o) => {
     if (!o.isMesh) return;
     o.castShadow = true;
     o.receiveShadow = false;
+    // Small parts stay out of the showroom floor reflection (see Garage.js), which renders
+    // the whole car a second time.
+    part.setFromObject(o).getSize(partSize);
+    if (Math.max(partSize.x, partSize.y, partSize.z) < size.x * fit.scale.x * 0.3) o.userData.noReflect = true;
     const swap = (mat) => {
       const name = mat?.name ?? '';
       if (paintNames ? paintNames.includes(name) : PAINT_PATTERN.test(name)) {
@@ -161,7 +170,7 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', spoiler = '
     };
     o.material = Array.isArray(o.material) ? o.material.map(swap) : swap(o.material);
   });
-  if (!paintFound) console.warn(`[models] ${opts.url}: no paint material found; paint changes will not show`);
+  if (!paintFound) console.warn(`[models] ${url}: no paint material found; paint changes will not show`);
 
   // Wheels: re-parent each wheel node under a pivot at its centre so it can spin about the
   // axle (z) and steer about y, exactly like the procedural wheels.

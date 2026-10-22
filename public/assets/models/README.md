@@ -19,9 +19,23 @@ so a model can land at any time without code changes.
 | Chimera Senna (Tier A) | `tm_tempesta.glb` |
 | Revuelto Storm (Tier A) | `zn_zenith.glb` |
 
+Each car can also have a race LOD next to it, `<file>_race.glb` (for example
+`tm_tempesta_race.glb`). The race loads it when present and otherwise uses the showroom file,
+so keep the race file under 10k triangles. Six cars race at once.
+
 File names follow the permanent car ids, not the display names. A `.glb` brings its own
 wheels, wing and doors: the Rims and Kit choices and the door hotspot only apply to the
 procedural cars.
+
+## Importing source models
+
+`node tools/models/optimize.mjs <folder with the source .glb files>` builds both files for
+every car listed in `tools/models/manifest.json`. It simplifies to the triangle budgets, turns
+textures into WebP of up to 1024 px, drops the interior and bakes flat colours for the race
+LOD, turns the nose to +X, renames the wheels and the paint material to the conventions below,
+and applies meshopt compression. It also rewrites `CREDITS.md` from the manifest, so add each
+model's author, licence and source there. Only use models whose licence allows commercial use,
+because the game has ads and in-app purchases.
 
 ## Export conventions
 
