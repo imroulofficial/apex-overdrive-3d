@@ -45,12 +45,16 @@ export const TRACK_SEGMENTS = {
   'ec-gorge-sprint': { id: 'ec-gorge-sprint', trackId: 'emerald-coast', name: 'Gorge Bridge Sprint', route: 'sprint', reverse: true, layout: 'sprint', laps: 1, from: 0, to: 0.39, length: 1090 },
   'ec-redwood-loop': { id: 'ec-redwood-loop', trackId: 'emerald-coast', name: 'Redwood Loop', route: 'redwood', forced: true, layout: 'circuit', laps: 2, from: 0, to: 1, length: 5270 },
   'ec-redwood-hotlap': { id: 'ec-redwood-hotlap', trackId: 'emerald-coast', name: 'Redwood Hot Lap', route: 'redwood', forced: true, layout: 'circuit', laps: 1, from: 0, to: 1, length: 2640 },
-  // Chapter 2 · Alpine Summit (track planned)
+  // Chapter 2 · Alpine Summit (src/data/alpineSummit.js ALPINE_SUMMIT, 3.2 km per lap): village,
+  // switchback climb, summit tunnel (0.494-0.5425), glacier descent with black ice, canyon.
   'as-summit-loop': { id: 'as-summit-loop', trackId: 'alpine-summit', name: 'Summit Loop', route: 'circuit', layout: 'circuit', laps: 2, from: 0, to: 1, length: 6400 },
   'as-village-sector': { id: 'as-village-sector', trackId: 'alpine-summit', name: 'Cobblestone Village', route: 'circuit', layout: 'circuit', laps: 1, from: 0, to: 1, length: 3200 },
-  'as-hairpin-ascent': { id: 'as-hairpin-ascent', trackId: 'alpine-summit', name: 'Hairpin Ascent', route: 'sprint', layout: 'sprint', laps: 1, from: 0, to: 0.5, length: 1600 },
-  'as-glacier-descent': { id: 'as-glacier-descent', trackId: 'alpine-summit', name: 'Glacier Descent', route: 'sprint', layout: 'sprint', laps: 1, from: 0.5, to: 1, length: 1600 },
-  'as-canyon-pass': { id: 'as-canyon-pass', trackId: 'alpine-summit', name: 'Canyon Pass', route: 'sprint', layout: 'sprint', laps: 1, from: 0.2, to: 0.8, length: 1900 },
+  'as-hairpin-ascent': { id: 'as-hairpin-ascent', trackId: 'alpine-summit', name: 'Hairpin Ascent', route: 'sprint', layout: 'sprint', laps: 1, from: 0.02, to: 0.475, length: 1455 },
+  'as-glacier-descent': { id: 'as-glacier-descent', trackId: 'alpine-summit', name: 'Glacier Descent', route: 'sprint', layout: 'sprint', laps: 1, from: 0.562, to: 0.985, length: 1353 },
+  'as-canyon-pass': { id: 'as-canyon-pass', trackId: 'alpine-summit', name: 'Canyon Pass', route: 'sprint', layout: 'sprint', laps: 1, from: 0.62, to: 0.12, length: 1600 },
+  // The pass driven the other way: down the hairpins, and the full loop reversed.
+  'as-switchback-descent': { id: 'as-switchback-descent', trackId: 'alpine-summit', name: 'Switchback Descent', route: 'reverse', reverse: true, layout: 'sprint', laps: 1, from: 0.53, to: 0.95, length: 1345 },
+  'as-reverse-loop': { id: 'as-reverse-loop', trackId: 'alpine-summit', name: 'Summit Loop Reverse', route: 'reverse', reverse: true, layout: 'circuit', laps: 2, from: 0, to: 1, length: 6400 },
   // Chapter 3 · Neon City (track planned)
   'nc-downtown-loop': { id: 'nc-downtown-loop', trackId: 'neon-city', name: 'Downtown Loop', route: 'circuit', layout: 'circuit', laps: 2, from: 0, to: 1, length: 6000 },
   'nc-arcade-district': { id: 'nc-arcade-district', trackId: 'neon-city', name: 'Arcade District', route: 'circuit', layout: 'circuit', laps: 1, from: 0, to: 1, length: 3000 },
@@ -79,10 +83,11 @@ export const CHAPTERS = [
     name: 'Alpine Summit',
     subtitle: 'Alpine Summit & Canyon Pass',
     trackId: 'alpine-summit',
-    weather: ['Midday', 'Dusk', 'Fog'],
+    weather: ['Midday', 'Dusk', 'MountainFog', 'Snowfall'],
     starGate: 30,
     boss: 'boss-avalanche',
-    pace: 46,
+    // Hairpins, climbs and black ice: slower on average than the coast highway.
+    pace: 40,
   },
   {
     id: 'neon-city',
@@ -201,27 +206,30 @@ const CHAPTER_STAGES = {
     // Finale: the Coastal Champion, three laps, in a storm off the sea.
     ['BossDuel', 'ec-grand-tour', 'Storm', 'coast-boss', ['drift', 500]],
   ],
+  // Every route on the pass: the full loop both ways, the hairpin climb and descent, the glacier
+  // and the canyon, through noon sun, dusk, cloud and fresh snow.
   'alpine-summit': [
     ['Classic', 'as-summit-loop', 'Midday', 'alpine-club', ['drift', 350]],
     ['TimeTrial', 'as-hairpin-ascent', 'Midday', 'solo', ['smash', 5]],
-    ['DriftTouge', 'as-glacier-descent', 'Midday', 'solo', ['drift', 400]],
+    ['DriftTouge', 'as-switchback-descent', 'Midday', 'solo', ['drift', 400]],
     ['Classic', 'as-canyon-pass', 'Dusk', 'alpine-club', ['air', 3]],
     ['Elimination', 'as-village-sector', 'Midday', 'alpine-club', ['smash', 8]],
-    ['Classic', 'as-hairpin-ascent', 'Fog', 'alpine-club', ['pulse', 2]],
+    ['Classic', 'as-hairpin-ascent', 'MountainFog', 'alpine-club', ['pulse', 2]],
     ['DriftTouge', 'as-canyon-pass', 'Dusk', 'solo', ['air', 3]],
-    ['TimeTrial', 'as-summit-loop', 'Midday', 'solo', ['drift', 450]],
-    ['Classic', 'as-glacier-descent', 'Fog', 'alpine-club', ['smash', 10]],
+    ['TimeTrial', 'as-summit-loop', 'Snowfall', 'solo', ['drift', 450]],
+    ['Classic', 'as-glacier-descent', 'MountainFog', 'alpine-club', ['smash', 10]],
     ['Elimination', 'as-summit-loop', 'Dusk', 'alpine-pro', ['drift', 500]],
-    ['Classic', 'as-village-sector', 'Midday', 'alpine-pro', ['air', 4]],
-    ['DriftTouge', 'as-hairpin-ascent', 'Fog', 'solo', ['drift', 550]],
+    ['Classic', 'as-reverse-loop', 'Midday', 'alpine-pro', ['air', 4]],
+    ['DriftTouge', 'as-switchback-descent', 'MountainFog', 'solo', ['drift', 550]],
     ['TimeTrial', 'as-canyon-pass', 'Dusk', 'solo', ['smash', 10]],
-    ['Classic', 'as-summit-loop', 'Fog', 'alpine-pro', ['pulse', 3]],
+    ['Classic', 'as-summit-loop', 'Snowfall', 'alpine-pro', ['pulse', 3]],
     ['Elimination', 'as-canyon-pass', 'Midday', 'alpine-pro', ['air', 5]],
-    ['DriftTouge', 'as-glacier-descent', 'Dusk', 'solo', ['smash', 8]],
+    ['DriftTouge', 'as-glacier-descent', 'Snowfall', 'solo', ['smash', 8]],
     ['Classic', 'as-hairpin-ascent', 'Midday', 'alpine-pro', ['drift', 600]],
-    ['TimeTrial', 'as-village-sector', 'Fog', 'solo', ['pulse', 2]],
-    ['Classic', 'as-summit-loop', 'Dusk', 'alpine-pro', ['smash', 12]],
-    ['BossDuel', 'as-summit-loop', 'Fog', 'alpine-boss', ['drift', 700]],
+    ['TimeTrial', 'as-switchback-descent', 'Snowfall', 'solo', ['pulse', 2]],
+    ['Classic', 'as-reverse-loop', 'Dusk', 'alpine-pro', ['smash', 12]],
+    // Finale: the Master of the Pass, two laps, in a blizzard over the summit.
+    ['BossDuel', 'as-summit-loop', 'Blizzard', 'alpine-boss', ['drift', 700]],
   ],
   'neon-city': [
     ['Classic', 'nc-downtown-loop', 'Dusk', 'neon-syndicate', ['smash', 8]],

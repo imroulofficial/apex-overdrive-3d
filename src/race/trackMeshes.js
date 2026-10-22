@@ -357,7 +357,8 @@ export function buildTrackMeshes(track, renderer, { groundMaterial, env = null }
   }
 
   const hardware = createVertexPbrMaterial({ envMapIntensity: 0.9 });
-  const trackside = [...buildGuardrails(track), buildLampPosts(track)];
+  const trackside = [...buildGuardrails(track)];
+  if (track.def.lampPosts !== false) trackside.push(buildLampPosts(track));
   const start0 = buildStartLine(track);
   trackside.push(start0.steel);
   const side = new THREE.Mesh(mergePainted(trackside), hardware);
@@ -654,7 +655,7 @@ function buildStartLine(track) {
   parts.push(paintVertices(new THREE.BoxGeometry(0.8, 1.9, span + 0.7).translate(0, 7.6, 0).toNonIndexed(), steel));
   const gantry = mergePainted(parts).applyMatrix4(frame);
 
-  const banner = bannerTexture('APEX OVERDRIVE', 'EMERALD COAST');
+  const banner = bannerTexture('APEX OVERDRIVE', (track.def.name ?? 'Emerald Coast').toUpperCase());
   const boards = [];
   for (const side of [-1, 1]) {
     const board = new THREE.PlaneGeometry(span, span / 8);

@@ -21,13 +21,13 @@ const SKY = {
 };
 export const FOG_COLOR = SKY.horizon.clone();
 
-function sunDirection(sun, out = new THREE.Vector3()) {
+export function sunDirection(sun, out = new THREE.Vector3()) {
   const { azimuth, elevation } = sun;
   return out.set(Math.cos(elevation) * Math.sin(azimuth), Math.sin(elevation), Math.cos(elevation) * Math.cos(azimuth)).normalize();
 }
 
 // Tileable cloud density (alpha): periodic value-noise fBm, so the sky never shows a seam.
-function cloudTexture(size = 256) {
+export function cloudTexture(size = 256) {
   const rand = mulberry32(404);
   const octaves = [4, 8, 16, 32, 64].map((p, k) => ({ p, a: 0.5 ** k, v: Float32Array.from({ length: p * p }, () => rand()) }));
   const sm = (t) => t * t * (3 - 2 * t);
@@ -63,7 +63,7 @@ function cloudTexture(size = 256) {
   return tex;
 }
 
-function skyUniforms(sunDir, clouds) {
+export function skyUniforms(sunDir, clouds) {
   return {
     top: { value: SKY.top.clone() },
     horizon: { value: SKY.horizon.clone() },
@@ -79,7 +79,7 @@ function skyUniforms(sunDir, clouds) {
   };
 }
 
-function skyMaterial(uniforms) {
+export function skyMaterial(uniforms) {
   return new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
@@ -124,7 +124,7 @@ function skyMaterial(uniforms) {
   });
 }
 
-function waterNormalMap(size = 128) {
+export function waterNormalMap(size = 128) {
   // Tileable sum of integer-frequency waves, converted to a normal map.
   const h = new Float32Array(size * size);
   const rand = mulberry32(21);
@@ -900,7 +900,7 @@ function buildShallows(def) {
 // Ocean: two scrolling normal-map octaves, Fresnel blend from deep water to the reflected sky
 // and a tight specular sun glint plus a broad glare streak. A single cheap shader, no
 // reflection render pass.
-function oceanMaterial(normalMap, sunDir) {
+export function oceanMaterial(normalMap, sunDir) {
   return new THREE.ShaderMaterial({
     fog: true,
     uniforms: THREE.UniformsUtils.merge([

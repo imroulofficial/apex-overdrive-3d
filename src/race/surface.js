@@ -13,6 +13,10 @@ export const SURFACES = {
 };
 export const SURFACE_IDS = Object.keys(SURFACES);
 
+// Black ice on the asphalt (Alpine Summit, track def `ice`): multipliers at full strength on
+// top of the road's own grip. Sliding still works, so a drift survives it better than grip.
+export const ICE = { grip: 0.5, driftGrip: 0.74, steer: 0.86, ramp: 12 };
+
 // Lateral layout from the centre line (metres beyond the asphalt edge).
 export const LAYOUT = {
   edgeLine: 0.3, // asphalt (painted edge line, kerb lip) still grips like the road

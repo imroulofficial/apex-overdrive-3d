@@ -149,7 +149,8 @@ test('every stage maps to a course on its track', () => {
       near(c.distance, seg.laps * L);
       assert.equal(c.laps, seg.laps);
     } else {
-      near(c.distance, (seg.to - seg.from) * L, 1e-6);
+      // A sprint may run across the start line (to < from).
+      near(c.distance, ((((seg.to - seg.from) % 1) + 1) % 1) * L, 1e-6);
       near(c.finishS, (seg.to * L) % L, 1e-6);
     }
   }

@@ -31,6 +31,8 @@ export function reverseTrackDef(def, length) {
     seabirds: (def.seabirds ?? []).map((b) => ({ ...b, at: flip(b.at), side: -b.side })),
     bridge: def.bridge ? span(def.bridge) : null,
     trails: (def.trails ?? []).map(span),
+    ice: (def.ice ?? []).map(span),
+    tunnels: (def.tunnels ?? []).map(span),
   };
 }
 
