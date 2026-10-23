@@ -2,9 +2,16 @@
 // and buffers rendered on the device, so the game ships no audio files and needs no network.
 //
 //   engine voice ─┐
-//   race / ui sfx ─┼─ sfx bus ──────────────┐
-//                  └─ space (slap delay) ───┤
-//   music ─ glue comp ─ duck ─ music bus ───┼─ master ─ high-pass ─ limiter ─ trim ─ clipper ─ speakers
+//   race / ui sfx ─┼─ sfx bus ──────────────────────────┐
+//                  ├─ space (slap delay) ───────────────┤
+//   rain, wind, ───┴─ ambience ─ low-pass ──────────────┤
+//   thunder
+//   music ─ glue comp ─ duck ─ music low-pass ─ music bus ─┼─ master ─ high-pass ─ limiter ─ trim ─ clipper ─ speakers
+//
+// The background sits behind the car the way a commercial racer mixes it: the ambience bus
+// is damped (low-passed) so rain and wind never compete with the engine's top end, and the
+// music's low-pass closes as the engine works harder (see core/audio.js), so the car owns the
+// upper mids while the soundtrack keeps its weight.
 //
 // The output stage is built for phone speakers, and the levels are set at the source: every
 // voice sums into `master` with headroom to spare, so the dynamics stages stay idle in normal
@@ -30,6 +37,11 @@ export const MUSIC_LEVEL = 0.28;
 // - knee / ceiling: the safety clipper is linear up to `knee` (-6 dBFS), above the limiter's
 //   ceiling, so it only ever rounds off the limiter's overshoot; it never exceeds `ceiling`
 //   (about -3 dBFS). It runs 4x oversampled so even that rounding cannot alias.
+// Ambience bus (rain, wind, thunder): the low-pass that sets it back in the space.
+export const AMBIENCE = { lowpass: 3800, q: 0.55, level: 1 };
+// Music low-pass, wide open in menus and closing toward `engine` Hz at full engine load.
+export const MUSIC_TONE = { open: 16000, engine: 5200 };
+
 export const OUTPUT = {
   master: 1,
   highpass: 100,
@@ -95,10 +107,16 @@ export function createMixer(ac) {
   spaceLp.connect(dr).connect(merge, 0, 1);
   merge.connect(sfx);
 
+  const ambience = ac.createGain();
+  ambience.gain.value = AMBIENCE.level;
+  ambience.connect(filter(ac, 'lowpass', AMBIENCE.lowpass, AMBIENCE.q)).connect(sfx);
+
   const music = ac.createGain();
   music.connect(master);
+  const musicTone = filter(ac, 'lowpass', MUSIC_TONE.open, 0.5);
+  musicTone.connect(music);
   const duck = ac.createGain();
-  duck.connect(music);
+  duck.connect(musicTone);
 
   const mix = {
     ac,
@@ -106,7 +124,9 @@ export function createMixer(ac) {
     sfx,
     ui,
     space,
+    ambience,
     music,
+    musicTone,
     duck,
     noise: noiseBuffer(ac, 2, 1),
     pink: pinkBuffer(ac, 3),

@@ -1,11 +1,13 @@
 import { noiseSource, filter, gain, saturation, midiHz, mulberry32 } from './mixer.js';
+import { Gate } from './clock.js';
 
 // "Coastline Overdrive": the race soundtrack, an original synthwave / electro-rock track
 // sequenced and synthesized live (126 BPM, A minor). Sections rotate so a long race never
 // hears the same 15 seconds twice in a row:
 //   intro → drive → lift → drive (power chords) → break → lift → back to drive …
-// A look-ahead scheduler queues notes ~150 ms ahead on the audio clock, so timing stays
-// tight even when a frame stalls. tools/audio renders the same code offline.
+// The audio clock (see clock.js) queues notes `lookahead` seconds ahead of the playhead, so
+// timing stays tight and no note is lost while a frame stalls. tools/audio renders the same
+// code offline.
 
 const BPM = 126;
 const STEP = 60 / BPM / 4; // one 16th note
@@ -52,11 +54,20 @@ const SECTIONS = {
 const ORDER = ['intro', 'drive', 'lift', 'drive2', 'break', 'lift'];
 const LOOP_FROM = 1;
 
+// How far ahead of the playhead notes are queued. Longer than any frame hitch a phone is
+// likely to have; the only cost is that a drop or a stop lands up to this late.
+export const MUSIC_LOOKAHEAD = 0.3;
+
 export class Music {
-  constructor(mix) {
+  // gated: the guitar and lead voices are unplugged outside the sections that use them, so
+  // the audio thread does not render their silent oscillators. Only for a live context whose
+  // clock calls fill(); offline renders keep everything plugged in.
+  constructor(mix, { gated = false, lookahead = MUSIC_LOOKAHEAD } = {}) {
     const ac = mix.ac;
     this.mix = mix;
     this.ac = ac;
+    this.gated = gated;
+    this.lookahead = lookahead;
     this.rand = mulberry32(5);
 
     this.out = gain(ac, 0);
@@ -93,11 +104,11 @@ export class Music {
 
     this.pulseWave = pulseWave(ac, 0.25);
     this.playing = false;
-    this.timer = 0;
     this.v = null;
   }
 
-  // Starts from the intro. `at` schedules on an offline timeline; realtime runs a timer.
+  // Starts from the intro. `at` schedules on an offline timeline; live, the audio clock calls
+  // fill() to queue the notes.
   start(at) {
     const ac = this.ac;
     const t = at ?? ac.currentTime + 0.08;
@@ -111,17 +122,18 @@ export class Music {
     this.out.gain.cancelScheduledValues(t);
     this.out.gain.setValueAtTime(0.0001, t);
     this.out.gain.exponentialRampToValueAtTime(1, t + 1.2);
-    if (at === undefined) {
-      clearInterval(this.timer);
-      this.timer = setInterval(() => this.schedule(), 25);
-      this.schedule();
-    }
+  }
+
+  // Audio clock tick: queue notes up to the look-ahead and unplug voices that went quiet.
+  fill(now) {
+    if (!this.playing) return;
+    this.schedule(now + this.lookahead, now);
+    if (this.v?.gates) for (const g of this.v.gates) g.poll(now);
   }
 
   stop(fade = 0.8) {
     if (!this.playing) return;
     this.playing = false;
-    clearInterval(this.timer);
     const t = this.ac.currentTime;
     this.out.gain.cancelScheduledValues(t);
     this.out.gain.setTargetAtTime(0, t, fade / 4);
@@ -144,10 +156,11 @@ export class Music {
     this.bus.gain.setTargetAtTime(paused ? 0.6 : 0.9, t, 0.12);
   }
 
-  // Queues every 16th that starts before `until`.
-  schedule(until = this.ac.currentTime + 0.15) {
+  // Queues every 16th that starts before `until`. `now` is the playhead (offline renders that
+  // queue the whole track up front leave it at 0).
+  schedule(until = this.ac.currentTime + this.lookahead, now = this.ac.currentTime) {
     if (!this.playing) return;
-    if (this.nextTime < this.ac.currentTime - 0.05) this.nextTime = this.ac.currentTime + 0.02; // stalled tab
+    if (this.nextTime < now - 0.05) this.nextTime = now + 0.02; // stalled longer than the look-ahead
     while (this.nextTime < until) {
       this.play(SECTIONS[ORDER[this.order]], this.step, this.nextTime);
       this.nextTime += STEP;
@@ -208,7 +221,17 @@ export class Music {
       sources.push(o);
       return o;
     };
-    const v = { sources };
+    const v = { sources, gates: [] };
+    // Connects a voice's output, behind a gate when gated.
+    const plug = (node, ...dests) => {
+      if (!this.gated) {
+        for (const d of dests) node.connect(d);
+        return null;
+      }
+      const g = new Gate(dests.map((d) => [node, d]));
+      v.gates.push(g);
+      return g;
+    };
 
     // Sidechain pump: everything melodic dips under each kick.
     v.pump = gain(ac, 1);
@@ -289,9 +312,11 @@ export class Music {
     v.leadF = filter(ac, 'lowpass', 3400, 1.2);
     v.leadG = gain(ac);
     v.leadF.connect(v.leadG);
-    v.leadG.connect(v.pump);
-    v.leadG.connect(gain(ac, 0.5)).connect(this.echo);
-    v.leadG.connect(gain(ac, 0.4)).connect(this.reverbSend);
+    const leadEcho = gain(ac, 0.5);
+    leadEcho.connect(this.echo);
+    const leadHall = gain(ac, 0.4);
+    leadHall.connect(this.reverbSend);
+    v.leadOut = plug(v.leadG, v.pump, leadEcho, leadHall);
     const vib = osc('sine', 5.6);
     v.vibDepth = gain(ac, 0);
     vib.connect(v.vibDepth);
@@ -312,7 +337,8 @@ export class Music {
     v.powerG = gain(ac);
     const powerPan = ac.createStereoPanner();
     powerPan.pan.value = 0.3;
-    drive.connect(lp).connect(scoop).connect(v.powerG).connect(powerPan).connect(v.pump);
+    drive.connect(lp).connect(scoop).connect(v.powerG).connect(powerPan);
+    v.powerOut = plug(powerPan, v.pump);
     v.power = [
       [0, -6],
       [7, 6],
@@ -398,6 +424,7 @@ export class Music {
 
   lead(t, note, dur) {
     const v = this.v;
+    v.leadOut?.open(t + dur + 1.5); // the echo and hall ring on
     // A touch of portamento between notes.
     for (const o of v.lead) o.frequency.setTargetAtTime(midiHz(note), t, 0.012);
     const g = v.leadG.gain;
@@ -410,6 +437,7 @@ export class Music {
 
   power(t, root, dur, k) {
     const v = this.v;
+    v.powerOut?.open(t + dur + 0.5);
     for (const { o, iv } of v.power) o.frequency.setValueAtTime(midiHz(root + iv), t);
     const g = v.powerG.gain;
     g.setTargetAtTime(0.075 * k, t, 0.002);

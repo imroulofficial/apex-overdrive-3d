@@ -1,5 +1,6 @@
 import { mulberry32, saturation, noiseSource, filter, gain } from './mixer.js';
 import { blowOff, crackle } from './sfx.js';
+import { Gate } from './clock.js';
 
 // The player's engine, modelled like a commercial racing game's: pitch-shifted RPM loops
 // crossfaded by RPM, under a sub-bass rumble, a mechanical whine and intake/turbo layers,
@@ -260,14 +261,23 @@ export class Gearbox {
 // Engine voice: the synth graph, driven by set() at a given time
 // ---------------------------------------------------------------------------
 
+// gated: layers that are often silent (tyres, surfaces, nitro air) stay unplugged from the
+// graph while their level is zero, so the audio thread skips them. Only for a live context
+// whose clock polls the gates (see AudioClock); offline renders keep everything plugged in.
 export class EngineVoice {
-  constructor(mix, { dest = mix.sfx } = {}) {
+  constructor(mix, { dest = mix.sfx, ambience = mix.ambience ?? dest, gated = false } = {}) {
     const ac = mix.ac;
     this.mix = mix;
     this.ac = ac;
     this.params = new Map();
     this.sources = [];
+    this.gates = new Map();
     const src = (node) => (this.sources.push(node), node);
+    // Connects a layer's level to its destinations, behind a gate when gated.
+    const plug = (g, ...dests) => {
+      if (gated) this.gates.set(g.gain, new Gate(dests.map((d) => [g, d])));
+      else for (const d of dests) g.connect(d);
+    };
 
     this.out = gain(ac, 0);
     this.out.connect(dest);
@@ -345,23 +355,27 @@ export class EngineVoice {
     const air = src(noiseSource(mix, { buffer: mix.pink }));
     this.airBp = filter(ac, 'bandpass', 900, 0.7);
     this.airGain = gain(ac, 0);
-    air.connect(this.airBp).connect(this.airGain).connect(dest);
+    air.connect(this.airBp).connect(this.airGain);
+    plug(this.airGain, dest);
     const howl = src(noiseSource(mix));
     this.howlBp = filter(ac, 'bandpass', 800, 12);
     this.howlGain = gain(ac, 0);
-    howl.connect(this.howlBp).connect(this.howlGain).connect(dest);
+    howl.connect(this.howlBp).connect(this.howlGain);
+    plug(this.howlGain, dest);
 
-    // Wind over the body.
+    // Wind over the body: background, so it sits in the damped ambience bus.
     const wind = src(noiseSource(mix, { buffer: mix.pink }));
     this.windLp = filter(ac, 'lowpass', 400, 0.5);
     this.windGain = gain(ac, 0);
-    wind.connect(this.windLp).connect(this.windGain).connect(dest);
+    wind.connect(this.windLp).connect(this.windGain);
+    plug(this.windGain, ambience);
 
     // Tyre screech: stick-slip squeal is nearly tonal, so three narrow bands at inharmonic
     // ratios plus a buzzing saw, all wandering in pitch with the slip.
     this.skidGain = gain(ac, 0);
-    this.skidGain.connect(dest);
-    this.skidGain.connect(gain(ac, 0.35)).connect(mix.space);
+    const skidSend = gain(ac, 0.35);
+    skidSend.connect(mix.space);
+    plug(this.skidGain, dest, skidSend);
     const skidNoise = src(noiseSource(mix));
     const jitter = src(noiseSource(mix, { buffer: mix.wobble, rate: 9 }));
     this.skidBands = [
@@ -385,7 +399,7 @@ export class EngineVoice {
     // Off the asphalt. Gravel: stones crunching and pinging off the floor pan (bright noise,
     // chopped by a fast random wander) over a low rumble. Grass: a soft, swishing hiss.
     this.gravelGain = gain(ac, 0);
-    this.gravelGain.connect(dest);
+    plug(this.gravelGain, dest);
     const grit = src(noiseSource(mix));
     const chop = gain(ac, 0.55);
     src(noiseSource(mix, { buffer: mix.wobble, rate: 7 })).connect(gain(ac, 0.6)).connect(chop.gain);
@@ -393,7 +407,7 @@ export class EngineVoice {
     this.gravelRumble = filter(ac, 'lowpass', 160, 0.9);
     src(noiseSource(mix, { buffer: mix.pink })).connect(this.gravelRumble).connect(gain(ac, 2.2)).connect(this.gravelGain);
     this.grassGain = gain(ac, 0);
-    this.grassGain.connect(dest);
+    plug(this.grassGain, dest);
     const swish = gain(ac, 0.6);
     src(noiseSource(mix, { buffer: mix.wobble, rate: 1.6 })).connect(gain(ac, 0.4)).connect(swish.gain);
     this.grassLp = filter(ac, 'lowpass', 900, 0.5);
@@ -402,8 +416,9 @@ export class EngineVoice {
     // Timber bridge deck: every plank seam knocks the tyres (a chopped, hollow low-mid knock at
     // speed / plank pitch) over the boom of the empty span underneath.
     this.woodGain = gain(ac, 0);
-    this.woodGain.connect(dest);
-    this.woodGain.connect(gain(ac, 0.4)).connect(mix.space);
+    const woodSend = gain(ac, 0.4);
+    woodSend.connect(mix.space);
+    plug(this.woodGain, dest, woodSend);
     const knock = src(noiseSource(mix, { buffer: mix.pink }));
     this.woodBp = filter(ac, 'bandpass', 210, 2.2);
     const seams = gain(ac, 0.5);
@@ -430,12 +445,23 @@ export class EngineVoice {
     for (const s of this.sources) s.stop(t + fade + 0.3);
   }
 
-  // Sets a param toward v, skipping tiny changes so a steady state schedules nothing.
+  // Sets a param toward v, skipping tiny changes so a steady state schedules nothing. A gated
+  // layer is plugged in while its level is up and unplugged once it has faded out.
   p(param, v, t, tc) {
     const last = this.params.get(param);
     if (last !== undefined && Math.abs(last - v) <= Math.abs(v) * 0.004 + 1e-4) return;
     this.params.set(param, v);
     param.setTargetAtTime(v, t, tc);
+    const gate = this.gates.get(param);
+    if (gate) {
+      if (v > 1e-4) gate.open();
+      else gate.release(t + tc * 8);
+    }
+  }
+
+  // Unplugs gated layers that have gone quiet (audio time `now`).
+  poll(now) {
+    for (const g of this.gates.values()) g.poll(now);
   }
 
   // s: { rpm, load 0..1, boost 0..1, tier 0..2, speed 0..1, skid 0..1, slip (rad), cut 0..1,
@@ -494,6 +520,55 @@ export function playEngineEvents(mix, events, t) {
     if (e.type === 'bov') blowOff(mix, e.strength, t);
     else if (e.type === 'upshift' && e.bov) blowOff(mix, e.bov, t);
     else if (e.type === 'pop') crackle(mix, e.intensity, t);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Engine driver: runs the gearbox on the audio clock
+// ---------------------------------------------------------------------------
+
+// Control step on the audio timeline. The voice's params glide with time constants of 35 ms
+// and up, so 60 Hz steps are smooth.
+export const CONTROL_STEP = 1 / 60;
+
+// Steps the gearbox in fixed steps of audio time and lays each step's voice settings onto the
+// timeline `lookahead` seconds ahead of the playhead, holding the latest controls. The race
+// hands it new controls every frame (input()); the audio clock calls fill() whether frames
+// arrive or not, so frame timing never reaches the sound. onStep(t, rpm, throttle, boost)
+// lets the mixer follow along (music ducking); onEvents(events, t) plays blow-off and crackle.
+// Controls with `hold` set (the race is paused) freeze the gearbox where it is.
+export class EngineDriver {
+  constructor(voice, { lookahead = 0.05, onStep, onEvents } = {}) {
+    this.voice = voice;
+    this.box = new Gearbox();
+    this.lookahead = lookahead;
+    this.onStep = onStep;
+    this.onEvents = onEvents ?? ((ev, t) => playEngineEvents(voice.mix, ev, t));
+    this.controls = { throttle: 0, neutral: true, volume: 1 };
+    this.next = -1;
+  }
+
+  input(controls) {
+    this.controls = controls;
+  }
+
+  fill(now) {
+    const until = now + this.lookahead;
+    // First fill, or a stall longer than the look-ahead: the voice has held its last state
+    // and carries on from the playhead (no burst of catch-up steps).
+    if (this.next < now) this.next = now;
+    const c = this.controls;
+    const { speedNorm = 0, throttle = 1, neutral = false, airborne = false, speed = 0, boost = 0, skid = 0, slip = 0, gravel = 0, grass = 0, wood = 0, mps = 0, volume = 1 } = c;
+    while (this.next < until) {
+      const t = this.next;
+      const box = this.box;
+      const events = box.step(c.hold ? 0 : CONTROL_STEP, { speedNorm, throttle, neutral, airborne });
+      if (volume > 0 && events.length) this.onEvents(events, t);
+      this.voice.set({ rpm: box.rpm, load: throttle, boost: box.boost, tier: boost, speed, skid, slip, cut: box.cut, gravel, grass, wood, mps, volume }, t);
+      this.onStep?.(t, box, c);
+      this.next += CONTROL_STEP;
+    }
+    this.voice.poll(now);
   }
 }
 
