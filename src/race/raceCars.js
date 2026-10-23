@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { applyFinish } from '../garage/carPaint.js';
+import { applyFinish, liveryPaint } from '../garage/carPaint.js';
 import { FINISHES } from '../data/catalog.js';
 import { backFace, createVertexPbrMaterial, describeMaterial, isFlatMaterial, mergePainted, paintVertices } from '../render/vertexPbr.js';
 
@@ -45,12 +45,23 @@ function toFloat(attr) {
 function normalize(geo, matrix) {
   let g = geo.index ? geo.toNonIndexed() : geo.clone();
   for (const name of Object.keys(g.attributes)) {
-    if (!['position', 'normal', 'uv'].includes(name)) g.deleteAttribute(name);
+    if (!['position', 'normal', 'uv', 'color'].includes(name)) g.deleteAttribute(name);
     else if (!(g.attributes[name].array instanceof Float32Array) || g.attributes[name].normalized || g.attributes[name].isInterleavedBufferAttribute) g.setAttribute(name, toFloat(g.attributes[name]));
   }
   if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
   if (!g.attributes.normal) g.computeVertexNormals();
   g.applyMatrix4(matrix);
+  return g;
+}
+
+// paintVertices() for a part that may carry baked vertex colours (generated models' rival
+// LOD): the material's flat colour multiplies them instead of replacing them.
+function paintBaked(g, description) {
+  const baked = g.attributes.color;
+  paintVertices(g, description);
+  if (!baked) return g;
+  const col = g.attributes.color;
+  for (let i = 0; i < col.count; i++) col.setXYZ(i, col.getX(i) * baked.getX(i), col.getY(i) * baked.getY(i), col.getZ(i) * baked.getZ(i));
   return g;
 }
 
@@ -71,7 +82,7 @@ function bake(root, relativeTo, skip = () => false, materialMap = (m) => m, atla
       if (!buckets.has(key)) buckets.set(key, []);
       const g = normalize(geo, m);
       if (target === ATLAS) {
-        paintVertices(g, describeMaterial(mat));
+        paintBaked(g, describeMaterial(mat));
         buckets.get(key).push(g);
         if (mat.side === THREE.DoubleSide) buckets.get(key).push(backFace(g));
       } else {
@@ -88,16 +99,24 @@ function bake(root, relativeTo, skip = () => false, materialMap = (m) => m, atla
 
 // Clear-coated paint for rivals: the showroom's flake normal map and iridescence are left
 // out (they cost a texture fetch and a lobe each), the lacquer layer and env reflections stay.
-export function createRivalPaint(color, finish = 'gloss') {
+// `livery` (the template paint's livery uniforms) keeps a generated model's baked vertex
+// colours as shading under the rival's colour.
+export function createRivalPaint(color, finish = 'gloss', livery = null) {
   const f = FINISHES[finish] ?? FINISHES.gloss;
-  return new THREE.MeshPhysicalMaterial({
+  const mat = new THREE.MeshPhysicalMaterial({
     color,
     metalness: f.metalness,
     roughness: Math.max(0.12, f.roughness),
     clearcoat: Math.max(0.6, f.clearcoat),
     clearcoatRoughness: 0.04,
     envMapIntensity: 1.35,
+    vertexColors: Boolean(livery),
   });
+  if (livery) {
+    liveryPaint(mat, { factoryLum: livery.uFactoryLum.value, source: 'vertex' });
+    mat.userData.livery.uFactory.value = f.factory ? 1 : 0;
+  }
+  return mat;
 }
 
 function flameTexture() {
@@ -116,6 +135,66 @@ function flameTexture() {
   return tex;
 }
 
+// Where the car touches the road, measured on its model (car space: nose +X, right +Z, tyres
+// on y = 0): the four tyre contact patches, plus points under the nose, the tail and the
+// floor with their ground clearance. CarVisual casts a ray down from each of them every frame.
+function measureChassis(template, wheelsSrc, box) {
+  const xs = wheelsSrc.map((w) => w.position.x);
+  const mid = (Math.max(...xs) + Math.min(...xs)) / 2;
+  const front = wheelsSrc.filter((w) => w.position.x > mid);
+  const rear = wheelsSrc.filter((w) => w.position.x <= mid);
+  const avg = (list, f) => list.reduce((n, w) => n + f(w), 0) / Math.max(1, list.length);
+  const frontX = front.length ? avg(front, (w) => w.position.x) : 1.3;
+  const rearX = rear.length ? avg(rear, (w) => w.position.x) : -1.3;
+  const halfTrack = wheelsSrc.length ? avg(wheelsSrc, (w) => Math.abs(w.position.z)) : 0.8;
+  const length = box.max.x - box.min.x;
+  // Lowest bodywork in three zones: nose overhang, tail overhang and the floor between axles.
+  const low = { nose: Infinity, tail: Infinity, floor: Infinity };
+  const v = new THREE.Vector3();
+  template.group.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(template.group.matrixWorld).invert();
+  const m = new THREE.Matrix4();
+  template.group.traverse((o) => {
+    if (!o.isMesh) return;
+    for (let p = o; p; p = p.parent) if (wheelsSrc.includes(p)) return;
+    m.multiplyMatrices(inv, o.matrixWorld);
+    const pos = o.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(m);
+      if (v.x > box.max.x - length * 0.12) low.nose = Math.min(low.nose, v.y);
+      else if (v.x < box.min.x + length * 0.12) low.tail = Math.min(low.tail, v.y);
+      else if (v.x > rearX + 0.3 && v.x < frontX - 0.3 && Math.abs(v.z) < halfTrack * 0.7) low.floor = Math.min(low.floor, v.y);
+    }
+  });
+  const clear = (y, fallback) => (Number.isFinite(y) ? Math.max(0.02, y) : fallback);
+  const nose = clear(low.nose, 0.15);
+  const tail = clear(low.tail, 0.18);
+  const floor = clear(low.floor, 0.12);
+  const noseX = box.max.x - 0.05;
+  const tailX = box.min.x + 0.05;
+  const corner = halfTrack * 0.8;
+  return {
+    front: frontX,
+    rear: rearX,
+    halfTrack,
+    length,
+    width: box.max.z - box.min.z,
+    // { a: metres ahead of the centre, l: metres to the right, c: clearance above the road }
+    // The first four are the wheels (FL, FR, RL, RR) in that order.
+    points: [
+      { a: frontX, l: -halfTrack, c: 0 },
+      { a: frontX, l: halfTrack, c: 0 },
+      { a: rearX, l: -halfTrack, c: 0 },
+      { a: rearX, l: halfTrack, c: 0 },
+      { a: noseX, l: -corner, c: nose },
+      { a: noseX, l: corner, c: nose },
+      { a: tailX, l: -corner, c: tail },
+      { a: tailX, l: corner, c: tail },
+      { a: (frontX + rearX) / 2, l: 0, c: floor },
+    ],
+  };
+}
+
 export class CarFactory {
   // `template` is a car rig from loadCar(); the factory never mutates it.
   constructor(template) {
@@ -125,10 +204,12 @@ export class CarFactory {
     this.flameTex = flameTexture();
     this.atlas = createVertexPbrMaterial({ envMapIntensity: 1.1 });
     // Length and width of the car on the ground, for its contact shadow.
-    const size = new THREE.Box3().setFromObject(template.group).getSize(new THREE.Vector3());
+    const box = new THREE.Box3().setFromObject(template.group, true);
+    const size = box.getSize(new THREE.Vector3());
     this.footprint = { length: size.x, width: size.z };
     // Left and right wheels are mirror images, so each side gets its own batch.
     const wheelsSrc = template.group.children.filter((c) => c.isGroup && c.userData.wheelIndex !== undefined);
+    this.chassis = measureChassis(template, wheelsSrc, box);
     this.wheelBatches = [];
     for (const side of [1, -1]) {
       const src = wheelsSrc.find((w) => Math.sign(w.position.z || 1) === side);
@@ -173,7 +254,7 @@ export class CarFactory {
       for (const { geo, mat } of sliceGroups(o)) {
         if (!isFlatMaterial(mat)) flat = false;
         const g = normalize(geo, m);
-        paintVertices(g, describeMaterial(mat));
+        paintBaked(g, describeMaterial(mat));
         geos.push(g);
         if (mat.side === THREE.DoubleSide) geos.push(backFace(g));
       }
@@ -200,6 +281,13 @@ export class CarFactory {
     }
   }
 
+  // Which chassis ray (index into chassis.points) sits under a template wheel.
+  wheelPoint(src) {
+    const { front, rear } = this.chassis;
+    const isFront = Math.abs(src.position.x - front) < Math.abs(src.position.x - rear);
+    return (isFront ? 0 : 2) + (src.position.z > 0 ? 1 : 0);
+  }
+
   // Drops a car's wheels from the batches (its visual is being thrown away).
   release(visual) {
     for (const b of this.wheelBatches) b.slots = b.slots.filter((s) => !visual.wheels.some((w) => w.spin === s));
@@ -210,7 +298,7 @@ export class CarFactory {
   build({ color, finish = 'gloss', player = false, castShadow = true }) {
     const t = this.template.group;
     const own = new Map();
-    const paint = player ? this.paint : createRivalPaint(color, finish);
+    const paint = player ? this.paint : createRivalPaint(color, finish, this.paint.userData.livery);
     const materialMap = (mat) => {
       if (mat === this.paint) return paint;
       if (mat.name === 'skip') return null;
@@ -224,9 +312,16 @@ export class CarFactory {
     const wheelsSrc = t.children.filter((c) => c.isGroup && c.userData.wheelIndex !== undefined);
     const isWheel = (o) => wheelsSrc.includes(o);
 
-    const root = new THREE.Group(); // position + yaw + pitch
-    const body = new THREE.Group(); // roll / squat
-    root.add(body);
+    const root = new THREE.Group(); // position + yaw + pitch + road roll (suspension)
+    // Body lean (cornering roll, squat) pivots at axle height, so the sills never swing
+    // down into the road; the wheels stay on the root and follow the ground themselves.
+    const pivot = this.template.wheelRadius;
+    const lean = new THREE.Group();
+    lean.position.y = pivot;
+    const body = new THREE.Group();
+    body.position.y = -pivot;
+    lean.add(body);
+    root.add(lean);
     bake(t, t, isWheel, materialMap, this.atlas).forEach((mesh) => {
       // One shadow caster per car keeps the shadow pass cheap; the paint shell is the silhouette.
       mesh.castShadow = castShadow && mesh.material === paint;
@@ -254,8 +349,8 @@ export class CarFactory {
           spin.add(mesh);
         });
       }
-      body.add(wheel);
-      return { wheel, spin, front: index < 2 };
+      root.add(wheel);
+      return { wheel, spin, front: index < 2, rest: src.position.y, point: this.wheelPoint(src) };
     });
 
     // Nitro flames at the exhausts.
@@ -280,9 +375,10 @@ export class CarFactory {
       body.add(fl);
       flames.push(fl);
     }
-    const visual = new CarVisual(root, body, wheels, tail, flames, flameMat, this.template.wheelRadius);
+    const visual = new CarVisual(root, lean, wheels, tail, flames, flameMat, this.template.wheelRadius);
     visual.head = head;
     visual.footprint = this.footprint;
+    visual.chassis = this.chassis;
     // Materials made for this car alone (the atlas, wheels and template parts are shared).
     visual.owned = [...lights, flameMat, ...(player ? [] : [paint])];
     return visual;
@@ -318,6 +414,10 @@ export class CarVisual {
     this.steerVis = 0;
     this.lastForward = 0;
     root.rotation.order = 'YZX';
+    // Suspension state (see suspend()): ride height, pitch and road roll with their rates.
+    this.chassis = null;
+    this.ride = { y: 0, vy: 0, pitch: 0, vPitch: 0, roll: 0, vRoll: 0, floor: 0, init: false };
+    this.ground = new Float32Array(9);
   }
 
   // Frees this car's baked geometries and its own materials (call after release()).
@@ -332,9 +432,82 @@ export class CarVisual {
     this.fxColors = fx ? { blue: new THREE.Color(fx.color), a: new THREE.Color(fx.pulse[0]), b: new THREE.Color(fx.pulse[1]) } : null;
   }
 
+  // Road contact. Rays from the chassis points (four tyre patches, nose, tail and floor; see
+  // measureChassis) find the road; the body pitches and rolls to the plane of the tyres on
+  // springs, then a hard floor lock lifts it until no tyre and no bodywork is below the road,
+  // whatever the springs are doing. Over a crest or into a dip the car settles with damping
+  // instead of snapping, and on a ramp lip or a sudden rise it is lifted that same frame, so
+  // the chassis never cuts into the asphalt. Wheels drop to the road below them (up to the
+  // suspension travel). Physics is unchanged: it still drives the car's centre on the road.
+  suspend(v, dt) {
+    const ch = this.chassis;
+    const r = this.ride;
+    const hs = this.ground;
+    const pts = ch.points;
+    for (let i = 0; i < pts.length; i++) hs[i] = v.groundAt(pts[i].a, pts[i].l);
+    let pitch = v.pitch;
+    let roll = 0;
+    if (!v.airborne) {
+      pitch = Math.atan2((hs[0] + hs[1] - hs[2] - hs[3]) / 2, ch.front - ch.rear);
+      roll = Math.atan2((hs[0] + hs[2] - hs[1] - hs[3]) / 2, 2 * ch.halfTrack);
+    }
+    const snap = dt <= 0 || !r.init;
+    const h = Math.min(dt, 1 / 20);
+    // Damped spring toward `target` (moving at `rate`), integrated implicitly so stiff
+    // settings stay stable at 30 FPS: returns the new velocity.
+    const spring = (x, vx, target, w, z, rate = 0) => (vx + h * (w * w * (target - x) + 2 * z * w * rate)) / (1 + h * 2 * z * w + h * h * w * w);
+    if (snap) {
+      r.pitch = pitch;
+      r.roll = roll;
+      r.vPitch = r.vRoll = 0;
+    } else {
+      r.vPitch = spring(r.pitch, r.vPitch, pitch, 22, 0.9);
+      r.pitch += r.vPitch * h;
+      r.vRoll = spring(r.roll, r.vRoll, roll, 22, 0.9);
+      r.roll += r.vRoll * h;
+    }
+    // Floor lock: the lowest ride height at this pitch and roll that keeps every point on or
+    // above its own ray hit (clearance included). The body's chassis plane is
+    // y + a * sin(pitch) - l * sin(roll) at a point (a ahead, l right).
+    const sp = Math.sin(r.pitch);
+    const sr = Math.sin(r.roll);
+    let floor = -Infinity;
+    for (let i = 0; i < pts.length; i++) floor = Math.max(floor, hs[i] - pts[i].c - pts[i].a * sp + pts[i].l * sr);
+    // Grounded, the car rests on that floor (following its rate, so a long downhill never
+    // leaves it floating behind); in the air it follows the flight.
+    const floorRate = snap ? 0 : THREE.MathUtils.clamp((floor - r.floor) / Math.max(dt, 1e-3), -25, 25);
+    r.floor = floor;
+    const target = v.airborne ? Math.max(v.pos.y, floor) : floor;
+    const targetRate = v.airborne ? v.vy : floorRate;
+    if (snap) {
+      r.y = target;
+      r.vy = targetRate;
+      r.init = true;
+    } else {
+      r.vy = spring(r.y, r.vy, target, 30, 1, targetRate);
+      r.y += r.vy * h;
+    }
+    if (r.y < floor) {
+      r.y = floor;
+      r.vy = Math.max(r.vy, floorRate);
+    }
+    // Each wheel reaches down to the road under it, within its travel.
+    const travel = this.wheelRadius * 0.45;
+    for (const w of this.wheels) {
+      const p = pts[w.point];
+      const gap = r.y + p.a * sp - p.l * sr - hs[w.point];
+      w.wheel.position.y = w.rest - THREE.MathUtils.clamp(gap, 0, travel);
+    }
+    this.root.position.set(v.pos.x, r.y, v.pos.z);
+    this.root.rotation.set(r.roll, v.heading, r.pitch);
+  }
+
   update(v, dt, time) {
-    this.root.position.copy(v.pos);
-    this.root.rotation.set(0, v.heading, v.pitch);
+    if (this.chassis && v.groundAt) this.suspend(v, dt);
+    else {
+      this.root.position.copy(v.pos);
+      this.root.rotation.set(0, v.heading, v.pitch);
+    }
 
     // Body lean into the turn and squat under acceleration.
     const lat = v.airborne ? 0 : v.yawRate * Math.max(0, v.forward);

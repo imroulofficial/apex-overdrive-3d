@@ -13,20 +13,39 @@ the permanent car id:
 `test/car-models.test.js` fails when a file goes over budget. The loader falls back to a more
 detailed file when a lower LOD is missing.
 
-| Car | Tier | Files |
-| --- | --- | --- |
-| Flux 85 (starter) | D | `rp1_vanta*.glb` |
-| Kestrel 930 | D | `kz_kestrel*.glb` |
-| Stallion Jet | C | `sv_stallion*.glb` |
-| Ridgeback 66 | C | `rb_ridgeback*.glb` |
-| Aurelia Vision | B | `ag_aurelia*.glb` |
-| Monza 55 | B | `mz_monza*.glb` |
-| Tempesta 9X | A | `tm_tempesta*.glb` |
-| Valkyrie GT-R (Supercar Bundle) | A | `rpx_hyperion*.glb` |
+| Car | Tier | Files | Source |
+| --- | --- | --- | --- |
+| Lumen EV (starter) | D | `rp1_vanta*.glb` | New Car 3 |
+| Kestrel Rally | D | `kz_kestrel*.glb` | New Car 6 |
+| Stallion 68 | C | `sv_stallion*.glb` | New Car 5 |
+| Ridgeback Trail | C | `rb_ridgeback*.glb` | New Car 8 |
+| Aurelia GT | B | `ag_aurelia*.glb` | New Car 4 |
+| Vipera R | B | `mz_monza*.glb` | New Car 7 |
+| Tempesta FX | A | `tm_tempesta*.glb` | New Car 1 |
+| Valkyrie GT-R (Supercar Bundle) | A | `rpx_hyperion*.glb` | New Car 2 |
 
-All eight come from the studio's Ca.zip asset pack; see `CREDITS.md`. File names follow the
-permanent car ids, not the display names. A `.glb` brings its own wheels. The Stock rim shows
-the model's own wheels; the other five rims swap in procedural rims at the model's tyre size.
+All eight are the studio's own original models from `New Car.zip` (2026-10-23); see
+`CREDITS.md`. File names follow the permanent car ids, not the display names. A `.glb` brings
+its own wheels. The Stock rim shows the model's own wheels; the other five rims swap in
+procedural rims at the model's tyre size.
+
+### Single-mesh (generated) models
+
+AI model generators export a car as one welded surface with one baked colour texture: no
+wheel nodes, no paint material. Manifest entries with `segment` go through
+`tools/models/segment.mjs`, which:
+
+- finds the four wheels from their treads (each tread triangle votes for an axle position and
+  radius) and cuts everything inside each tyre's cylinder out as `wheel_FL` ... `wheel_RR`;
+- sorts the body's triangles by texture colour into `CarPaint` (the `paint` colour rule),
+  `headlight_lens` / `taillight_lens` (front / rear facing, bright or red, optionally inside a
+  `head` / `tail` box) and `Body`;
+- simplifies body and wheels apart (body ~120k / 34k / 7k triangles, each wheel 7k / 1.5k / 300
+  for the showroom / drive / rival files), after welding away the generator's split normals.
+
+The paint shell keeps the texture: in the game it is a shading layer under the paint colour,
+and the **Factory Livery** finish (the default paint) shows the model's own colours. The rival
+LOD carries the texture as vertex colours.
 
 ## Importing source models
 

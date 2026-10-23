@@ -96,7 +96,7 @@ test('damaged saves are repaired, never thrown', () => {
   assert.equal(s.car, 'rp1-vanta');
   assert.equal(s.cars.ghost, undefined);
   assert.equal(s.cars['rp1-vanta'].upgrades.nitro, 0);
-  assert.equal(s.cars['rp1-vanta'].paint, 'apex-red');
+  assert.equal(s.cars['rp1-vanta'].paint, 'factory');
   assert.equal(s.cars['rp1-vanta'].rim, 'stock');
   assert.equal(s.cars['rp1-vanta'].spoiler, 'factory');
   assert.deepEqual(s.cars['rp1-vanta'].spoilers, ['factory']);

@@ -2,160 +2,212 @@
   "cars": [
     {
       "id": "rp1-vanta",
-      "src": "Car 1.glb",
-      "title": "1985 DeLorean DMC-12 Time Machine BTTF",
-      "author": "Ddiaz Design (https://sketchfab.com/ddiaz-design)",
-      "license": "CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/) original; Commercial rights held by Red Pen Studio (confirmed by the studio on 2026-10-22)",
-      "source": "https://sketchfab.com/3d-models/1985-delorean-dmc-12-time-machine-bttf-c6d865257d344523be373f543323ae18",
+      "src": "New Car 3.glb",
+      "title": "Electric crossover (New Car 3)",
+      "author": "Red Pen Studio (AI-generated original model)",
+      "license": "Original model owned by Red Pen Studio, clean IP (confirmed by the studio on 2026-10-23)",
+      "source": "New Car.zip supplied by Red Pen Studio, New Car 3.glb",
       "commercialRights": true,
-      "wheels": {
-        "FL": "3DWheel Front L",
-        "FR": "3DWheel Front R",
-        "RL": "3DWheel Rear L",
-        "RR": "3DWheel Rear R"
-      },
-      "paint": [
-        "TimeBTTF_TimeMachine1_1985Paint_Material1"
-      ],
-      "drop": "BadgeA",
-      "headlights": [
-        "light_glass"
-      ],
-      "taillights": [
-        "red_glas"
-      ]
+      "changes": "split into body, paint, lenses and four wheels, simplified, texture converted to WebP, meshopt-compressed, rival LOD baked to vertex colours",
+      "segment": {
+        "paint": {
+          "maxSat": 0.12,
+          "minVal": 0.7
+        },
+        "head": {
+          "x": [
+            0.35,
+            0.85
+          ],
+          "y": [
+            0.45,
+            0.55
+          ],
+          "any": "unpainted"
+        }
+      }
     },
     {
       "id": "kz-kestrel",
-      "src": "Car 4.glb",
-      "title": "Classic 930-style coupe (Car 4)",
-      "author": "Unknown (supplied in the studio asset pack)",
-      "license": "Commercial rights held by Red Pen Studio (confirmed by the studio on 2026-10-22)",
-      "source": "Ca.zip asset pack supplied by Red Pen Studio, Car 4.glb",
+      "src": "New Car 6.glb",
+      "title": "Rally coupe (New Car 6)",
+      "author": "Red Pen Studio (AI-generated original model)",
+      "license": "Original model owned by Red Pen Studio, clean IP (confirmed by the studio on 2026-10-23)",
+      "source": "New Car.zip supplied by Red Pen Studio, New Car 6.glb",
       "commercialRights": true,
-      "wheelParts": {
-        "FL": [
-          "Object_139",
-          "Object_141"
-        ],
-        "FR": [
-          "Object_20",
-          "Object_22"
-        ],
-        "RL": [
-          "Object_183",
-          "Object_185"
-        ],
-        "RR": [
-          "Object_15",
-          "Object_17"
-        ]
-      },
-      "paint": [
-        "paint"
-      ],
-      "drop": "^(coat|plate|930_stickers|930_wunderbaum)$",
-      "raceTris": 7400
+      "changes": "split into body, paint, lenses and four wheels, simplified, texture converted to WebP, meshopt-compressed, rival LOD baked to vertex colours",
+      "segment": {
+        "paint": {
+          "hue": 205,
+          "hueTol": 20,
+          "minSat": 0.2,
+          "minVal": 0.45
+        }
+      }
     },
     {
       "id": "sv-stallion",
-      "src": "Car 2.glb",
-      "title": "2019 muscle drag coupe (Car 2)",
-      "author": "Unknown (supplied in the studio asset pack)",
-      "license": "Commercial rights held by Red Pen Studio (confirmed by the studio on 2026-10-22)",
-      "source": "Ca.zip asset pack supplied by Red Pen Studio, Car 2.glb",
+      "src": "New Car 5.glb",
+      "title": "Muscle coupe (New Car 5)",
+      "author": "Red Pen Studio (AI-generated original model)",
+      "license": "Original model owned by Red Pen Studio, clean IP (confirmed by the studio on 2026-10-23)",
+      "source": "New Car.zip supplied by Red Pen Studio, New Car 5.glb",
       "commercialRights": true,
-      "wheels": {
-        "FL": "Combined3DWheel_3DWheel_front_L Instance1_Src4.001",
-        "FR": "Combined3DWheel_3DWheel_front_L Instance1_Src4.002",
-        "RL": "Combined3DWheel_3DWheel_front_L Instance1_Src4.068",
-        "RR": "Combined3DWheel_3DWheel_front_L Instance1_Src4.000"
-      },
-      "paint": [
-        "Ford_MustangCobraJet_2019PaintA_Material"
-      ],
-      "drop": "BadgeA",
-      "raceTris": 7600
+      "changes": "split into body, paint, lenses and four wheels, simplified, texture converted to WebP, meshopt-compressed, rival LOD baked to vertex colours",
+      "segment": {
+        "paint": {
+          "hue": 215,
+          "hueTol": 20,
+          "minSat": 0.4,
+          "minVal": 0.2
+        },
+        "head": {
+          "x": [
+            0.55,
+            0.85
+          ],
+          "y": [
+            0.36,
+            0.55
+          ]
+        }
+      }
     },
     {
       "id": "rb-ridgeback",
-      "src": "Car 10.glb",
-      "title": "1960s endurance racer (Car 10)",
-      "author": "Unknown (supplied in the studio asset pack)",
-      "license": "Commercial rights held by Red Pen Studio (confirmed by the studio on 2026-10-22)",
-      "source": "Ca.zip asset pack supplied by Red Pen Studio, Car 10.glb",
+      "src": "New Car 8.glb",
+      "title": "Off-road SUV (New Car 8)",
+      "author": "Red Pen Studio (AI-generated original model)",
+      "license": "Original model owned by Red Pen Studio, clean IP (confirmed by the studio on 2026-10-23)",
+      "source": "New Car.zip supplied by Red Pen Studio, New Car 8.glb",
       "commercialRights": true,
-      "paint": [
-        "Car_body"
-      ],
-      "drop": "DAMAGE_GLASS|EXTERIOR_PLATES|EXT_PLATE_plastic|INT_Decals|RIM_BLUR|BEAM_MASK",
-      "taillights": [
-        "EXTERIOR_LIGHT_BRAKE"
-      ]
+      "changes": "split into body, paint, lenses and four wheels, simplified, texture converted to WebP, meshopt-compressed, rival LOD baked to vertex colours",
+      "segment": {
+        "paint": {
+          "maxSat": 0.15,
+          "minVal": 0.17,
+          "maxVal": 0.45
+        }
+      }
     },
     {
       "id": "ag-aurelia",
-      "src": "Car 12.glb",
-      "title": "Vision GT concept coupe (Car 12)",
-      "author": "Unknown (supplied in the studio asset pack)",
-      "license": "Commercial rights held by Red Pen Studio (confirmed by the studio on 2026-10-22)",
-      "source": "Ca.zip asset pack supplied by Red Pen Studio, Car 12.glb",
+      "src": "New Car 4.glb",
+      "title": "Classic grand tourer (New Car 4)",
+      "author": "Red Pen Studio (AI-generated original model)",
+      "license": "Original model owned by Red Pen Studio, clean IP (confirmed by the studio on 2026-10-23)",
+      "source": "New Car.zip supplied by Red Pen Studio, New Car 4.glb",
       "commercialRights": true,
-      "paint": [
-        "Body"
-      ],
-      "drop": "CPIT_BADGES|Rim_Blurred",
-      "raceTris": 6800
+      "changes": "split into body, paint, lenses and four wheels, simplified, texture converted to WebP, meshopt-compressed, rival LOD baked to vertex colours",
+      "segment": {
+        "paint": {
+          "maxSat": 0.12,
+          "minVal": 0.45
+        },
+        "head": {
+          "x": [
+            0.55,
+            0.9
+          ],
+          "y": [
+            0.43,
+            0.62
+          ]
+        },
+        "tail": {
+          "x": [
+            0.6,
+            0.9
+          ],
+          "y": [
+            0.4,
+            0.62
+          ]
+        }
+      }
     },
     {
       "id": "mz-monza",
-      "src": "Car 11.glb",
-      "title": "Vision GT prototype (Car 11)",
-      "author": "Unknown (supplied in the studio asset pack)",
-      "license": "Commercial rights held by Red Pen Studio (confirmed by the studio on 2026-10-22)",
-      "source": "Ca.zip asset pack supplied by Red Pen Studio, Car 11.glb",
+      "src": "New Car 7.glb",
+      "title": "Mid-engine supercar (New Car 7)",
+      "author": "Red Pen Studio (AI-generated original model)",
+      "license": "Original model owned by Red Pen Studio, clean IP (confirmed by the studio on 2026-10-23)",
+      "source": "New Car.zip supplied by Red Pen Studio, New Car 7.glb",
       "commercialRights": true,
-      "paint": [
-        "carpaint"
-      ],
-      "drop": "badgeint|RIM_BLUR"
+      "changes": "split into body, paint, lenses and four wheels, simplified, texture converted to WebP, meshopt-compressed, rival LOD baked to vertex colours",
+      "segment": {
+        "paint": {
+          "hue": 0,
+          "hueTol": 15,
+          "minSat": 0.5,
+          "minVal": 0.3
+        },
+        "head": {
+          "x": [
+            0.4,
+            0.8
+          ],
+          "y": [
+            0.6,
+            0.7
+          ],
+          "any": "unpainted"
+        },
+        "tail": {
+          "x": [
+            0.3,
+            0.92
+          ],
+          "y": [
+            0.6,
+            0.7
+          ],
+          "any": true
+        }
+      }
     },
     {
       "id": "tm-tempesta",
-      "src": "Car 3.glb",
-      "title": "2024 | Peugeot 9X8 EVO",
-      "author": "kevin (ケビン) (https://sketchfab.com/sohyalebret)",
-      "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)",
-      "source": "https://sketchfab.com/3d-models/2024-peugeot-9x8-evo-b3efbf3a774c4411983e630d764c8cea",
-      "drop": "RIM_BLUR|STEER|DISPLAY|DISPALY|INT_NUMMBER|INT_LIGHTS_GLOW|NUMBERPLATE|EXT_DECALS|INT_BANNER",
-      "paint": [
-        "EXT_CARPAINT"
-      ],
-      "headlights": [
-        "EXT_LIGHTS"
-      ],
-      "taillights": [
-        "EXT_LIGHTS_REAR"
-      ],
-      "raceTris": 9000
+      "src": "New Car 1.glb",
+      "title": "Open-wheel racer (New Car 1)",
+      "author": "Red Pen Studio (AI-generated original model)",
+      "license": "Original model owned by Red Pen Studio, clean IP (confirmed by the studio on 2026-10-23)",
+      "source": "New Car.zip supplied by Red Pen Studio, New Car 1.glb",
+      "commercialRights": true,
+      "changes": "split into body, livery accents (paint), rain light and four wheels, simplified, texture converted to WebP, meshopt-compressed, rival LOD baked to vertex colours",
+      "segment": {
+        "paint": {
+          "hue": 0,
+          "hueTol": 15,
+          "minSat": 0.5,
+          "minVal": 0.3
+        },
+        "head": false,
+        "tail": {
+          "y": [
+            0,
+            0.5
+          ]
+        }
+      }
     },
     {
       "id": "rpx-hyperion",
-      "src": "Car 5.glb",
-      "title": "Track hypercar (Car 5)",
-      "author": "Unknown (supplied in the studio asset pack)",
-      "license": "Commercial rights held by Red Pen Studio (confirmed by the studio on 2026-10-22)",
-      "source": "Ca.zip asset pack supplied by Red Pen Studio, Car 5.glb",
+      "src": "New Car 2.glb",
+      "title": "Hypercar (New Car 2)",
+      "author": "Red Pen Studio (AI-generated original model)",
+      "license": "Original model owned by Red Pen Studio, clean IP (confirmed by the studio on 2026-10-23)",
+      "source": "New Car.zip supplied by Red Pen Studio, New Car 2.glb",
       "commercialRights": true,
-      "paint": [
-        "KARISMA_BODY"
-      ],
-      "drop": "KARISMA_ROUNDEL|KARISMA_NUMBER|^badge$|caliperbadge|Display_UI|^livery$",
-      "headlights": [
-        "headlight_L",
-        "headlight_R"
-      ],
-      "raceTris": 7000
+      "changes": "split into body, paint, lenses and four wheels, simplified, texture converted to WebP, meshopt-compressed, rival LOD baked to vertex colours",
+      "segment": {
+        "paint": {
+          "hue": 50,
+          "hueTol": 15,
+          "minSat": 0.4,
+          "minVal": 0.3
+        }
+      }
     }
   ]
 }

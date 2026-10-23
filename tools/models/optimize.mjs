@@ -33,6 +33,7 @@ import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { clearNodeParent, compactPrimitive, dedup, getBounds, join, meshopt, prune, simplify, textureCompress, weld } from '@gltf-transform/functions';
 import { MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
+import { segmentDocument } from './segment.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '../..');
@@ -251,6 +252,16 @@ function creaseNormals(doc, crease = (25 * Math.PI) / 180) {
         }
       }
       const buffer = pos.getBuffer();
+      // Other attributes (vertex colours) are expanded to the same per-corner layout.
+      for (const sem of prim.listSemantics()) {
+        if (sem === 'POSITION' || sem === 'NORMAL') continue;
+        const attr = prim.getAttribute(sem);
+        const k = attr.getElementSize();
+        const src = attr.getArray();
+        const out = new Float32Array(faces * 3 * k);
+        for (let i = 0; i < faces * 3; i++) for (let c = 0; c < k; c++) out[i * k + c] = src[ix[i] * k + c];
+        prim.setAttribute(sem, doc.createAccessor().setType(attr.getType()).setArray(out).setBuffer(buffer));
+      }
       prim.setIndices(null);
       prim.setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(outPos).setBuffer(buffer));
       prim.setAttribute('NORMAL', doc.createAccessor().setType('VEC3').setArray(outNor).setBuffer(buffer));
@@ -469,12 +480,76 @@ async function build(entry, kind) {
   return { file: path.relative(root, file), tris: countTris(doc), draws, mb: +(size / 1e6).toFixed(2) };
 }
 
+// Single-mesh models (manifest `segment`, see segment.mjs) are split into wheels and body,
+// which are simplified apart: generated tyres are dense, and one shared budget would spend
+// half of a rival's triangles on treads. Their race LOD keeps the texture's colours as
+// vertex colours (COLOR_0) instead of one flat colour per material.
+const SEGMENT_BUDGET = {
+  garage: { bodyTris: 120000, wheelTris: 7000, maxError: 0.008 },
+  drive: { bodyTris: 34000, wheelTris: 1500, maxError: 0.02 },
+  race: { bodyTris: 7000, wheelTris: 300, maxError: 0.08 },
+};
+async function buildSegmented(entry, kind) {
+  const spec = KINDS[kind];
+  const doc = await io.read(path.join(srcDir, entry.src));
+  await doc.transform(weld());
+  const seg = await segmentDocument(doc, entry.segment, SEGMENT_BUDGET[kind]);
+  console.log(`  ${kind} parts: ${seg.counts.join(' ')} (factory luminance ${seg.factoryLum.toFixed(3)})`);
+  const wheels = normalise(doc, entry);
+  if (kind === 'race') await bakeVertexColours(doc);
+  flattenParts(doc, wheels);
+  await doc.transform(prune());
+  if (kind === 'race') creaseNormals(doc);
+  else {
+    const size = spec.texture(entry);
+    await doc.transform(textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [size, size], quality: 88, effort: 6 }));
+  }
+  await doc.transform(prune(), meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
+  const file = path.join(OUT, `${entry.id.replace(/-/g, '_')}${spec.suffix}.glb`);
+  await io.write(file, doc);
+  const draws = doc.getRoot().listMeshes().reduce((n, m) => n + m.listPrimitives().length, 0);
+  const { size } = await fs.stat(file);
+  return { file: path.relative(root, file), tris: countTris(doc), draws, mb: +(size / 1e6).toFixed(2) };
+}
+
+// Race LOD of a segmented model: every vertex takes the (blurred) texture colour under its
+// UV as a linear COLOR_0, then UVs and textures go.
+async function bakeVertexColours(doc) {
+  const srgbToLinear = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const images = new Map();
+  for (const mesh of doc.getRoot().listMeshes()) {
+    for (const prim of mesh.listPrimitives()) {
+      const mat = prim.getMaterial();
+      const tex = mat?.getBaseColorTexture();
+      const uv = prim.getAttribute('TEXCOORD_0');
+      if (!tex || !uv) continue;
+      if (!images.has(tex)) images.set(tex, await sharp(Buffer.from(tex.getImage())).removeAlpha().blur(3).raw().toBuffer({ resolveWithObject: true }));
+      const { data, info } = images.get(tex);
+      const t = uv.getArray();
+      const n = uv.getCount();
+      const out = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) {
+        const u = t[i * 2] - Math.floor(t[i * 2]);
+        const v = t[i * 2 + 1] - Math.floor(t[i * 2 + 1]);
+        const x = Math.min(info.width - 1, Math.floor(u * info.width));
+        const y = Math.min(info.height - 1, Math.floor(v * info.height));
+        const o = (y * info.width + x) * 3;
+        for (let c = 0; c < 3; c++) out[i * 3 + c] = srgbToLinear(data[o + c] / 255);
+      }
+      prim.setAttribute('COLOR_0', doc.createAccessor().setType('VEC3').setArray(out).setBuffer(uv.getBuffer()));
+      prim.setAttribute('TEXCOORD_0', null);
+    }
+  }
+  for (const mat of doc.getRoot().listMaterials()) mat.setBaseColorTexture(null).setBaseColorFactor([1, 1, 1, 1]);
+  for (const tex of doc.getRoot().listTextures()) tex.dispose();
+}
+
 const report = [];
 for (const entry of manifest.cars) {
   if (only && !entry.id.includes(only)) continue;
   console.log(`${entry.id} ← ${entry.src}`);
   for (const kind of Object.keys(KINDS)) {
-    const r = await build(entry, kind);
+    const r = await (entry.segment ? buildSegmented : build)(entry, kind);
     console.log(`  ${kind}: ${r.tris} tris, ${r.draws} primitives, ${r.mb} MB → ${r.file}`);
     report.push({ id: entry.id, kind, ...r });
   }

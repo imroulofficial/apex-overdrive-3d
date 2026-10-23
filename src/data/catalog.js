@@ -9,10 +9,15 @@ export const FINISHES = {
   matte: { label: 'Matte', metalness: 0.2, roughness: 0.62, clearcoat: 0.0, clearcoatRoughness: 1.0, flake: 0.0, iridescence: 0 },
   chrome: { label: 'Chrome', metalness: 1.0, roughness: 0.08, clearcoat: 0.6, clearcoatRoughness: 0.05, flake: 0.0, iridescence: 0 },
   // Thin-film colour shift over a heavy metallic flake: crimson head-on, violet and gold at grazing angles.
+  // The model's own baked livery under a clear coat (see garage/carPaint.js liveryPaint).
+  factory: { label: 'Factory Livery', metalness: 0.15, roughness: 0.3, clearcoat: 1.0, clearcoatRoughness: 0.03, flake: 0.0, iridescence: 0, factory: true },
   founder: { label: 'Iridescent Metallic', metalness: 0.8, roughness: 0.2, clearcoat: 1.0, clearcoatRoughness: 0.02, flake: 0.5, iridescence: 1.0 },
 };
 
 export const PAINTS = [
+  // Each car's own colours and livery as its designer made it. First = every car's default.
+  // `color` is only the swatch's ring; the finish shows the model's texture.
+  { id: 'factory', name: 'Factory Livery', color: '#d9dde3', finish: 'factory', price: 0 },
   { id: 'apex-red', name: 'Apex Red', color: '#c8102e', finish: 'metallic', price: 0 },
   { id: 'midnight', name: 'Midnight Blue', color: '#0d2a6b', finish: 'metallic', price: 0 },
   { id: 'arctic', name: 'Arctic White', color: '#e9edf2', finish: 'gloss', price: 0 },

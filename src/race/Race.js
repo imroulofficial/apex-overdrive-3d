@@ -365,6 +365,10 @@ export class Race {
       if (!r.vehicle) r.vehicle = new Vehicle(track, params, { passiveNitro: r.isPlayer ? 0.6 : 3.2, skills: r.isPlayer });
       r.vehicle.params = params;
       r.vehicle.reset(s, d);
+      // Contact footprint from the car's model: a 5.2 m open-wheeler and a 4.2 m rally coupe
+      // do not bump at the same distance.
+      const ch = r.visual.chassis;
+      if (ch) r.vehicle.collider = { offset: Math.max(0.4, (ch.length - ch.width) / 2), radius: ch.width / 2 };
       r.vehicle.proximity = false;
       if (!r.isPlayer) r.ai = new AIDriver(r.vehicle, track, { aggression: r.aggression, skill: Math.min(1, r.skill + mode.difficulty * 0.01), laneBias: r.laneBias, rand, duel });
       else r.ai = null;
@@ -747,9 +751,11 @@ export class Race {
     const dx0 = b.pos.x - a.pos.x;
     const dz0 = b.pos.z - a.pos.z;
     if (dx0 * dx0 + dz0 * dz0 > 36 || Math.abs(a.pos.y - b.pos.y) > 1.8) return;
-    const offs = [1.15, -1.15];
-    for (const oa of offs) {
-      for (const ob of offs) {
+    const ca = a.collider;
+    const cb = b.collider;
+    const minD = ca.radius + cb.radius;
+    for (const oa of [ca.offset, -ca.offset]) {
+      for (const ob of [cb.offset, -cb.offset]) {
         const ax = a.pos.x + Math.cos(a.heading) * oa;
         const az = a.pos.z - Math.sin(a.heading) * oa;
         const bx = b.pos.x + Math.cos(b.heading) * ob;
@@ -757,7 +763,6 @@ export class Race {
         let dx = bx - ax;
         let dz = bz - az;
         const d = Math.hypot(dx, dz);
-        const minD = 2.0;
         if (d >= minD || d < 1e-4) continue;
         dx /= d;
         dz /= d;

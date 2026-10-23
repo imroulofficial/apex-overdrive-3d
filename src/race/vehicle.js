@@ -87,7 +87,26 @@ export class Vehicle {
     this.trail = null;
     this.zone = null; // the trail whose fork or merge zone the car is in (both walls of the Y)
     this.events = [];
+    // Footprint for car-to-car contact: two discs along the car (`offset` metres either side
+    // of the centre, `radius` = half the width). Race.js fits it to the car's model.
+    this.collider = { offset: 1.15, radius: 1 };
     this.reset(0, 0);
+  }
+
+  // Road height `along` metres ahead of the car's centre and `lateral` metres to its right
+  // (a point on the car's floor plan, not the road's). The visual suspension (raceCars.js
+  // CarVisual) casts its wheel, nose and tail rays with it.
+  groundAt(along, lateral = 0) {
+    const pr = this.proj;
+    const fx = Math.cos(this.heading);
+    const fz = -Math.sin(this.heading);
+    // The car's right in the ground plane (nose +X, right +Z in car space).
+    const rx = -fz;
+    const rz = fx;
+    const ds = along * (fx * pr.tx + fz * pr.tz) + lateral * (rx * pr.tx + rz * pr.tz);
+    if (pr.trail) return pr.trail.heightAt(pr.ls + ds);
+    const dd = along * (fx * pr.rx + fz * pr.rz) + lateral * (rx * pr.rx + rz * pr.rz);
+    return this.track.heightAt(pr.s + ds, pr.d + dd);
   }
 
   reset(s, d) {
