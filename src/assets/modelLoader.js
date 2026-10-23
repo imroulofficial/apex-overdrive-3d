@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { createSwapWheel } from '../garage/carModel.js';
-import { createCarPaint } from '../garage/carPaint.js';
+import { applyFinish, createCarPaint, liveryPaint } from '../garage/carPaint.js';
 
 // Vehicle spawner. Every car in src/data/cars.js is a real model in public/assets/models/
 // (three files per car, see the README there), turned into one "car rig" interface:
@@ -116,7 +116,9 @@ function findNode(root, name, pattern) {
 // different scales between models (the Stallion's made flakes centimetres wide). Paint
 // meshes get box-projected UVs in metres instead, so every car sparkles at the same grain.
 const FLAKE_UV_PER_METRE = 0.25;
-function flakeUv(mesh) {
+// A paint shell that carries its livery texture keeps its own UVs for it, and the flakes go
+// to the second UV set (`channel` 1 on the flake map).
+function flakeUv(mesh, attribute = 'uv') {
   const geo = mesh.geometry;
   if (geo.userData.flakeUv) return;
   const pos = geo.attributes.position;
@@ -133,7 +135,7 @@ function flakeUv(mesh) {
     uv[i * 2] = u;
     uv[i * 2 + 1] = v;
   }
-  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geo.setAttribute(attribute, new THREE.BufferAttribute(uv, 2));
   geo.userData.flakeUv = true;
 }
 
@@ -174,6 +176,7 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', url }) {
   head.userData.headLight = true;
   const paintNames = opts.paintMaterials ?? null;
   let paintFound = false;
+  let livery = null;
   const part = new THREE.Box3();
   const partSize = new THREE.Vector3();
   model.traverse((o) => {
@@ -198,6 +201,17 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', url }) {
       }
       if (paintNames ? paintNames.includes(name) : PAINT_PATTERN.test(name)) {
         paintFound = true;
+        // Generated models bake their livery into the paint shell (texture on the showroom
+        // and drive files, vertex colours on the rival file): it stays as a shading layer
+        // under the game's paint, and the Factory Livery finish shows it as it is.
+        if (!livery && mat.map) {
+          livery = { factoryLum: mat.userData.factoryLum, source: 'map' };
+          paint.map = mat.map;
+          paint.normalMap.channel = 1;
+        } else if (!livery && mat.vertexColors && o.geometry.attributes.color) {
+          livery = { factoryLum: mat.userData.factoryLum, source: 'vertex' };
+          paint.vertexColors = true;
+        }
         return paint;
       }
       if (TAIL_PATTERN.test(name) || TAIL_PATTERN.test(o.name)) {
@@ -211,9 +225,13 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', url }) {
       return mat;
     };
     o.material = Array.isArray(o.material) ? o.material.map(swap) : swap(o.material);
-    if (o.material === paint) flakeUv(o);
+    if (o.material === paint) flakeUv(o, livery?.source === 'map' ? 'uv1' : 'uv');
   });
   if (!paintFound) console.warn(`[models] ${url}: no paint material found; paint changes will not show`);
+  if (livery) {
+    liveryPaint(paint, livery);
+    applyFinish(paint, `#${paint.color.getHexString()}`, finish ?? 'metallic');
+  }
 
   // Wheels: re-parent each wheel node under a pivot at its centre so it can spin about the
   // axle (z) and steer about y.

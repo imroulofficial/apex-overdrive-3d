@@ -75,7 +75,7 @@ test('paint and rims are equipped per car', () => {
   save.coins = 1000;
   syncOwnedCars(save, new Set(['supercar_bundle']));
   assert.ok(equipPaint(save, 'rp1-vanta', 'midnight'));
-  assert.equal(save.cars['rpx-hyperion'].paint, 'apex-red');
+  assert.equal(save.cars['rpx-hyperion'].paint, 'factory');
   assert.ok(!equipPaint(save, 'rp1-vanta', 'not-a-paint'));
   assert.ok(buyRim(save, 'rp1-vanta', 'mesh').ok);
   assert.equal(save.coins, 500);
