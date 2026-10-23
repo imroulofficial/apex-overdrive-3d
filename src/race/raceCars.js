@@ -13,7 +13,8 @@ import { backFace, createVertexPbrMaterial, describeMaterial, isFlatMaterial, me
 //
 // Grounding: car bodies receive the sun's shadow (dark under bridges, trees and overpasses
 // like the road around them), every car sits on a soft contact shadow (ContactShadows, one
-// instanced draw for the field) and head / tail lights follow the weather's light level.
+// instanced draw for the field) and head / tail lights follow the weather's light level. Only
+// the player's car casts into the shadow map; rivals rely on their contact shadow.
 
 const ATLAS = Symbol('atlas');
 const WHEEL_CAPACITY = 16; // per side: up to 16 cars per factory
@@ -143,6 +144,17 @@ export class CarFactory {
     return this.wheelBatches.map((b) => b.mesh);
   }
 
+  // Frees what the factory made (wheel batches, atlas, flame texture); the template belongs
+  // to the model loader's cache.
+  dispose() {
+    for (const { mesh } of this.wheelBatches) {
+      mesh.geometry.dispose();
+      mesh.dispose();
+    }
+    this.atlas.dispose();
+    this.flameTex.dispose();
+  }
+
   setPlayerPaint(color, finish) {
     applyFinish(this.paint, color, finish);
   }
@@ -194,7 +206,8 @@ export class CarFactory {
   }
 
   // Builds a car; the player keeps the garage clear-coat paint, rivals get a lighter clear-coat.
-  build({ color, finish = 'gloss', player = false }) {
+  // `castShadow: false` leaves the car out of the sun's shadow map (its contact shadow stays).
+  build({ color, finish = 'gloss', player = false, castShadow = true }) {
     const t = this.template.group;
     const own = new Map();
     const paint = player ? this.paint : createRivalPaint(color, finish);
@@ -216,7 +229,7 @@ export class CarFactory {
     root.add(body);
     bake(t, t, isWheel, materialMap, this.atlas).forEach((mesh) => {
       // One shadow caster per car keeps the shadow pass cheap; the paint shell is the silhouette.
-      mesh.castShadow = mesh.material === paint;
+      mesh.castShadow = castShadow && mesh.material === paint;
       // Every opaque part takes the sun's shadow so the car darkens with the road around it.
       mesh.receiveShadow = !mesh.material.transparent;
       body.add(mesh);
@@ -270,6 +283,8 @@ export class CarFactory {
     const visual = new CarVisual(root, body, wheels, tail, flames, flameMat, this.template.wheelRadius);
     visual.head = head;
     visual.footprint = this.footprint;
+    // Materials made for this car alone (the atlas, wheels and template parts are shared).
+    visual.owned = [...lights, flameMat, ...(player ? [] : [paint])];
     return visual;
   }
 
@@ -303,6 +318,13 @@ export class CarVisual {
     this.steerVis = 0;
     this.lastForward = 0;
     root.rotation.order = 'YZX';
+  }
+
+  // Frees this car's baked geometries and its own materials (call after release()).
+  dispose() {
+    this.root.removeFromParent();
+    this.root.traverse((o) => o.isMesh && o.geometry.dispose());
+    for (const m of this.owned ?? []) m.dispose();
   }
 
   // Nitro trail colour (FX_COLORS entry) for this car's flames; null keeps the stock blue.

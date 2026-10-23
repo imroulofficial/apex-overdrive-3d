@@ -1117,6 +1117,11 @@ export function buildNeonScenery(scene, renderer, track, def, quality, env = nul
       sun.target.position.copy(snapped);
       sun.position.copy(snapped).addScaledVector(sunDir, 120);
     },
+    // Frees the baked cubemap's render target (the race is being thrown away).
+    disposeEnvironment() {
+      envTarget?.dispose();
+      envTarget = null;
+    },
     // The environment cubemap is baked from unlit proxies of the city: the lit windows, the
     // billboards and every LED, so wet asphalt, glass and paint pick up the neon.
     bakeEnvironment(at) {

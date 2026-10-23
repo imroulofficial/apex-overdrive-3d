@@ -81,6 +81,8 @@ export function alpineGroundMaterial(env, shared) {
     glacier: { value: new THREE.Vector4(160, -820, 260, 420) },
     lakeLevel: { value: 0 },
   };
+  // Race.dispose frees textures it finds here (they never sit on the material itself).
+  mat.userData.uniforms = uniforms;
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     if (photo) shader.defines = { ...shader.defines, PHOTO_GROUND: '' };
@@ -682,6 +684,11 @@ export function buildAlpineScenery(scene, renderer, track, def, quality, env = n
       snapped.applyMatrix4(lightRot);
       sun.target.position.copy(snapped);
       sun.position.copy(snapped).addScaledVector(sunDir, 120);
+    },
+    // Frees the baked cubemap's render target (the race is being thrown away).
+    disposeEnvironment() {
+      envTarget?.dispose();
+      envTarget = null;
     },
     // Reflections of the mountains, baked from unlit proxies (see race/scenery.js).
     bakeEnvironment(at) {

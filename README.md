@@ -9,7 +9,15 @@ Offline-first 3D arcade racer for Android by **Red Pen Studio**.
 | Stack | Three.js (WebGL2) + Vite, wrapped with Capacitor 8 |
 | Audience | 13+, no sign-up, no analytics; gameplay is offline, cloud save, ads and Play Billing use the network when available |
 
-## Hardware audit: eight real cars (this release)
+## 60 FPS pass: culling, mobile resolution and memory (this release)
+
+- **Scenery culling** (`src/render/culling.js`): every forest, boulder field and big merged mesh used to span the whole track, so the GPU drew all of it every frame, behind the camera included. Static instanced scenery is now bucketed into 160 m cells and only the cells in front of the camera and within their draw distance (240x the object's radius, capped by fog) are packed into the batch: still one draw call, none when nothing is in view. Heavy merged meshes (verges, the alpine village, city concrete and neon) are split into at most 8 chunks that share the original buffers and are frustum-culled one by one, in the main and shadow passes. Redwoods and palms switch to a far LOD (about 1/5 of the triangles) beyond 220 m.
+- **Resolution**: phones and tablets never render above a 1.25 pixel ratio, whatever the quality setting. The WebGL context already asked for `powerPreference: 'high-performance'`.
+- **Shadows**: only the player's car casts into the sun's shadow map; rivals sit on their instanced contact (blob) shadow.
+- **Memory**: the track is freed when the player returns to the garage (it stays loaded on the world map for retries). Fixed leaks per race: the environment cubemap target, ground and road textures held in shader closures, the bloom pass, Time Trial gate banners, rival paints, instance buffers and the shadow map. The garage frees the GPU copy and the parsed model of a car leaving the turntable.
+- **Measured** headless (`node tools/perf/bench.mjs --quality high`, 2400x1080 phone, 9 stages across the three chapters): triangles per frame 486k -> 329k, render buffer 1200x540 -> 1000x450, shadow pass 12 -> 9 draws, draw calls 120 -> 122. GPU memory in the garage stays flat across race cycles (was +3 to +4 textures per race), and browsing all 8 cars keeps the JS heap at ~50 MB (was 116 MB). `node tools/perf/campaign.mjs` drives all 60 stages through the game flow and checks every result and saved star.
+
+## Hardware audit: eight real cars
 
 The roster is now the eight usable cars from the studio's Ca.zip pack, all real models; the procedural car bodies are gone.
 

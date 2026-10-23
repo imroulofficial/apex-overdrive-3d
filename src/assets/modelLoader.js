@@ -74,6 +74,14 @@ const resolveUrl = (path) => (/^(https?:|blob:|data:|\/)/.test(path) ? path : `$
 // Model files per level of detail: the showroom, the player's own car on track, and rivals.
 const LOD_URL = { garage: 'url', drive: 'driveUrl', race: 'raceUrl' };
 
+// Drops a car's parsed `lod` model from the cache (its CPU copy of geometry and textures).
+// The garage does this for the car leaving the turntable: showroom models are the heavy ones
+// (up to 10 MB each), and browsing the roster would otherwise keep every one of them.
+export function evictModel(def, lod = 'garage') {
+  const url = def.model?.[LOD_URL[lod]];
+  if (url) cache.delete(resolveUrl(url));
+}
+
 // Spawns a car rig for a catalog entry at `lod` ('garage' | 'drive' | 'race'). A missing LOD
 // file falls back to the next more detailed one; a car with no loadable file at all throws.
 export async function loadCar(def, { paintColor, finish, lod = 'garage', rim } = {}) {

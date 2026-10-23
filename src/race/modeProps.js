@@ -129,7 +129,10 @@ export class ModeProps {
 
   // gates: [{ s, kind: 'start' | 'finish' | 'checkpoint' }]
   setGates(list) {
-    for (const g of this.gates) this.root.remove(g.group);
+    for (const g of this.gates) {
+      this.root.remove(g.group);
+      g.mat.dispose();
+    }
     const f = {};
     this.gates = list.map(({ s, kind }) => {
       const group = new THREE.Group();
@@ -145,6 +148,18 @@ export class ModeProps {
       this.root.add(group);
       return { s, kind, group, mat, passed: false };
     });
+  }
+
+  // Banner textures of gate kinds the last stage did not show are not in the scene any more,
+  // so the race's own sweep cannot find them.
+  dispose() {
+    this.setGates([]);
+    for (const m of Object.values(this.bannerMats)) {
+      m.map.dispose();
+      m.dispose();
+    }
+    this.frameGeo.dispose();
+    this.bannerGeo.dispose();
   }
 
   // A checkpoint the player drove through dims to show it is used.

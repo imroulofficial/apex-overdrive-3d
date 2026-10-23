@@ -114,19 +114,21 @@ function twoGroups(bark, leaves) {
 // Coast redwood: a tall fluted trunk and a narrow crown of drooping sprays in tiers. Each
 // tier has a ring of near-flat sprays (seen from below and above) and a ring of steeper ones
 // (seen from the road), so the crown reads as a solid mass from any angle.
-export function redwoodGeometry() {
+// `far`: the distance LOD (render/culling.js), ~1/5 of the triangles: fewer tiers and sprays,
+// straight cards and a plain trunk, the same silhouette.
+export function redwoodGeometry({ far = false } = {}) {
   const rand = mulberry32(57);
   const height = 27;
-  const stem = new THREE.CylinderGeometry(0.32, 0.95, height, 9, 5).translate(0, height / 2, 0);
+  const stem = new THREE.CylinderGeometry(0.32, 0.95, height, far ? 5 : 9, far ? 1 : 5).translate(0, height / 2, 0);
   const bark = [trunk(stem, height, { around: 3, tileM: 2.6, shade: (y) => 0.55 + Math.min(1, y / 8) * 0.45 })];
   const leaves = [];
   const tint = new THREE.Color(0.4, 0.6, 0.46);
-  const tiers = 8;
+  const tiers = far ? 5 : 8;
   for (let t = 0; t < tiers; t++) {
     const k = t / (tiers - 1);
     const y = 9 + k * 18 + (rand() - 0.5) * 1.2;
     const reach = (3.8 - k * 2.6) * (0.85 + rand() * 0.3);
-    const cards = 6 - Math.round(k * 2);
+    const cards = (far ? 4 : 6) - Math.round(k * (far ? 1 : 2));
     const rot = rand() * Math.PI * 2;
     const c = tint.clone().multiplyScalar(0.72 + k * 0.4);
     for (let i = 0; i < cards * 2; i++) {
@@ -145,23 +147,24 @@ export function redwoodGeometry() {
           1.7 + len * 0.35,
           FRONDS[(t + i) % FRONDS.length],
           c.clone().multiplyScalar(steep ? 0.9 : 1),
-          2
+          far ? 1 : 2
         )
       );
     }
   }
   // Leader at the top: crossed upright sprays.
-  for (const a of [0, Math.PI / 3, (2 * Math.PI) / 3]) {
+  for (const a of far ? [0, Math.PI / 2] : [0, Math.PI / 3, (2 * Math.PI) / 3]) {
     const sideV = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
-    leaves.push(frondCard((s, out) => out.set(0, 25.5 + s * 4.5, 0), sideV, 1.5, FRONDS[1], tint.clone().multiplyScalar(1.1)));
+    leaves.push(frondCard((s, out) => out.set(0, 25.5 + s * 4.5, 0), sideV, 1.5, FRONDS[1], tint.clone().multiplyScalar(1.1), far ? 1 : 3));
   }
   return twoGroups(bark, leaves);
 }
 
 // Coastal palm: a leaning ringed trunk and an arching crown of feather-leaf fronds.
-export function palmGeometry() {
+// `far`: the distance LOD, fewer and straighter fronds on a coarser trunk.
+export function palmGeometry({ far = false } = {}) {
   const rand = mulberry32(91);
-  const stem = new THREE.CylinderGeometry(0.16, 0.28, 8, 7, 8).translate(0, 4, 0);
+  const stem = new THREE.CylinderGeometry(0.16, 0.28, 8, far ? 5 : 7, far ? 3 : 8).translate(0, 4, 0);
   const tp = stem.attributes.position;
   const lean = (y) => (y / 8) ** 2 * 1.2;
   for (let i = 0; i < tp.count; i++) tp.setX(i, tp.getX(i) + lean(tp.getY(i)));
@@ -170,8 +173,9 @@ export function palmGeometry() {
   const leaves = [];
   const tint = new THREE.Color(0.7, 0.92, 0.58);
   const top = new THREE.Vector3(lean(8), 7.95, 0);
-  for (let i = 0; i < 11; i++) {
-    const a = (i / 11) * Math.PI * 2 + rand() * 0.3;
+  const fronds = far ? 8 : 11;
+  for (let i = 0; i < fronds; i++) {
+    const a = (i / fronds) * Math.PI * 2 + rand() * 0.3;
     const dir = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
     const len = 3.6 + rand() * 1.2;
     const rise = 0.6 + rand() * 0.8;
@@ -184,7 +188,7 @@ export function palmGeometry() {
         1.4,
         FRONDS[i % FRONDS.length],
         tint.clone().multiplyScalar(0.85 + rand() * 0.3),
-        5
+        far ? 2 : 5
       )
     );
   }

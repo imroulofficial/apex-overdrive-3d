@@ -9,7 +9,7 @@ import { CAMERA_VIEWS, CAMERA_LABELS } from './data/controls.js';
 import { createStore } from './ui/store.js';
 import { createCloudBadge } from './ui/cloudBadge.js';
 import { PAINTS, fxById, DEFAULT_SMOKE, DEFAULT_NITRO } from './data/catalog.js';
-import { carById } from './data/cars.js';
+import { CARS, carById } from './data/cars.js';
 import { EMERALD_COAST, TRACKS } from './data/tracks.js';
 import { STAGES, TRACK_SEGMENTS, stageById, chapterById } from './data/career.js';
 import { STAR_BONUS } from './data/economy.js';
@@ -183,6 +183,10 @@ async function backToGarage() {
   briefing.close();
   mapHud.hide();
   map.stop();
+  // The track stays loaded while the player is on the map (a retry or the next stage on it
+  // starts at once); back in the garage its geometries, textures and targets are freed.
+  race?.dispose();
+  race = null;
   garage.resize();
   garage.start();
   hud.snapBody();
@@ -552,5 +556,9 @@ if (DEBUG) {
     openMap, backToGarage, exitToMap,
     openBriefing: (id) => openBriefing(typeof id === 'string' ? stageById(id) : id),
     map, mapHud, briefing, dialogue, chest, state, ads, billing, store, cloud,
+    stageIds: STAGES.map((s) => s.stageId),
+    carIds: CARS.map((c) => c.id),
+    // Puts a car on the turntable (QA only: the save is not touched).
+    showCar: (id) => garage.setCar(carById(id), { color: currentPaint().color, finish: currentPaint().finish, rim: 'stock' }),
   };
 }

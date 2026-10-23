@@ -202,4 +202,11 @@ export class MobileBloom {
     for (const t of Object.values(this.targets)) t.dispose();
     this.targets = null;
   }
+
+  // Everything, for good (the race that owns it is being thrown away).
+  destroy() {
+    this.dispose();
+    this.quad.geometry.dispose();
+    for (const m of [this.bright, this.blur, this.composite]) m.dispose();
+  }
 }
