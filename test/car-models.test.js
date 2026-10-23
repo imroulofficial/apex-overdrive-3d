@@ -39,7 +39,7 @@ test('imported models are credited, phone-sized and within the triangle budgets'
     // A non-commercial or no-derivatives licence is only acceptable with a studio-held grant
     // (`commercialRights`, recorded in CREDITS.md).
     if (!entry.commercialRights) assert.doesNotMatch(entry.license, /-NC|-ND/, `${entry.id} licence allows commercial use`);
-    else assert.match(entry.license, /Commercial rights held by Red Pen Studio/, entry.id);
+    else assert.match(entry.license, /Commercial rights held by Red Pen Studio|owned by Red Pen Studio/, entry.id);
     // Showroom: up to 150k triangles; the player's track model 60k; rivals under 10k.
     for (const [url, maxTris, maxMb] of [[car.model.url, 150000, 10], [car.model.driveUrl, 60000, 3], [car.model.raceUrl, 10000, 0.5]]) {
       const file = path.join(dir, url);

@@ -5,18 +5,18 @@ import { createCameraRig, SHOTS } from './cameraRig.js';
 import { createCarPaint, PaintTransition } from './carPaint.js';
 import { isNative } from '../core/platform.js';
 
-// Mobile budget: the pixel ratio never exceeds 1.5 (1.25 on phones and tablets, see below),
-// and the garage's planar mirror (a second full scene render
-// every frame) is the only extra pass, kept for High.
+// Resolution: High and Medium match the screen's pixel density up to 2x, so road markings,
+// textures and edges stay sharp on 1080p-1440p phones; the race adds FXAA on top (see
+// render/bloom.js). Low renders at 1x for phones that cannot hold the frame rate at 2x, and
+// Auto steps down from Medium/High on its own. Native 2.5-3.5x panels stay capped at 2x:
+// past that the pixels cost far more than they show. The garage's planar mirror (a second
+// full scene render every frame) is the only extra pass, kept for High.
 export const QUALITY = {
   low: { maxPixelRatio: 1, shadows: false, reflections: false, reflectionScale: 0 },
-  medium: { maxPixelRatio: 1.25, shadows: true, reflections: false, reflectionScale: 0 },
-  high: { maxPixelRatio: 1.5, shadows: true, reflections: true, reflectionScale: 0.35 },
+  medium: { maxPixelRatio: 2, shadows: true, reflections: false, reflectionScale: 0 },
+  high: { maxPixelRatio: 2, shadows: true, reflections: true, reflectionScale: 0.26 },
 };
 const MOBILE = isNative || matchMedia('(pointer: coarse)').matches;
-// Phones and tablets never render above 1.25x, whatever the quality: a 1080p or 1440p panel
-// at its native 2.5-3.5x would shade 4-8x the pixels of 1.25x for little visible gain.
-export const MOBILE_MAX_PIXEL_RATIO = 1.25;
 // Auto starts at Medium on phones and tablets, High on desktop; it steps down if FPS sags.
 const AUTO_START = MOBILE ? 'medium' : 'high';
 const AUTO_ORDER = ['high', 'medium', 'low'];
@@ -149,8 +149,7 @@ export class Garage {
     const w = window.innerWidth;
     const h = window.innerHeight;
     const q = QUALITY[this.qualityLevel];
-    const cap = MOBILE ? Math.min(q.maxPixelRatio, MOBILE_MAX_PIXEL_RATIO) : q.maxPixelRatio;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, cap));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.maxPixelRatio));
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     // Keep the whole car framed on narrow (portrait) screens.
