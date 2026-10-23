@@ -1,5 +1,8 @@
-// The shared Web Audio graph. Every sound in the game is synthesized from oscillators, noise
-// and buffers rendered on the device, so the game ships no audio files and needs no network.
+import { sampleBank } from './samples.js';
+
+// The shared Web Audio graph. The car (engine, turbo, nitro, tyres, blow-off, exhaust pops)
+// plays recorded samples bundled with the app (audio/samples.js); the HUD, race cues, the
+// weather beds and the soundtrack are synthesized on the device. Nothing needs the network.
 //
 //   engine voice ─┐
 //   race / ui sfx ─┼─ sfx bus ──────────────────────────┐
@@ -131,6 +134,9 @@ export function createMixer(ac) {
     noise: noiseBuffer(ac, 2, 1),
     pink: pinkBuffer(ac, 3),
     wobble: wobbleBuffer(ac, 4, 11),
+    seams: seamBuffer(ac),
+    // Recorded samples, decoded at this context's rate (get() is null until they are ready).
+    samples: sampleBank(ac),
     // The output stage, for tools/audio's meters.
     stage: { highpass: hp2, limiter, trim, clipper },
   };
@@ -198,6 +204,15 @@ function wobbleBuffer(ac, seconds, rate) {
     const s = f * f * (3 - 2 * f);
     d[i] = a + (b - a) * s;
   }
+  return buf;
+}
+
+// One second holding one smooth on-off pulse, from -1 to 1: played looping at `rate`, it is a
+// gain modulator that opens `rate` times a second (the plank seams on a timber deck).
+function seamBuffer(ac) {
+  const buf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.tanh(4 * Math.sin((2 * Math.PI * i) / d.length));
   return buf;
 }
 

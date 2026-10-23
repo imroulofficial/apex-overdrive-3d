@@ -1,12 +1,15 @@
-import { mulberry32, saturation, noiseSource, filter, gain } from './mixer.js';
+import { noiseSource, filter, gain } from './mixer.js';
+import { loopSource } from './samples.js';
 import { blowOff, crackle } from './sfx.js';
 import { Gate } from './clock.js';
 
-// The player's engine, modelled like a commercial racing game's: pitch-shifted RPM loops
-// crossfaded by RPM, under a sub-bass rumble, a mechanical whine and intake/turbo layers,
-// driven by a six-speed virtual gearbox. The loops are not recordings: each one is rendered
-// on the device from a V8 firing model (eight uneven exhaust pulses per cycle, each ringing
-// the exhaust's resonances), so the game still ships no audio files.
+// The player's engine, built the way commercial racers build theirs: recorded RPM loops,
+// pitch-shifted with the revs and crossfaded between, plus recorded turbo, nitro and tyre
+// layers, all driven by a six-speed virtual gearbox. The loops are cut from CC0 recordings
+// of real cars by tools/audio/samples.mjs (see audio/samples.js): the idle is a big-block V8
+// ticking over, the low range a loud four-cylinder exhaust on load, and the mid to top range
+// an Aston Martin V12 pulling to the redline, each slice resampled to hold one steady pitch
+// so it can loop. No layer is an oscillator.
 
 const IDLE = 950;
 const REDLINE = 7600;
@@ -16,150 +19,18 @@ const LIMIT = 7900;
 const GEAR_TOP = [0.24, 0.42, 0.6, 0.78, 0.98, 1.4];
 const GEARS = GEAR_TOP.length;
 
-// Rendered RPM loops, crossfaded with equal power: [rpm it was rendered at, fade-in range,
-// fade-out range]. Resonances are the exhaust's (Hz, decay seconds, level).
-const LAYERS = [
-  {
-    rpm: 1100,
-    fadeIn: null,
-    fadeOut: [1900, 3000],
-    res: [
-      [58, 0.024, 1.0],
-      [126, 0.013, 0.75],
-      [300, 0.006, 0.45],
-      [690, 0.0028, 0.25],
-    ],
-    noise: 0.12,
-    drive: 0.9,
-    seed: 11,
-  },
-  {
-    rpm: 3600,
-    fadeIn: [1900, 3000],
-    fadeOut: [4800, 6000],
-    res: [
-      [92, 0.011, 0.85],
-      [230, 0.007, 0.85],
-      [520, 0.0042, 0.5],
-      [1250, 0.0019, 0.3],
-    ],
-    noise: 0.16,
-    drive: 1.0,
-    seed: 23,
-  },
-  {
-    rpm: 6600,
-    fadeIn: [4800, 6000],
-    fadeOut: null,
-    res: [
-      [170, 0.0065, 0.65],
-      [410, 0.0042, 0.85],
-      [880, 0.0026, 0.6],
-      [2050, 0.0013, 0.35],
-    ],
-    noise: 0.2,
-    drive: 1.1,
-    seed: 37,
-  },
+// The RPM loops, crossfaded with equal power: the sample, the rpm it was recorded at, and its
+// fade-in and fade-out ranges. Each rpm is 30 × the loop's fundamental (twice the crank
+// speed, the strongest line in all three recordings) as samples.mjs measures it, so every
+// layer plays at the pitch the gearbox asks for and the crossfades do not jump. No loop is
+// played outside about 0.6-1.8× its own speed.
+export const LAYERS = [
+  { sample: 'engineIdle', rpm: 985, fadeIn: null, fadeOut: [1250, 1800] },
+  { sample: 'engineLow', rpm: 2040, fadeIn: [1250, 1800], fadeOut: [2700, 3300] },
+  { sample: 'engineMid', rpm: 3840, fadeIn: [2700, 3300], fadeOut: [4300, 4900] },
+  { sample: 'engineHigh', rpm: 5220, fadeIn: [4300, 4900], fadeOut: [5800, 6400] },
+  { sample: 'engineTop', rpm: 6735, fadeIn: [5800, 6400], fadeOut: null },
 ];
-
-// Pulse strength and timing skew per cylinder: unequal header lengths and a cross-plane
-// crank make a V8's "lope" instead of a buzz.
-const CYL = [1.0, 0.76, 0.93, 0.7, 1.07, 0.81, 0.89, 0.73];
-const SKEW = [0, 0.07, -0.03, 0.05, 0, -0.06, 0.04, -0.02];
-
-const loopCache = new WeakMap();
-function engineLoops(ac) {
-  if (!loopCache.has(ac)) loopCache.set(ac, LAYERS.map((L) => renderLoop(ac, L)));
-  return loopCache.get(ac);
-}
-
-function renderLoop(ac, L) {
-  const sr = ac.sampleRate;
-  const cycle = 120 / L.rpm; // four-stroke: one cycle is two revolutions
-  const cycles = Math.max(2, Math.round(0.75 / cycle));
-  const n = Math.round(cycles * cycle * sr);
-  const out = new Float32Array(n);
-  const rand = mulberry32(L.seed);
-  const pulses = cycles * 8;
-  const interval = n / pulses;
-  for (let k = 0; k < pulses; k++) {
-    const cyl = k % 8;
-    const start = Math.round((k + SKEW[cyl]) * interval + n) % n;
-    const amp = CYL[cyl] * (0.86 + rand() * 0.28);
-    for (const [f, d, g] of L.res) {
-      const w = (2 * Math.PI * f * (1 + (rand() - 0.5) * 0.05)) / sr;
-      const fall = Math.exp(-1 / (d * sr));
-      let env = amp * g;
-      for (let i = 0; i < n && env > 2e-4; i++) {
-        out[(start + i) % n] += env * Math.sin(w * i);
-        env *= fall;
-      }
-    }
-    // The combustion crack: a very short noise burst at the start of each pulse.
-    const fall = Math.exp(-1 / (0.0022 * sr));
-    let env = amp * L.noise;
-    for (let i = 0; i < n && env > 2e-4; i++) {
-      out[(start + i) % n] += env * (rand() * 2 - 1);
-      env *= fall;
-    }
-  }
-  // Played up to `top` times faster than it was rendered, a loop's upper partials would fold
-  // back below Nyquist as inharmonic grit (AudioBufferSourceNode resamples without an
-  // anti-alias filter). Band-limit it so its fastest playback still fits.
-  const top = (L.fadeOut ? L.fadeOut[1] : LIMIT + 200) / L.rpm;
-  lowpassLoop(out, Math.min(16000, (0.42 * sr) / top), sr);
-  let mean = 0;
-  for (let i = 0; i < n; i++) mean += out[i];
-  mean /= n;
-  let peak = 1e-6;
-  for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(out[i] - mean));
-  // Light saturation for body (drive about 1 rounds only the tallest pulses), then every loop
-  // is set to the same loudness so the crossfades do not swell.
-  const d = new Float32Array(n);
-  let e = 0;
-  for (let i = 0; i < n; i++) {
-    d[i] = Math.tanh(((out[i] - mean) / peak) * L.drive);
-    e += d[i] * d[i];
-  }
-  const g = LOOP_RMS / Math.sqrt(e / n);
-  const buf = ac.createBuffer(1, n, sr);
-  const ch = buf.getChannelData(0);
-  for (let i = 0; i < n; i++) ch[i] = d[i] * g;
-  return buf;
-}
-
-// Loudness every RPM loop is normalized to (about -12 dBFS RMS, peaks near -3 dBFS).
-const LOOP_RMS = 0.25;
-
-// Fourth-order Butterworth low-pass over a seamless loop, in place. Two passes round the loop
-// settle the filters, so the result is the loop's steady state and still seamless.
-function lowpassLoop(x, fc, sr) {
-  const n = x.length;
-  const w = (2 * Math.PI * fc) / sr;
-  const cw = Math.cos(w);
-  for (const q of [0.5412, 1.3066]) {
-    const al = Math.sin(w) / (2 * q);
-    const a0 = 1 + al;
-    const b0 = (1 - cw) / 2 / a0;
-    const b1 = (1 - cw) / a0;
-    const a1 = (-2 * cw) / a0;
-    const a2 = (1 - al) / a0;
-    let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
-    const y = new Float32Array(n);
-    for (let pass = 0; pass < 2; pass++) {
-      for (let i = 0; i < n; i++) {
-        const v = b0 * x[i] + b1 * x1 + b0 * x2 - a1 * y1 - a2 * y2;
-        x2 = x1;
-        x1 = x[i];
-        y2 = y1;
-        y1 = v;
-        y[i] = v;
-      }
-    }
-    x.set(y);
-  }
-}
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const smooth = (x) => x * x * (3 - 2 * x);
@@ -258,12 +129,17 @@ export class Gearbox {
 }
 
 // ---------------------------------------------------------------------------
-// Engine voice: the synth graph, driven by set() at a given time
+// Engine voice: the sample graph, driven by set() at a given time
 // ---------------------------------------------------------------------------
 
-// gated: layers that are often silent (tyres, surfaces, nitro air) stay unplugged from the
-// graph while their level is zero, so the audio thread skips them. Only for a live context
-// whose clock polls the gates (see AudioClock); offline renders keep everything plugged in.
+// The voice's level into the sfx bus at full load, tuned to the level budget in mixer.js
+// (engine about -16 to -18 dBFS RMS at the master input).
+const ENGINE_LEVEL = 0.55;
+
+// gated: layers that are often silent (RPM loops outside their range, turbo, tyres, surfaces,
+// nitro air) stay unplugged from the graph while their level is zero, so the audio thread
+// skips them. Only for a live context whose clock polls the gates (see AudioClock); offline
+// renders keep everything plugged in.
 export class EngineVoice {
   constructor(mix, { dest = mix.sfx, ambience = mix.ambience ?? dest, gated = false } = {}) {
     const ac = mix.ac;
@@ -284,84 +160,43 @@ export class EngineVoice {
     const send = gain(ac, 0.2);
     this.out.connect(send).connect(mix.space);
 
-    // Combustion: crossfaded RPM loops through drive, a load-dependent tone filter and a
-    // low-mid "throat" boost.
+    // Combustion: the RPM loops through a load-dependent tone filter (a lift closes it, the
+    // way an engine on the overrun loses its rasp) and a low-mid lift for phone speakers.
     this.body = gain(ac, 0.8);
-    const drive = ac.createWaveShaper();
-    drive.curve = saturation(1.25);
-    drive.oversample = '2x';
-    this.tone = filter(ac, 'lowpass', 1200, 0.7);
-    // The weight sits where a phone speaker can still play it (150-400 Hz), not in the sub.
-    const throat = filter(ac, 'peaking', 170, 0.9);
-    throat.gain.value = 4;
-    const chest = filter(ac, 'peaking', 320, 0.8);
-    chest.gain.value = 2.5;
-    this.body.connect(drive).connect(this.tone).connect(throat).connect(chest).connect(this.out);
-    this.loops = engineLoops(ac).map((buffer, i) => {
-      const s = src(ac.createBufferSource());
-      s.buffer = buffer;
-      s.loop = true;
+    this.tone = filter(ac, 'lowpass', 4000, 0.6);
+    const weight = filter(ac, 'peaking', 230, 0.8);
+    weight.gain.value = 3;
+    this.body.connect(this.tone).connect(weight).connect(this.out);
+    this.loops = LAYERS.map((L) => {
+      const s = src(loopSource(mix, L.sample));
       const g = gain(ac, 0);
-      s.connect(g).connect(this.body);
-      return { src: s, g, L: LAYERS[i] };
+      s.connect(g);
+      plug(g, this.body);
+      return { src: s, g, L };
     });
     // Slight cycle-to-cycle level drift so a held RPM never sounds like a loop.
     const rough = src(noiseSource(mix, { buffer: mix.wobble, rate: 2.5 }));
-    rough.connect(gain(ac, 0.07)).connect(this.body.gain);
+    rough.connect(gain(ac, 0.05)).connect(this.body.gain);
 
-    // Sub-bass rumble at half and full firing frequency, saturated and kept low.
-    this.sub = src(ac.createOscillator());
-    this.sub.type = 'sine';
-    this.sub2 = src(ac.createOscillator());
-    this.sub2.type = 'triangle';
-    const subMix = gain(ac, 1);
-    this.sub.connect(subMix);
-    this.sub2.connect(gain(ac, 0.45)).connect(subMix);
-    // Gentle drive: its harmonics carry the rumble on speakers that cannot play the
-    // fundamental, without turning it into a buzzing square wave.
-    const subDrive = ac.createWaveShaper();
-    subDrive.curve = saturation(1.6);
-    subDrive.oversample = '2x';
-    this.subLp = filter(ac, 'lowpass', 190, 0.9);
-    this.subGain = gain(ac, 0);
-    subMix.connect(subDrive).connect(this.subLp).connect(this.subGain).connect(this.out);
-
-    // Mechanical whine: straight-cut gears and the cam drive.
-    this.whine = src(ac.createOscillator());
-    this.whine.type = 'triangle';
-    this.whine2 = src(ac.createOscillator());
-    this.whine2.type = 'sine';
-    this.whineBp = filter(ac, 'bandpass', 900, 2.5);
-    this.whineGain = gain(ac, 0);
-    this.whine.connect(this.whineBp);
-    this.whine2.connect(gain(ac, 0.5)).connect(this.whineBp);
-    this.whineBp.connect(this.whineGain).connect(this.out);
-
-    // Intake roar and turbo whistle.
-    const intake = src(noiseSource(mix, { buffer: mix.pink }));
-    this.intakeBp = filter(ac, 'bandpass', 900, 1.1);
-    this.intakeGain = gain(ac, 0);
-    intake.connect(this.intakeBp).connect(this.intakeGain).connect(this.out);
-    this.turbo = src(ac.createOscillator());
-    this.turbo.type = 'sine';
-    this.turboGain = gain(ac, 0);
-    this.turbo.connect(this.turboGain).connect(this.out);
-    const spool = src(noiseSource(mix));
-    this.spoolBp = filter(ac, 'bandpass', 3000, 18);
+    // Turbo: recorded rushing air through a narrow band that rises with boost pressure (the
+    // whistle) and a high-pass (the spool hiss).
+    const air = src(loopSource(mix, 'turboAir'));
+    this.whistleBp = filter(ac, 'bandpass', 2400, 9);
+    this.whistleGain = gain(ac, 0);
+    air.connect(this.whistleBp).connect(this.whistleGain);
+    plug(this.whistleGain, this.out);
+    this.spoolHp = filter(ac, 'highpass', 2600, 0.7);
     this.spoolGain = gain(ac, 0);
-    spool.connect(this.spoolBp).connect(this.spoolGain).connect(this.out);
+    air.connect(this.spoolHp).connect(this.spoolGain);
+    plug(this.spoolGain, this.out);
 
-    // Nitro airflow: a broad rush plus a resonant howl while the boost lasts.
-    const air = src(noiseSource(mix, { buffer: mix.pink }));
-    this.airBp = filter(ac, 'bandpass', 900, 0.7);
-    this.airGain = gain(ac, 0);
-    air.connect(this.airBp).connect(this.airGain);
-    plug(this.airGain, dest);
-    const howl = src(noiseSource(mix));
-    this.howlBp = filter(ac, 'bandpass', 800, 12);
-    this.howlGain = gain(ac, 0);
-    howl.connect(this.howlBp).connect(this.howlGain);
-    plug(this.howlGain, dest);
+    // Nitro airflow: a recorded blower roar while the boost lasts, brighter and faster for
+    // Pulse Nitro.
+    this.rush = src(loopSource(mix, 'nitroRush'));
+    this.rushBp = filter(ac, 'bandpass', 1100, 0.8);
+    this.rushGain = gain(ac, 0);
+    this.rush.connect(this.rushBp).connect(this.rushGain);
+    plug(this.rushGain, dest);
 
     // Wind over the body: background, so it sits in the damped ambience bus.
     const wind = src(noiseSource(mix, { buffer: mix.pink }));
@@ -370,31 +205,18 @@ export class EngineVoice {
     wind.connect(this.windLp).connect(this.windGain);
     plug(this.windGain, ambience);
 
-    // Tyre screech: stick-slip squeal is nearly tonal, so three narrow bands at inharmonic
-    // ratios plus a buzzing saw, all wandering in pitch with the slip.
+    // Tyre screech: two recorded squeals, a light one for a scrub and a hard four-tyre squeal
+    // for a full drift, crossfaded by how hard the tyres slide and pitched up with the slip.
     this.skidGain = gain(ac, 0);
     const skidSend = gain(ac, 0.35);
     skidSend.connect(mix.space);
     plug(this.skidGain, dest, skidSend);
-    const skidNoise = src(noiseSource(mix));
-    const jitter = src(noiseSource(mix, { buffer: mix.wobble, rate: 9 }));
-    this.skidBands = [
-      [1, 22, 0.9],
-      [1.93, 26, 0.55],
-      [2.71, 30, 0.35],
-    ].map(([ratio, q, level]) => {
-      const f = filter(ac, 'bandpass', 900 * ratio, q);
-      jitter.connect(gain(ac, 45 * ratio)).connect(f.frequency);
-      const g = gain(ac, level * 8); // narrow bands pass little energy: make it up here
-      skidNoise.connect(f).connect(g).connect(this.skidGain);
-      return { f, ratio };
+    this.skids = ['skidLight', 'skidHeavy'].map((name) => {
+      const s = src(loopSource(mix, name));
+      const g = gain(ac, 0);
+      s.connect(g).connect(this.skidGain);
+      return { src: s, g };
     });
-    this.skidSaw = src(ac.createOscillator());
-    this.skidSaw.type = 'sawtooth';
-    jitter.connect(gain(ac, 25)).connect(this.skidSaw.frequency);
-    const sawBp = filter(ac, 'bandpass', 900, 5);
-    this.skidSawBp = sawBp;
-    this.skidSaw.connect(sawBp).connect(gain(ac, 0.15)).connect(this.skidGain);
 
     // Off the asphalt. Gravel: stones crunching and pinging off the floor pan (bright noise,
     // chopped by a fast random wander) over a low rumble. Grass: a soft, swishing hiss.
@@ -413,8 +235,9 @@ export class EngineVoice {
     this.grassLp = filter(ac, 'lowpass', 900, 0.5);
     src(noiseSource(mix, { buffer: mix.pink })).connect(this.grassLp).connect(swish).connect(this.grassGain);
 
-    // Timber bridge deck: every plank seam knocks the tyres (a chopped, hollow low-mid knock at
-    // speed / plank pitch) over the boom of the empty span underneath.
+    // Timber bridge deck: every plank seam knocks the tyres (a hollow low-mid knock, gated
+    // once per seam by the mixer's one-second seam pulse played at speed / plank pitch) over
+    // the boom of the empty span underneath.
     this.woodGain = gain(ac, 0);
     const woodSend = gain(ac, 0.4);
     woodSend.connect(mix.space);
@@ -422,23 +245,23 @@ export class EngineVoice {
     const knock = src(noiseSource(mix, { buffer: mix.pink }));
     this.woodBp = filter(ac, 'bandpass', 210, 2.2);
     const seams = gain(ac, 0.5);
-    this.woodSeams = src(ac.createOscillator());
-    this.woodSeams.type = 'square';
+    this.woodSeams = src(noiseSource(mix, { buffer: mix.seams, rate: 8 }));
     this.woodSeams.connect(gain(ac, 0.5)).connect(seams.gain);
     knock.connect(this.woodBp).connect(seams).connect(gain(ac, 5)).connect(this.woodGain);
     const boom = filter(ac, 'lowpass', 95, 7);
     src(noiseSource(mix, { buffer: mix.pink })).connect(boom).connect(gain(ac, 2.6)).connect(this.woodGain);
   }
 
+  // Loops start at a random point so two voices (a garage rev over another) never phase.
   start(t = this.ac.currentTime) {
-    for (const s of this.sources) s.start(t, s.buffer ? Math.random() * 0.5 : undefined);
+    for (const s of this.sources) s.start(t, s.buffer ? Math.random() * s.buffer.duration : 0);
     return this;
   }
 
   stop(t = this.ac.currentTime, fade = 0.12) {
     this.out.gain.cancelScheduledValues(t);
     this.out.gain.setTargetAtTime(0, t, fade / 3);
-    for (const g of [this.airGain, this.howlGain, this.windGain, this.skidGain, this.gravelGain, this.grassGain, this.woodGain]) {
+    for (const g of [this.rushGain, this.windGain, this.skidGain, this.gravelGain, this.grassGain, this.woodGain]) {
       g.gain.cancelScheduledValues(t);
       g.gain.setTargetAtTime(0, t, fade / 3);
     }
@@ -471,48 +294,43 @@ export class EngineVoice {
     const { rpm, load = 1, boost = 0, tier = 0, speed = 0, skid = 0, slip = 0, cut = 0, gravel = 0, grass = 0, wood = 0, mps = 0, volume = 1 } = s;
     const r = clamp((rpm - IDLE) / (REDLINE - IDLE), 0, 1.1);
     for (const { src, g, L } of this.loops) {
-      this.p(src.playbackRate, rpm / L.rpm, t, tc);
-      this.p(g.gain, layerWeight(L, rpm), t, tc);
+      const w = layerWeight(L, rpm);
+      // A layer out of its range keeps its last pitch while silent, so it schedules nothing.
+      if (w > 0) this.p(src.playbackRate, rpm / L.rpm, t, tc);
+      this.p(g.gain, w, t, tc);
     }
-    this.p(this.tone.frequency, 450 + load * 600 + r * 1600 + tier * 400, t, tc);
-    this.p(this.body.gain, 0.5 + 0.45 * load, t, tc);
-    this.p(this.sub.frequency, rpm / 30, t, tc);
-    this.p(this.sub2.frequency, rpm / 15, t, tc);
-    this.p(this.subGain.gain, (0.22 + 0.25 * load) * (1 - 0.3 * r), t, tc);
-    const wf = (rpm / 60) * 11;
-    this.p(this.whine.frequency, wf, t, tc);
-    this.p(this.whine2.frequency, wf * 2.01, t, tc);
-    this.p(this.whineBp.frequency, wf * 1.2, t, tc);
-    this.p(this.whineGain.gain, 0.012 + 0.07 * r * r * (0.4 + 0.6 * load), t, tc);
-    this.p(this.intakeBp.frequency, 500 + r * 2600, t, tc);
-    this.p(this.intakeGain.gain, (0.015 + 0.06 * r) * load, t, tc);
-    // The turbo whistle only shows while the boost is building or changing, not as a held tone.
-    this.p(this.turbo.frequency, 1600 + boost * 2600, t, tc);
-    this.p(this.turboGain.gain, 0.014 * boost * boost * (1 - 0.6 * r), t, tc);
-    this.p(this.spoolBp.frequency, 1900 + boost * 3200, t, tc);
-    this.p(this.spoolGain.gain, 0.4 * boost * boost, t, tc);
-    this.p(this.airGain.gain, tier ? 0.2 + 0.1 * tier : 0, t, tier ? tc : 0.2);
-    this.p(this.airBp.frequency, 700 + tier * 500 + speed * 600, t, 0.2);
-    this.p(this.howlGain.gain, tier ? 0.4 * tier : 0, t, tier ? 0.08 : 0.25);
-    this.p(this.howlBp.frequency, 650 + speed * 900 + tier * 250, t, 0.2);
+    this.p(this.tone.frequency, 1100 + load * 2200 + r * 3200 + tier * 800, t, tc);
+    this.p(this.body.gain, 0.55 + 0.45 * load, t, tc);
+    // The whistle shows while boost builds or changes; the hiss follows the pressure.
+    this.p(this.whistleBp.frequency, 1800 + boost * 3400, t, tc);
+    this.p(this.whistleGain.gain, 0.5 * boost * boost * (1 - 0.5 * r), t, tc);
+    this.p(this.spoolHp.frequency, 2200 + boost * 2400, t, tc);
+    this.p(this.spoolGain.gain, 0.09 * boost * boost, t, tc);
+    this.p(this.rushGain.gain, tier ? 0.32 + 0.16 * tier : 0, t, tier ? tc : 0.2);
+    if (tier) this.p(this.rush.playbackRate, 0.9 + 0.12 * tier + speed * 0.15, t, 0.2);
+    this.p(this.rushBp.frequency, 800 + tier * 500 + speed * 700, t, 0.2);
     this.p(this.windGain.gain, speed * speed * 0.26, t, 0.15);
     this.p(this.windLp.frequency, 280 + speed * 1600, t, 0.15);
-    const sf = 720 + Math.min(1, Math.abs(slip) * 1.6) * 900 + speed * 260;
-    for (const b of this.skidBands) this.p(b.f.frequency, sf * b.ratio, t, 0.06);
-    this.p(this.skidSaw.frequency, sf * 0.5, t, 0.06);
-    this.p(this.skidSawBp.frequency, sf, t, 0.06);
-    this.p(this.skidGain.gain, skid * 0.22 * volume, t, skid > 0 ? 0.04 : 0.09);
+    const hard = clamp((skid - 0.35) / 0.5, 0, 1);
+    this.p(this.skids[0].g.gain, Math.cos((hard * Math.PI) / 2), t, 0.08);
+    this.p(this.skids[1].g.gain, Math.sin((hard * Math.PI) / 2), t, 0.08);
+    if (skid > 0) {
+      const pitch = 0.88 + Math.min(1, Math.abs(slip) * 1.6) * 0.3 + speed * 0.08;
+      for (const k of this.skids) this.p(k.src.playbackRate, pitch, t, 0.06);
+    }
+    this.p(this.skidGain.gain, skid * 0.3 * volume, t, skid > 0 ? 0.04 : 0.09);
     const roll = Math.min(1, speed * 2.2) * (1 + Math.min(1, Math.abs(slip) * 2));
     this.p(this.gravelGain.gain, gravel * roll * 0.1 * volume, t, 0.05);
     this.p(this.gravelRumble.frequency, 90 + speed * 220, t, 0.1);
     this.p(this.grassGain.gain, grass * roll * 0.34 * volume, t, 0.08);
     this.p(this.grassLp.frequency, 500 + speed * 1400, t, 0.1);
     this.p(this.woodGain.gain, wood * Math.min(1, speed * 3) * 0.18 * volume, t, 0.04);
-    this.p(this.woodSeams.frequency, Math.max(4, mps / 0.6), t, 0.05);
+    this.p(this.woodSeams.playbackRate, Math.max(4, mps / 0.6), t, 0.05);
     this.p(this.woodBp.frequency, 180 + speed * 140, t, 0.1);
-    this.p(this.out.gain, volume * (0.14 + 0.077 * load) * (0.8 + 0.4 * Math.min(1, r)) * (1 - 0.55 * cut), t, cut ? 0.02 : tc);
+    this.p(this.out.gain, volume * ENGINE_LEVEL * (0.62 + 0.38 * load) * (0.8 + 0.4 * Math.min(1, r)) * (1 - 0.55 * cut), t, cut ? 0.02 : tc);
   }
 }
+
 
 // Plays the gearbox's events (blow-off, crackle) at time t.
 export function playEngineEvents(mix, events, t) {

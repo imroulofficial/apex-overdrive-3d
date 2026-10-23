@@ -14,3 +14,5 @@ tools/icon/out/*-1024.png
 tools/audio/out/
 # Asset fetcher download cache (re-created by node tools/assets/fetch.mjs)
 tools/assets/cache/
+# Audio sample cutter download cache (re-created by node tools/audio/samples.mjs)
+tools/audio/cache/

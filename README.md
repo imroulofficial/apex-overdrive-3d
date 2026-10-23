@@ -9,7 +9,13 @@ Offline-first 3D arcade racer for Android by **Red Pen Studio**.
 | Stack | Three.js (WebGL2) + Vite, wrapped with Capacitor 8 |
 | Audience | 13+, no sign-up, no analytics; gameplay is offline, cloud save, ads and Play Billing use the network when available |
 
-## New car fleet and road contact (this release)
+## Sampled car audio at the device's native rate (this release)
+
+- **Recorded car sounds** (`src/audio/samples.js`, `public/assets/audio/`): the engine, turbo, nitro, tyre screech, blow-off and exhaust pops now play CC0 field recordings by Joseph Sardin ([BigSoundBank](https://bigsoundbank.com), sources and licences in `public/assets/audio/CREDITS.md`) instead of oscillators. 14 samples, 1.4 MB of 16-bit 48 kHz WAV inside the app; nothing downloads.
+- **Engine**: five RPM loops crossfaded with equal power and pitch-shifted with the gearbox (AC Cobra V8 idle, a loud four-cylinder exhaust on load for the low revs, an Aston Martin V12 pull for mid, high and top). `node tools/audio/samples.mjs` cuts them from the lossless originals, resampling each slice of the rev sweep against its own tracked pitch so it holds one RPM and loops cleanly. Turbo whistle and spool hiss come from recorded rushing air, nitro from a recorded blower, the screech from two recorded squeals (light and full drift) pitched with the slip angle.
+- **Native sample rate**: the AudioContext no longer asks for 32 kHz on Android; it runs at the hardware's own rate (48 kHz on most phones), so nothing is resampled on the way to the speaker and the mix keeps its top octave. The sampled car costs the audio thread about half what the synthesized one did at 32 kHz, and the soundtrack's hall reverb is now one mono convolution widened with a short delay (the old stereo tail was the heaviest node in the graph), so the whole graph at 48 kHz costs what it used to at 32 kHz (`node tools/audio/render.mjs --stall`). The HUD, race cues, weather and soundtrack are still synthesized.
+
+## New car fleet and road contact
 
 - **Eight new cars**: the studio's own original models from `New Car.zip` replace the Ca.zip pack. Tier D Street Starters **Lumen EV** (starter, all-rounder) and **Kestrel Rally** (drift); Tier C Muscle & Off-Road **Stallion 68** (launch) and **Ridgeback Trail** (all-weather); Tier B Grand Tourers **Aurelia GT** (nitro) and **Vipera R** (cornering grip); Tier A Apex Machines **Tempesta FX** (open-wheel downforce racer) and **Valkyrie GT-R** (top speed, Supercar Bundle). Car ids, prices, stats and unlocks are unchanged, so owned cars, upgrades, rims and the Play grant carry over.
 - **Generated models made game-ready** (`tools/models/segment.mjs`): each source is one welded 500k-1M triangle surface with a baked texture and the wheels fused to the body. The importer finds the four wheels from their treads and cuts them out so they spin and steer, sorts the body into paint, head / tail lenses and the rest by texture colour, and simplifies body and wheels apart: showroom 148k triangles (1.5-2 MB), drive 40k, rivals about 8.2k with vertex colours. Each car rests on its own tyres (the loader grounds the tyre bottoms at y = 0).
@@ -254,7 +260,7 @@ src/
   config.js            studio constants, legal URLs, ad units, Play products
   core/                save data (localStorage) and save schema v2 + migration, career and
                        per-car inventory rules, Firebase cloud save, audio API, Capacitor helpers
-  audio/               synthesis: mixer, engine + gearbox, one-shot SFX, race soundtrack
+  audio/               mixer, sampled engine + gearbox, one-shot SFX, sample bank, race soundtrack
   assets/              GLTF vehicle spawner with procedural fallback
   monetization/        AdMob service (+ browser simulator), Play Billing and entitlements
   data/catalog.js      paints, finishes, rims, rear wings, smoke/nitro colours, upgrades, prices

@@ -1,4 +1,4 @@
-// Renders listening previews of the game's synthesized audio (engine through six gears,
+// Renders listening previews of the game's audio (engine through six gears,
 // blow-off, nitro, drift, the race soundtrack, UI and race SFX, a full race mix) with the
 // same modules the game plays live, and prints level stats for each clip.
 //
@@ -40,10 +40,12 @@ try {
   await page.goto(`http://localhost:${server.config.server.port}/tools/audio/preview.html`);
   await page.waitForFunction(() => window.__audio, null, { timeout: 60000 });
   if (process.argv.includes('--live')) {
-    // Previous: the old graph and control path at the phone's rate with 'balanced'. Current:
-    // the Android build's settings. Ballast stands in for the rest of a phone's CPU load.
+    // Synth: the synthesized car at the 32 kHz the Android build used to run at. Current: the
+    // sampled car at the hardware's 48 kHz, as the Android build runs now. Previous: the graph
+    // and control path from before the audio clock, for scale. Ballast stands in for the rest
+    // of a phone's CPU load.
     for (const ballast of [0.6, 0.75]) {
-      for (const [path, latencyHint, rate] of [['previous', 'balanced', 48000], ['current', 'playback', 32000]]) {
+      for (const [path, latencyHint, rate] of [['previous', 'balanced', 48000], ['synth', 'playback', 32000], ['current', 'playback', 48000]]) {
         const r = await page.evaluate((a) => window.__audio.live(a), { path, latencyHint, rate, ballast, seconds: 16 });
         console.log(`${path}, ballast ${ballast}: ${r.underruns} underruns (${r.underrunMs} ms of audio missing in 16 s) · ${r.latencyHint} at ${r.sampleRate / 1000} kHz, buffer ${r.baseLatencyMs} ms, output latency ${r.outputLatencyMs} ms · one-shots peak ${r.voicesPeak}`);
       }
@@ -52,15 +54,15 @@ try {
   }
   if (process.argv.includes('--stall')) {
     for (const [path, profile] of [['previous', 'normal'], ['current', 'normal'], ['previous', 'heavy'], ['current', 'heavy']]) {
-      const r = await page.evaluate((a) => window.__audio.simulate(a), { path, profile });
+      const r = await page.evaluate((a) => window.__audio.simulate(a), { path, profile, rate: 48000 });
       console.log(`${path}, ${profile} hitches: ${r.hitches} hitches plus 30 FPS frames (${r.hitchMs} ms of long frames, longest ${r.longestMs} ms)`);
       console.log(`  engine held without controls ${r.engineFrozenMs} ms (worst ${r.engineWorstFreezeMs} ms) · music 16ths dropped ${r.musicDropped}, queued late ${r.musicLate}`);
       console.log(`  one-shots sounding at once: peak ${r.voicesPeak}, stolen ${r.voicesStolen}, dropped ${r.voicesDropped} · peak ${r.peakDb} dBFS, non-finite ${r.nonFinite}`);
       if (r.nonFinite) failed = true;
     }
-    // The previous path at the phone's own rate; the current one at the rate the Android
-    // build now runs at (core/audio.js ANDROID_RATE) and at desktop rate.
-    for (const [path, rate] of [['previous', 48000], ['current', 48000], ['current', 32000]]) {
+    // The synthesized car at the 32 kHz the Android build used to run at, and at 48 kHz; the
+    // sampled car at the hardware rates the build runs at now.
+    for (const [path, rate] of [['previous', 48000], ['synth', 32000], ['synth', 48000], ['current', 48000], ['current', 44100]]) {
       const c = await page.evaluate(([p, r]) => window.__audio.cost(p, { rate: r }), [path, rate]);
       console.log(`audio-thread cost, ${path} at ${rate / 1000} kHz: ${c.renderMs} ms to render 24 s (${c.corePct}% of one core here)`);
     }

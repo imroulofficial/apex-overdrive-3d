@@ -1,0 +1,30 @@
+{
+  "sources": {
+    "cobra": { "id": "0534", "title": "AC Cobra Engine", "author": "Joseph Sardin", "page": "https://bigsoundbank.com/ac-cobra-engine-s0534.html", "url": "https://bigsoundbank.com/UPLOAD/bwf-en/0534.wav" },
+    "muffler": { "id": "0676", "title": "Damaged muffler 1 (Moving car)", "author": "Joseph Sardin", "page": "https://bigsoundbank.com/damaged-muffler-1-moving-car-s0676.html", "url": "https://bigsoundbank.com/UPLOAD/bwf-en/0676.wav" },
+    "mufflerRevs": { "id": "0675", "title": "Damaged muffler (accelerations, parked car)", "author": "Joseph Sardin", "page": "https://bigsoundbank.com/damaged-muffler-accelerations-parked-car-s0675.html", "url": "https://bigsoundbank.com/UPLOAD/bwf-en/0675.wav" },
+    "aston": { "id": "0600", "title": "Acceleration Aston Martin", "author": "Joseph Sardin", "page": "https://bigsoundbank.com/acceleration-aston-martin-s0600.html", "url": "https://bigsoundbank.com/UPLOAD/bwf-en/0600.wav" },
+    "squeal1": { "id": "2368", "title": "Screeching Tires #1", "author": "Joseph Sardin", "page": "https://bigsoundbank.com/screeching-tires-1-s2368.html", "url": "https://bigsoundbank.com/UPLOAD/bwf-en/2368.wav" },
+    "squeal4": { "id": "2371", "title": "Screeching Tires #4", "author": "Joseph Sardin", "page": "https://bigsoundbank.com/screeching-tires-4-s2371.html", "url": "https://bigsoundbank.com/UPLOAD/bwf-en/2371.wav" },
+    "airLeak": { "id": "1486", "title": "Air leak", "author": "Joseph Sardin", "page": "https://bigsoundbank.com/air-leak-s1486.html", "url": "https://bigsoundbank.com/UPLOAD/bwf-en/1486.wav" },
+    "hairDryer": { "id": "2680", "title": "Hair-dryer", "author": "Joseph Sardin", "page": "https://bigsoundbank.com/hair-dryer-s2680.html", "url": "https://bigsoundbank.com/UPLOAD/bwf-en/2680.wav" },
+    "pneumatic": { "id": "1490", "title": "Pneumatic brake released", "author": "Joseph Sardin", "page": "https://bigsoundbank.com/pneumatic-brake-released-s1490.html", "url": "https://bigsoundbank.com/UPLOAD/bwf-en/1490.wav" },
+    "whoosh": { "id": "1796", "title": "Whoosh #4", "author": "Joseph Sardin", "page": "https://bigsoundbank.com/whoosh-4-s1796.html", "url": "https://bigsoundbank.com/UPLOAD/bwf-en/1796.wav" }
+  },
+  "samples": [
+    { "name": "engine-idle", "source": "cobra", "start": 14.0, "length": 2.0, "loop": 0.15, "highpass": 28, "level": 0.4, "rms": 0.16, "use": "Engine layer at idle (V8 lope, about 985 rpm)" },
+    { "name": "engine-low", "source": "muffler", "start": 16.0, "length": 1.5, "loop": 0.12, "flatten": { "to": 68, "lo": 40, "hi": 90 }, "pitch": { "lo": 40, "hi": 90 }, "highpass": 28, "level": 0.25, "rms": 0.16, "use": "Engine layer on load, low revs (pitch held at about 2040 rpm)" },
+    { "name": "engine-mid", "source": "aston", "start": 0.3, "length": 0.5, "loop": 0.08, "flatten": { "to": 128, "lo": 90, "hi": 260 }, "pitch": { "lo": 90, "hi": 260 }, "highpass": 40, "level": 0.15, "rms": 0.16, "use": "Engine layer on load, mid revs (pitch held at about 3840 rpm)" },
+    { "name": "engine-high", "source": "aston", "start": 1.05, "length": 0.6, "loop": 0.08, "flatten": { "to": 175, "lo": 90, "hi": 260 }, "pitch": { "lo": 90, "hi": 260 }, "highpass": 40, "level": 0.15, "rms": 0.16, "use": "Engine layer on load, high revs (pitch held at about 5250 rpm)" },
+    { "name": "engine-top", "source": "aston", "start": 2.1, "length": 0.45, "loop": 0.08, "flatten": { "to": 225, "lo": 90, "hi": 260 }, "pitch": { "lo": 90, "hi": 260 }, "highpass": 40, "level": 0.15, "rms": 0.16, "use": "Engine layer on load, near the redline (pitch held at about 6750 rpm)" },
+    { "name": "skid-light", "source": "squeal1", "start": 0.3, "length": 1.5, "loop": 0.15, "highpass": 200, "level": 0.2, "rms": 0.16, "use": "Tyre screech, light slip" },
+    { "name": "skid-heavy", "source": "squeal4", "start": 4.6, "length": 1.35, "loop": 0.15, "highpass": 200, "level": 0.2, "rms": 0.16, "use": "Tyre screech, full drift" },
+    { "name": "tyre-chirp", "source": "squeal4", "start": 4.45, "length": 0.42, "fadeIn": 0.01, "fadeOut": 0.15, "highpass": 200, "peak": 0.6, "use": "Tyre chirp one-shot (launch, flick)" },
+    { "name": "turbo-air", "source": "airLeak", "start": 5.0, "length": 2.0, "loop": 0.2, "highpass": 300, "level": 0.3, "rms": 0.16, "use": "Turbo spool and whistle (through a resonant band that follows boost)" },
+    { "name": "nitro-rush", "source": "hairDryer", "start": 10.0, "length": 2.0, "loop": 0.2, "highpass": 120, "level": 0.3, "rms": 0.16, "use": "Nitro airflow bed while the boost lasts" },
+    { "name": "blow-off", "source": "pneumatic", "start": 0.17, "length": 0.6, "fadeIn": 0.003, "fadeOut": 0.2, "highpass": 250, "peak": 0.7, "use": "Turbo blow-off valve vent and flutter" },
+    { "name": "nitro-whoosh", "source": "whoosh", "start": 0.0, "length": 1.03, "fadeIn": 0.002, "fadeOut": 0.1, "highpass": 90, "peak": 0.7, "use": "Nitro ignition whoosh" },
+    { "name": "exhaust-pop-1", "source": "cobra", "start": 3.955, "length": 0.075, "fadeIn": 0.001, "fadeOut": 0.05, "highpass": 60, "peak": 0.7, "use": "Overrun exhaust pop" },
+    { "name": "exhaust-pop-2", "source": "mufflerRevs", "start": 14.665, "length": 0.075, "fadeIn": 0.001, "fadeOut": 0.05, "highpass": 60, "peak": 0.7, "use": "Overrun exhaust pop" }
+  ]
+}
