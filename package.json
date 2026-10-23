@@ -1,14 +1,16 @@
 {
   "name": "apex-overdrive-3d",
   "private": true,
-  "version": "0.14.0",
+  "version": "1.0.0",
   "description": "Apex Overdrive: 3D Racing - offline-first 3D arcade racer by Red Pen Studio",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
+    "build:release": "vite build --mode release",
     "preview": "vite preview --host",
     "cap:sync": "npm run build && cap sync android",
+    "cap:sync:release": "npm run build:release && cap sync android",
     "android:open": "cap open android",
     "test": "node --test \"test/*.test.js\""
   },

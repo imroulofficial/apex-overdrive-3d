@@ -19,11 +19,9 @@ const OFFER_ART = {
 export function createStore({ onPurchased } = {}) {
   const dialog = $('#store');
   const list = $('#offers');
-  const sandboxBadge = $('#store-sandbox');
   let busy = null;
 
   function render() {
-    sandboxBadge.hidden = !billing.sandbox;
     list.innerHTML = Object.values(PRODUCTS)
       .map((p) => {
         const owned = billing.owns(p.id);
@@ -151,11 +149,6 @@ export function createStore({ onPurchased } = {}) {
     close,
     get isOpen() {
       return dialog.open;
-    },
-    resetCrate() {
-      state.ads.crateClaimedAt = 0;
-      save();
-      renderCrate();
     },
   };
 }

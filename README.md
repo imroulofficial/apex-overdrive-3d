@@ -9,7 +9,14 @@ Offline-first 3D arcade racer for Android by **Red Pen Studio**.
 | Stack | Three.js (WebGL2) + Vite, wrapped with Capacitor 8 |
 | Audience | 13+, no sign-up, no analytics; gameplay is offline, cloud save, ads and Play Billing use the network when available |
 
-## Sampled car audio at the device's native rate (this release)
+## 1.0.0 production release candidate (this release)
+
+- **Version**: `versionName` 1.0.0, `versionCode` 60 (`android/app/build.gradle`), in step with `package.json` and the in-game About line. The version code now lives in `build.gradle` instead of the CI run number, so bump it by hand for every bundle you upload to Play (`test/release.test.js` keeps the three version strings aligned).
+- **Live AdMob**: the manifest carries the Red Pen Studio app id `ca-app-pub-1848535996024012~6089611565`, and `src/config.js` holds the live banner, interstitial and rewarded units. The Play bundle is built with `npm run build:release` (Vite mode `release`, `.env.release` sets `VITE_RELEASE=1`), which CI now always does, so it serves only the live units. The dev server, a plain `npm run build` and debug installs keep Google's test units, so nobody on the team ever clicks a live ad (AdMob invalid-traffic policy). No repository variables are needed any more.
+- **Real Google Play Billing only**: the sandbox store (the Settings toggle, its simulated purchases, "Reset purchases" / "Reset crate" and the SANDBOX badge) is gone. `remove_ads` ($2.99) and `supercar_bundle` ($6.99) unlock only through Google Play's payment sheet; in a desktop browser the Store says Google Play is unavailable. Old saves drop any simulated purchase together with its bonus record, so a later real purchase still pays its coins.
+- **New launcher icon**: the fleet's two flagships in their factory liveries, the Valkyrie GT-R on cyan nitro with the Vipera R drafting behind it, rendered from the game's own models by `node tools/icon/render.mjs` into every mipmap density, the adaptive layers and the legacy splash. The 512 px Play Store icon is at `public/assets/icon/play-store-512.png`.
+
+## Sampled car audio at the device's native rate
 
 - **Recorded car sounds** (`src/audio/samples.js`, `public/assets/audio/`): the engine, turbo, nitro, tyre screech, blow-off and exhaust pops now play CC0 field recordings by Joseph Sardin ([BigSoundBank](https://bigsoundbank.com), sources and licences in `public/assets/audio/CREDITS.md`) instead of oscillators. 14 samples, 1.4 MB of 16-bit 48 kHz WAV inside the app; nothing downloads.
 - **Engine**: five RPM loops crossfaded with equal power and pitch-shifted with the gearbox (AC Cobra V8 idle, a loud four-cylinder exhaust on load for the low revs, an Aston Martin V12 pull for mid, high and top). `node tools/audio/samples.mjs` cuts them from the lossless originals, resampling each slice of the rev sweep against its own tracked pitch so it holds one RPM and loops cleanly. Turbo whistle and spool hiss come from recorded rushing air, nitro from a recorded blower, the screech from two recorded squeals (light and full drift) pitched with the slip angle.
@@ -214,7 +221,7 @@ Fixes from the first device test (22 FPS, white bars, cartoon look, stock icon).
   - Store dialog (cart button in the top bar, or tapping the locked Valkyrie in the **Cars** tab) with localized Play prices; purchases are acknowledged, pending payments unlock when they clear, refunds revoke the entitlement on next launch.
   - Purchase state is saved on device and re-synced with Play on every launch, so it survives restarts and works offline. Coin bonuses are paid once per install, so Restore never pays twice.
   - **Settings → Restore purchases** (Play compliance).
-  - **Sandbox store**: Settings toggle in pre-release builds that simulates both purchases on device with no charge (always on in the desktop browser), plus "Reset purchases" and "Reset crate" for testing. Not present in a `VITE_RELEASE=1` build.
+  - Purchases go through Google Play only (the pre-release sandbox store was removed in 1.0.0).
 - **Cars tab and Tier A hypercar**: RP-1 Vanta (starter) and Valkyrie GT-R (wing, canards, roof scoop, side blades, yellow calipers; Speed 74 / Nitro 66 / Handling 70 / Grip 68). The selected car is used in the garage and on track; upgrades apply to both.
 - **3D model pipeline** (`src/assets/modelLoader.js`): a vehicle spawner that loads `public/assets/models/<car>.glb` with `GLTFLoader` (Draco and Meshopt decoders bundled for offline use) and adapts it to the same car rig as the procedural builder: scaled to length, centred and grounded, wheel nodes re-pivoted to spin and steer, paint materials swapped for the clear-coat paint so the paint shop works, light lenses wired to the light toggle and brake glow, and exhaust anchors for nitro flames. The race bakes whichever rig it gets, and physics never reads meshes, so dropping in a model changes nothing else. A missing or malformed file falls back to the procedural car. Export conventions: [`public/assets/models/README.md`](public/assets/models/README.md).
 
@@ -244,9 +251,11 @@ Fixes from the first device test (22 FPS, white bars, cartoon look, stock icon).
 ```bash
 npm install
 npm run dev            # http://localhost:5173 (desktop browser preview)
-npm run build          # production web bundle in dist/
+npm run build          # web bundle in dist/ (Google test ad units)
+npm run build:release  # Google Play web bundle (live AdMob units)
 npm test               # unit tests (career, economy, inventory, save migration)
-npm run cap:sync       # build + copy into the Android project
+npm run cap:sync       # build + copy into the Android project (test ads, for debug installs)
+npm run cap:sync:release  # release build + copy, before a local bundleRelease
 npm run android:open   # open in Android Studio
 ```
 
@@ -292,7 +301,7 @@ All game assets are generated at runtime or bundled into the APK/AAB. The networ
 
 ## Release builds (CI)
 
-`.github/workflows/build-aab.yml` builds the web bundle, syncs Capacitor and runs `./gradlew bundleRelease` on every push to `main` (and on manual dispatch), signs the bundle with the upload key from GitHub Secrets, verifies the signature and uploads `app-release.aab` as a workflow artifact. The version code is the workflow run number. Pull requests build an unsigned bundle to validate the change.
+`.github/workflows/build-aab.yml` builds the web bundle, syncs Capacitor and runs `./gradlew bundleRelease` on every push to `main` (and on manual dispatch), signs the bundle with the upload key from GitHub Secrets, verifies the signature and uploads `app-release.aab` as a workflow artifact. The web bundle is built in release mode (live AdMob units). The version code and name come from `android/app/build.gradle`; bump `versionCode` before each Play upload. Pull requests build an unsigned bundle to validate the change.
 
 Add these repository secrets (**Settings → Secrets and variables → Actions**):
 
@@ -312,15 +321,11 @@ base64 -w0 upload.jks > upload.jks.b64   # paste into ANDROID_KEYSTORE_BASE64
 
 For a local signed build, create `android/keystore.properties` (git-ignored) with `storeFile`, `storePassword`, `keyAlias` and `keyPassword`.
 
-### Going live with ads and purchases
+### Ads and purchases in release builds
 
-Pre-release builds (every build until you change this) use Google's test ad units and test AdMob app id, and offer the sandbox store toggle. For the store release:
+The AdMob app id is in `AndroidManifest.xml` and the live ad unit ids are in `src/config.js` (ad unit ids are public identifiers). Only a release-mode web bundle (`npm run build:release`, what CI builds) requests the live units; every other build requests Google's test units. Never tap ads in a release build on your own device; register it as an AdMob test device instead.
 
-1. In AdMob, create the app and three ad units (adaptive banner, interstitial, rewarded).
-2. In Play Console, create two **one-time products**, `remove_ads` ($2.99) and `supercar_bundle` ($6.99), and activate them. Real purchases can be tested from an internal testing track with license testers.
-3. Add repository **variables** (Settings → Secrets and variables → Actions → Variables): `VITE_RELEASE` = `1`, `ADMOB_APP_ID` (`ca-app-pub-…~…`), `VITE_ADMOB_BANNER`, `VITE_ADMOB_INTERSTITIAL`, `VITE_ADMOB_REWARDED` (`ca-app-pub-…/…`). The workflow passes them to Vite and Gradle. Locally: `VITE_RELEASE=1 VITE_ADMOB_…=… npm run build` and `./gradlew bundleRelease -PadmobAppId=…`.
-
-With `VITE_RELEASE=1` and a unit id missing, that ad type is simply not shown.
+In Play Console the two **one-time products**, `remove_ads` ($2.99) and `supercar_bundle` ($6.99), must exist and be active. Test real purchases from an internal testing track with license testers: Play shows its own test payment sheet to them and charges nothing.
 
 ## Legal pages (GitHub Pages)
 

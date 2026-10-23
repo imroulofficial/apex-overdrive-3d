@@ -1,5 +1,5 @@
 import { NativePurchases, PURCHASE_TYPE } from '@capgo/native-purchases';
-import { PRODUCTS, RELEASE } from '../config.js';
+import { PRODUCTS } from '../config.js';
 import { isNative } from '../core/platform.js';
 import { state, save, addCoins } from '../core/store.js';
 import { PAINTS } from '../data/catalog.js';
@@ -8,20 +8,16 @@ import { syncOwnedCars } from '../core/inventory.js';
 // Google Play Billing for the two one-time products (see PRODUCTS in config.js).
 //
 // Entitlements are derived, never stored loose: `state.purchases.owned` mirrors what Play
-// reports (persisted, so the game works offline), sandbox purchases live in their own list,
-// and No Ads / unlocked cars / exclusive paints are recomputed from both. A purchase's coin bonus is paid once
-// per device, tracked in `state.purchases.granted`, so Restore never pays twice.
+// reports (persisted, so the game works offline), and No Ads / unlocked cars / exclusive
+// paints are recomputed from it. A purchase's coin bonus is paid once per device, tracked in
+// `state.purchases.granted`, so Restore never pays twice.
 //
-// Sandbox mode simulates the store entirely on-device. It is always on in a desktop
-// browser, and on Android it is a Settings toggle in pre-release builds (never in a
-// VITE_RELEASE=1 build).
+// Every purchase goes through Google Play's own payment sheet; there is no simulated store.
+// Outside the Android app (a desktop browser) the Store reports Play as unavailable.
 
 const PURCHASED = '1'; // Play Billing PurchaseState.PURCHASED
 const PENDING = '2'; // Play Billing PurchaseState.PENDING
 const IDS = Object.keys(PRODUCTS);
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-
-export const sandboxAvailable = !isNative || !RELEASE;
 
 function createBilling() {
   const listeners = new Set();
@@ -29,13 +25,12 @@ function createBilling() {
   let storeReady = false;
   let ready = null;
 
-  const sandbox = () => !isNative || (!RELEASE && state.settings.sandboxStore);
   const notify = (event) => listeners.forEach((fn) => fn(event));
 
-  // Recomputes No Ads, unlocked cars and purchase-exclusive paints from the active purchase lists.
+  // Recomputes No Ads, unlocked cars and purchase-exclusive paints from the Play purchase list.
   function applyEntitlements() {
     const p = state.purchases;
-    const active = new Set([...p.owned, ...(sandbox() ? p.sandboxOwned : [])]);
+    const active = new Set(p.owned);
     p.noAds = [...active].some((id) => PRODUCTS[id]?.grants.noAds);
     syncOwnedCars(state, active);
     p.paints = [...new Set([...active].flatMap((id) => PRODUCTS[id]?.grants.paints ?? []))];
@@ -112,12 +107,8 @@ function createBilling() {
   }
 
   return {
-    get sandbox() {
-      return sandbox();
-    },
-    sandboxAvailable,
     price: (id) => prices[id],
-    owns: (id) => state.purchases.owned.includes(id) || (sandbox() && state.purchases.sandboxOwned.includes(id)),
+    owns: (id) => state.purchases.owned.includes(id),
     subscribe(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);
@@ -136,14 +127,6 @@ function createBilling() {
     async purchase(id) {
       await ready;
       if (this.owns(id)) return { status: 'owned' };
-      if (sandbox()) {
-        await wait(500);
-        const p = state.purchases;
-        p.sandboxOwned = [...new Set([...p.sandboxOwned, id])];
-        const coins = payBonus(id);
-        commit({ type: 'purchase', id, coins, sandbox: true });
-        return { status: 'purchased', coins };
-      }
       if (!storeReady) return { status: 'error', message: 'Google Play is not available on this device.' };
       try {
         const t = await NativePurchases.purchaseProduct({
@@ -173,10 +156,6 @@ function createBilling() {
     // Settings → Restore Purchases. Resolves to { ok, restored: [ids], coins }.
     async restore() {
       await ready;
-      if (sandbox()) {
-        commit({ type: 'sync', restored: [], coins: 0 });
-        return { ok: true, restored: [...state.purchases.sandboxOwned], coins: 0, sandbox: true };
-      }
       if (!storeReady) return { ok: false, restored: [], coins: 0 };
       await NativePurchases.restorePurchases().catch(() => {});
       return syncFromStore();
@@ -185,19 +164,6 @@ function createBilling() {
     // Re-derives entitlements after the save was replaced (a newer cloud save at launch).
     refresh() {
       commit({ type: 'refresh' });
-    },
-
-    // Called when the sandbox toggle flips; re-derives entitlements for the new mode.
-    async modeChanged() {
-      commit({ type: 'mode' });
-      if (!sandbox() && isNative && !storeReady) await initStore();
-    },
-
-    resetSandbox() {
-      const p = state.purchases;
-      p.granted = p.granted.filter((id) => !p.sandboxOwned.includes(id) || p.owned.includes(id));
-      p.sandboxOwned = [];
-      commit({ type: 'mode' });
     },
   };
 }

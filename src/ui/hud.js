@@ -304,7 +304,7 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
       tierShown = c.tier;
       const owned = state.ownedCars.includes(c.id);
       const selected = state.car === c.id;
-      const lock = owned ? null : unlockStatus(state, c.id, activeProducts(state, { sandbox: billing.sandbox }));
+      const lock = owned ? null : unlockStatus(state, c.id, activeProducts(state));
       let action;
       let note = c.class;
       if (selected) action = '<button class="pill-btn" disabled>Selected</button>';
@@ -342,7 +342,7 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
     }
     const buy = e.target.closest('[data-buy-car]');
     if (buy) {
-      const res = unlockCar(state, buy.dataset.buyCar, activeProducts(state, { sandbox: billing.sandbox }));
+      const res = unlockCar(state, buy.dataset.buyCar, activeProducts(state));
       if (!res.ok) {
         sfx.deny();
         if (res.reason === 'coins') toast(`You need ${fmt(res.price - state.coins)} more coins`);

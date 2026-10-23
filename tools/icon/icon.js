@@ -5,11 +5,14 @@ import { createStudioEnvironment } from '../../src/garage/showroom.js';
 
 // Renders the launcher icon layers at 1024 px:
 //   background: carbon-fibre weave under a crimson diagonal glow and speed streaks
-//   foreground: the Valkyrie GT-R in crimson, low 3/4 front view, with a cyan nitro trail,
-//               kept inside the adaptive-icon safe zone (66/108 of the canvas)
+//   foreground: the fleet's two flagships in their factory liveries, low 3/4 front view: the
+//               Valkyrie GT-R hypercar leading on cyan nitro with the Vipera R drafting
+//               behind it, kept inside the adaptive-icon safe zone (66/108 of the canvas)
 // window.__icon resolves to { background, foreground, legacy, round, store } data URLs.
 
 const S = 1024;
+// Where the Vipera R drafts, relative to the Valkyrie GT-R (metres; nose is +x, +z faces the camera side).
+const CHASE = { x: -2.9, z: -2.9 };
 
 function background() {
   const c = document.createElement('canvas');
@@ -75,21 +78,27 @@ async function foreground() {
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
+  renderer.toneMappingExposure = 0.95;
   const scene = new THREE.Scene();
   scene.environment = createStudioEnvironment(renderer);
   scene.environmentIntensity = 1.2;
 
-  // The Valkyrie GT-R's showroom model; its url is made absolute because this page is not
-  // served from the game's base path.
-  const def = carById('rpx-hyperion');
-  const car = await loadCar({ ...def, model: { ...def.model, url: `/${def.model.url}` } }, { paintColor: '#d0102c', finish: 'metallic' });
-  car.setLights(true);
-  for (let i = 0; i < 60; i++) car.update(1 / 30);
-  car.group.traverse((o) => {
-    if (o.name === 'beam') o.visible = false;
-  });
-  scene.add(car.group);
+  // Showroom models in the Factory Livery finish; their urls are made absolute because this
+  // page is not served from the game's base path.
+  async function place(id, x, z) {
+    const def = carById(id);
+    const car = await loadCar({ ...def, model: { ...def.model, url: `/${def.model.url}` } }, { paintColor: '#d9dde3', finish: 'factory' });
+    car.setLights(true);
+    for (let i = 0; i < 60; i++) car.update(1 / 30);
+    car.group.traverse((o) => {
+      if (o.name === 'beam') o.visible = false;
+    });
+    car.group.position.set(x, 0, z);
+    scene.add(car.group);
+    return car;
+  }
+  const car = await place('rpx-hyperion', 0, 0);
+  const chaser = await place('mz-monza', CHASE.x, CHASE.z);
 
   const key = new THREE.DirectionalLight(0xffffff, 3.2);
   key.position.set(4, 8, 6);
@@ -101,10 +110,12 @@ async function foreground() {
 
   // Cyan nitro trail: additive cones from the exhausts plus streaks along the flanks.
   const flame = new THREE.MeshBasicMaterial({ color: 0x3ad8ff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
-  for (const at of car.exhausts) {
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.16, 2.2, 16, 1, true).rotateZ(Math.PI / 2).translate(-1.1, 0, 0), flame);
-    cone.position.copy(at);
-    scene.add(cone);
+  for (const [rig, len] of [[car, 2.2], [chaser, 1.4]]) {
+    for (const at of rig.exhausts) {
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.16, len, 16, 1, true).rotateZ(Math.PI / 2).translate(-len / 2, 0, 0), flame);
+      cone.position.copy(at).add(rig.group.position);
+      scene.add(cone);
+    }
   }
   const streakMat = new THREE.MeshBasicMaterial({ color: 0x5ae6ff, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
   for (const [y, z, len] of [[0.25, 1.15, 5], [0.55, -1.2, 4.2], [0.95, 1.05, 3.4], [0.15, -0.9, 3.8]]) {
@@ -133,8 +144,8 @@ async function foreground() {
 
   // Low, aggressive 3/4 front view; the car spans the adaptive-icon safe zone.
   const camera = new THREE.PerspectiveCamera(26, 1, 0.1, 100);
-  const target = new THREE.Vector3(0.1, 0.5, 0);
-  camera.position.copy(target).add(new THREE.Vector3(6.4, 1.7, 5.6).normalize().multiplyScalar(14.6));
+  const target = new THREE.Vector3(-0.3, 0.85, -0.6);
+  camera.position.copy(target).add(new THREE.Vector3(6.4, 1.7, 5.6).normalize().multiplyScalar(15.4));
   camera.lookAt(target);
   await renderer.compileAsync(scene, camera);
   renderer.render(scene, camera);
