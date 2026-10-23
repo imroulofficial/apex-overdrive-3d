@@ -5,6 +5,11 @@ import { noiseSource, filter, gain, envelope, saturation, midiHz } from './mixer
 
 const now = (mix, at) => (at ?? mix.ac.currentTime) + 0.005;
 
+// Each node reports when it stops, so the voice pool (voices.js) knows when a one-shot ends.
+function track(mix, end) {
+  if (mix.voiceEnd !== undefined && end > mix.voiceEnd) mix.voiceEnd = end;
+}
+
 function tone(mix, dest, { t, type = 'sine', freq, to = freq, glide, attack = 0.003, peak = 0.5, decay = 0.15, hold = 0, detune = 0, wave }) {
   const ac = mix.ac;
   const osc = ac.createOscillator();
@@ -18,6 +23,7 @@ function tone(mix, dest, { t, type = 'sine', freq, to = freq, glide, attack = 0.
   osc.connect(g).connect(dest);
   osc.start(t);
   osc.stop(end + 0.05);
+  track(mix, end + 0.05);
   return g;
 }
 
@@ -31,6 +37,7 @@ function burst(mix, dest, { t, type = 'bandpass', freq = 1000, to = freq, q = 0.
   src.connect(f).connect(g).connect(dest);
   src.start(t, Math.random() * 1.5);
   src.stop(end + 0.05);
+  track(mix, end + 0.05);
   return g;
 }
 
@@ -188,6 +195,7 @@ export function nitroIgnite(mix, tier = 1, at) {
     vib.start(t);
     src.stop(t + 1.8);
     vib.stop(t + 1.8);
+    track(mix, t + 1.8);
   }
   if (big) {
     // Jet spool: detuned saws rising through a closing filter.
@@ -373,19 +381,20 @@ export const race = {
   thunder(mix, distance = 0.5, at) {
     const t = now(mix, at);
     const near = 1 - Math.min(1, Math.max(0, distance));
-    if (near > 0.4) burst(mix, mix.sfx, { t, type: 'highpass', freq: 1800, to: 500, peak: 0.5 * near, decay: 0.35, glide: 0.3 });
+    const bed = mix.ambience ?? mix.sfx;
+    if (near > 0.4) burst(mix, bed, { t, type: 'highpass', freq: 1800, to: 500, peak: 0.5 * near, decay: 0.35, glide: 0.3 });
     burst(mix, mix.space, { t, buffer: mix.pink, type: 'lowpass', freq: 320 + near * 300, to: 110, q: 0.6, attack: 0.08, peak: 0.6, hold: 0.4, decay: 3.2, glide: 3 });
     for (let i = 0; i < 4; i++) {
-      burst(mix, mix.sfx, { t: t + 0.2 + Math.random() * 1.8, buffer: mix.pink, type: 'lowpass', freq: 160 + Math.random() * 120, q: 1.5, attack: 0.1, peak: 0.35 + near * 0.2, decay: 0.9 });
+      burst(mix, bed, { t: t + 0.2 + Math.random() * 1.8, buffer: mix.pink, type: 'lowpass', freq: 160 + Math.random() * 120, q: 1.5, attack: 0.1, peak: 0.35 + near * 0.2, decay: 0.9 });
     }
   },
 };
 
-// Continuous rain hiss (see core/audio.js createRainSound).
+// Continuous rain hiss (see core/audio.js createRainSound), in the damped ambience bus.
 export function rainBed(mix) {
   const ac = mix.ac;
   const out = gain(ac, 0);
-  out.connect(mix.sfx);
+  out.connect(mix.ambience ?? mix.sfx);
   const hiss = noiseSource(mix);
   const hp = filter(ac, 'highpass', 1400, 0.5);
   const lp = filter(ac, 'lowpass', 7500, 0.5);
@@ -401,7 +410,7 @@ export function rainBed(mix) {
     set(v) {
       if (Math.abs(v - level) < 0.01) return;
       level = v;
-      out.gain.setTargetAtTime(v * 0.16, ac.currentTime, 0.4);
+      out.gain.setTargetAtTime(v * 0.18, ac.currentTime, 0.4);
     },
     stop() {
       out.gain.setTargetAtTime(0, ac.currentTime, 0.15);

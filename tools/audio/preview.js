@@ -4,6 +4,7 @@ import { createMixer, MUSIC_LEVEL, OUTPUT } from '../../src/audio/mixer.js';
 import { EngineVoice, Gearbox, playEngineEvents, revEngine } from '../../src/audio/engine.js';
 import { ui, race, blowOff, nitroIgnite } from '../../src/audio/sfx.js';
 import { Music } from '../../src/audio/music.js';
+import { simulate, cost, live } from './stall.js';
 
 const SR = 44100;
 const FRAME = 1 / 60;
@@ -363,4 +364,4 @@ async function render(name) {
   return { name, wav: btoa(bin), stats: { ...stats(buf), ...meters(buf) }, ms, log };
 }
 
-window.__audio = { names: Object.keys(clips), render };
+window.__audio = { names: Object.keys(clips), render, simulate, cost, live };
