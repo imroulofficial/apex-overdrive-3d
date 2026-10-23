@@ -200,7 +200,6 @@ async function backToGarage() {
 const settings = createSettings(garage, {
   onFpsToggle: (on) => (fpsEl.hidden = !on),
   onEntitlementsChanged: () => ads.refreshEntitlements(),
-  onCrateReset: () => store.resetCrate(),
 });
 fpsEl.hidden = !state.settings.showFps;
 createCloudBadge();

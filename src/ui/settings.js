@@ -14,7 +14,7 @@ const CONTROL_HINTS = {
   wheel: 'Steering Wheel: turn the wheel on the left, pedals on the right',
 };
 
-export function createSettings(garage, { onFpsToggle, onEntitlementsChanged, onCrateReset }) {
+export function createSettings(garage, { onFpsToggle, onEntitlementsChanged }) {
   const dialog = document.getElementById('settings');
   const qualityButtons = [...dialog.querySelectorAll('[data-quality]')];
   const bloomButtons = [...dialog.querySelectorAll('[data-bloom]')];
@@ -55,27 +55,6 @@ export function createSettings(garage, { onFpsToggle, onEntitlementsChanged, onC
   const privacyRow = dialog.querySelector('#row-ad-privacy');
   dialog.querySelector('#btn-ad-privacy').addEventListener('click', () => ads.showPrivacyOptions());
 
-  // ---- Developer tools (pre-release builds only) ----
-  const devTools = dialog.querySelector('#dev-tools');
-  const sandbox = dialog.querySelector('#opt-sandbox');
-  devTools.hidden = !billing.sandboxAvailable;
-  sandbox.addEventListener('change', async () => {
-    state.settings.sandboxStore = sandbox.checked;
-    save();
-    await billing.modeChanged();
-    onEntitlementsChanged?.();
-    toast(sandbox.checked ? 'Sandbox store on: purchases are simulated' : 'Sandbox store off: purchases go through Google Play');
-  });
-  dialog.querySelector('#btn-sandbox-reset').addEventListener('click', () => {
-    billing.resetSandbox();
-    onEntitlementsChanged?.();
-    toast('Sandbox purchases cleared');
-  });
-  dialog.querySelector('#btn-crate-reset').addEventListener('click', () => {
-    onCrateReset?.();
-    toast('Reward crate is ready again');
-  });
-
   function render() {
     renderAbout();
     qualityButtons.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.quality === state.settings.quality)));
@@ -87,9 +66,6 @@ export function createSettings(garage, { onFpsToggle, onEntitlementsChanged, onC
     music.checked = state.settings.music;
     auto.checked = state.settings.autoAccelerate;
     fps.checked = state.settings.showFps;
-    // In the browser the store is always simulated, so the toggle shows on and locked.
-    sandbox.checked = billing.sandbox;
-    sandbox.disabled = billing.sandbox && !state.settings.sandboxStore;
     privacyRow.hidden = !ads.privacyOptionsRequired;
   }
 

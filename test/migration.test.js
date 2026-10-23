@@ -22,12 +22,27 @@ test('v1 -> v2 keeps coins and every purchase flag', () => {
   assert.equal(s.v, SAVE_VERSION);
   assert.equal(s.coins, 18450);
   assert.deepEqual(s.purchases.owned, ['supercar_bundle']);
-  assert.deepEqual(s.purchases.sandboxOwned, ['remove_ads']);
+  assert.equal(s.purchases.sandboxOwned, undefined); // 1.0.0 dropped the sandbox store
   assert.deepEqual(s.purchases.granted, ['supercar_bundle']);
   assert.equal(s.purchases.noAds, true);
   assert.equal(s.savedAt, v1.savedAt);
-  assert.deepEqual(s.settings, { ...v1.settings, controls: 'touch', bloom: 'low', cameraView: 'chase' }); // Phase 8 added the control scheme, Phase 11 bloom, then the camera view
+  const { sandboxStore, ...settings } = v1.settings;
+  assert.deepEqual(s.settings, { ...settings, controls: 'touch', bloom: 'low', cameraView: 'chase' }); // Phase 8 added the control scheme, Phase 11 bloom, then the camera view
   assert.deepEqual(s.ads, v1.ads);
+});
+
+test('1.0.0 drops sandbox purchases and their bonus record, keeping real Play purchases', () => {
+  const s = normalize({
+    ...defaults(),
+    settings: { ...defaults().settings, sandboxStore: true },
+    purchases: { owned: ['remove_ads'], sandboxOwned: ['remove_ads', 'supercar_bundle'], granted: ['remove_ads', 'supercar_bundle'], noAds: true, paints: [] },
+  });
+  assert.equal(s.settings.sandboxStore, undefined);
+  assert.equal(s.purchases.sandboxOwned, undefined);
+  assert.deepEqual(s.purchases.owned, ['remove_ads']);
+  // A later real supercar_bundle purchase pays its coin bonus; the real remove_ads bonus stays paid.
+  assert.deepEqual(s.purchases.granted, ['remove_ads']);
+  assert.ok(!s.ownedCars.includes('rpx-hyperion'));
 });
 
 test('v1 global upgrades and paint land on every car the player owned', () => {

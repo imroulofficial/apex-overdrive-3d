@@ -17,7 +17,7 @@
 //   ownedPaints  coin paints bought (shared by every car; each car equips its own)
 //   career       { unlockedStage (1-60), stageStars: [star bitmask per stage, bit 0 = star 1],
 //                  best: { [stageId]: { time, score, plays } }, milestones: [claimed ids] }
-//   purchases    Play purchases (owned, sandboxOwned, granted bonuses, derived noAds/paints)
+//   purchases    Play purchases (owned, granted bonuses, derived noAds/paints)
 //   settings, ads  per device, never synced
 //   story        { seen: [scene ids] } story scenes already played; per device, never synced
 //                (a new device replays them once, and every scene can be skipped)
@@ -49,6 +49,7 @@ const V1_UPGRADES = { engine: 'topSpeed', tires: 'acceleration', handling: 'hand
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const int = (v, lo, hi, fallback) => (Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : fallback);
 function normalizeSettings(st) {
+  delete st.sandboxStore; // the pre-1.0 sandbox store toggle
   if (!CONTROL_SCHEMES.includes(st.controls)) st.controls = DEFAULT_CONTROLS;
   if (!CAMERA_VIEWS.includes(st.cameraView)) st.cameraView = DEFAULT_CAMERA;
   if (!BLOOM_LEVELS.includes(st.bloom)) st.bloom = DEFAULT_BLOOM;
@@ -88,10 +89,10 @@ export function defaults() {
     cars: { [STARTER_CAR]: newCarEntry('starter') },
     ownedPaints: [...DEFAULT_PAINTS],
     career: { unlockedStage: 1, stageStars: STAGES.map(() => 0), best: {}, milestones: [] },
-    settings: { quality: 'auto', sound: true, music: true, autoAccelerate: true, showFps: false, sandboxStore: false, controls: DEFAULT_CONTROLS, cameraView: DEFAULT_CAMERA, bloom: DEFAULT_BLOOM },
+    settings: { quality: 'auto', sound: true, music: true, autoAccelerate: true, showFps: false, controls: DEFAULT_CONTROLS, cameraView: DEFAULT_CAMERA, bloom: DEFAULT_BLOOM },
     // Play purchases. `owned` mirrors what the store reports; `granted` records which
     // products already paid out their one-time coin bonus so a restore never pays twice.
-    purchases: { owned: [], sandboxOwned: [], granted: [], noAds: false, paints: [] },
+    purchases: { owned: [], granted: [], noAds: false, paints: [] },
     // racesFinished counts every finished race on this device; the first few never see an
     // interstitial (ADS.interstitialGraceRaces).
     ads: { crateClaimedAt: 0, racesSinceInterstitial: 0, nextInterstitialAt: 2, lastInterstitialAt: 0, racesFinished: 0 },
@@ -188,13 +189,7 @@ export function normalize(data) {
     ownedPaints: uniq([...DEFAULT_PAINTS, ...(d.ownedPaints ?? [])], (id) => paintIds.has(id)),
     career: normalizeCareer(d.career),
     settings: normalizeSettings({ ...base.settings, ...d.settings }),
-    purchases: {
-      ...base.purchases,
-      ...d.purchases,
-      owned: uniq(d.purchases?.owned),
-      sandboxOwned: uniq(d.purchases?.sandboxOwned),
-      granted: uniq(d.purchases?.granted),
-    },
+    purchases: normalizePurchases(base.purchases, d.purchases),
     ads: { ...base.ads, ...d.ads },
     story: { seen: uniq(d.story?.seen, (id) => sceneIds.has(id)) },
     savedAt: Number.isFinite(d.savedAt) ? d.savedAt : 0,
@@ -202,7 +197,16 @@ export function normalize(data) {
   };
 }
 
-// v1 -> v2. Coins, Play purchases (owned, sandbox, granted bonuses), settings, ad pacing and
+// 1.0.0 removed the pre-release sandbox store. Simulated purchases are dropped together with
+// their bonus record, so a real Play purchase of the same product still pays its coin bonus.
+function normalizePurchases(base, p) {
+  const owned = uniq(p?.owned);
+  const simulated = uniq(p?.sandboxOwned).filter((id) => !owned.includes(id));
+  const { sandboxOwned, ...rest } = isObj(p) ? p : {};
+  return { ...base, ...rest, owned, granted: uniq(p?.granted, (id) => !simulated.includes(id)) };
+}
+
+// v1 -> v2. Coins, Play purchases (owned, granted bonuses), settings, ad pacing and
 // savedAt carry over untouched. The global upgrades and paint are copied onto every car the
 // player owned in v1, so nothing they paid for is lost. The v1 Emerald Coast record becomes
 // stage 1 of the career: a top-3 finish there is exactly stage 1's star-1 objective.
@@ -212,7 +216,7 @@ export function migrateV1(v1) {
   for (const [from, to] of Object.entries(V1_UPGRADES)) levels[to] = int(d.upgrades?.[from], 0, MAX_LEVEL, 0);
   const paint = paintIds.has(d.paint) ? d.paint : DEFAULT_PAINT;
   const owned = new Set([STARTER_CAR, ...uniq(d.ownedCars, (id) => carIds.has(id))]);
-  const products = new Set([...(d.purchases?.owned ?? []), ...(d.purchases?.sandboxOwned ?? [])]);
+  const products = new Set(d.purchases?.owned ?? []);
   for (const id of products) PRODUCTS[id]?.grants.cars.forEach((c) => owned.add(c));
   const cars = {};
   for (const id of owned) {
@@ -261,8 +265,7 @@ export function migrate(raw) {
 // ---- Cloud ----
 
 // The slice of the save that follows the player to the cloud, grouped like the blueprint's
-// Firestore schema (economy / progression) plus the per-car garage. Settings, sandbox
-// purchases, derived car unlocks and interstitial pacing stay per device.
+// Firestore schema (economy / progression) plus the per-car garage. Settings, derived car unlocks and interstitial pacing stay per device.
 export function progressOf(s) {
   const owned = s.purchases.owned;
   return {

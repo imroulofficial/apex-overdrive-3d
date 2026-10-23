@@ -9,9 +9,9 @@ import { totalStars } from './career.js';
 
 const fail = (reason, extra) => ({ ok: false, reason, ...extra });
 
-// Products the player has, as a Set (sandbox purchases count only while the sandbox is on).
-export function activeProducts(save, { sandbox = false } = {}) {
-  return new Set([...save.purchases.owned, ...(sandbox ? save.purchases.sandboxOwned : [])]);
+// Products the player has bought on Google Play, as a Set.
+export function activeProducts(save) {
+  return new Set(save.purchases.owned);
 }
 
 const grantedByProduct = (carId, products) => [...products].some((id) => PRODUCTS[id]?.grants.cars.includes(carId));

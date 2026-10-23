@@ -28,11 +28,11 @@
 
         </activity>
 
-        <!-- AdMob app id. Defaults to Google's test app id; release builds pass the real one
-             with -PadmobAppId=ca-app-pub-XXXX~YYYY (see app/build.gradle). -->
+        <!-- Live AdMob app id (Red Pen Studio). Debug and dev builds still request Google's test
+             ad units (src/config.js), which is the supported way to test with a real app id. -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="${admobAppId}" />
+            android:value="ca-app-pub-1848535996024012~6089611565" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

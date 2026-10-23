@@ -5,7 +5,7 @@ export const GAME = {
   title: 'Apex Overdrive',
   subtitle: '3D Racing',
   studio: 'Red Pen Studio',
-  version: '0.14.0',
+  version: '1.0.0',
   appId: 'com.redpenstudio.apexoverdrive',
 };
 
@@ -18,25 +18,28 @@ export const LEGAL = {
 
 export { STARTING_COINS } from './data/economy.js';
 
-// Pre-launch builds use Google's test ad units and offer the sandbox store toggle.
-// A store release is built with VITE_RELEASE=1 (see README), which switches to the
-// production ad units below and removes the sandbox toggle from Settings.
+// The Google Play build is made with `npm run build:release` (Vite mode "release", which
+// sets VITE_RELEASE=1 from .env.release) and serves the live AdMob units below. Every other
+// build (dev server, plain `npm run build`, debug installs) serves Google's test units, so
+// nobody on the team can ever click a live ad (AdMob invalid-traffic policy).
 export const RELEASE = env.VITE_RELEASE === '1';
 
 // Google's published test ad units: always safe to load and click during development.
 // https://developers.google.com/admob/android/test-ads
-const TEST_AD_UNITS = {
+export const TEST_AD_UNITS = Object.freeze({
   banner: 'ca-app-pub-3940256099942544/9214589741', // adaptive banner
   interstitial: 'ca-app-pub-3940256099942544/1033173712',
   rewarded: 'ca-app-pub-3940256099942544/5224354917',
-};
+});
 
-// Fill in from the AdMob console before the first store release.
-const PRODUCTION_AD_UNITS = {
-  banner: env.VITE_ADMOB_BANNER ?? '',
-  interstitial: env.VITE_ADMOB_INTERSTITIAL ?? '',
-  rewarded: env.VITE_ADMOB_REWARDED ?? '',
-};
+// Live Red Pen Studio ad units from the AdMob console (app ca-app-pub-1848535996024012~6089611565,
+// set in android/app/src/main/AndroidManifest.xml). Ad unit ids are public identifiers.
+export const ADMOB_APP_ID = 'ca-app-pub-1848535996024012~6089611565';
+export const PRODUCTION_AD_UNITS = Object.freeze({
+  banner: 'ca-app-pub-1848535996024012/3147879768',
+  interstitial: 'ca-app-pub-1848535996024012/1044546325',
+  rewarded: 'ca-app-pub-1848535996024012/1767223174',
+});
 
 export const ADS = {
   units: RELEASE ? PRODUCTION_AD_UNITS : TEST_AD_UNITS,
