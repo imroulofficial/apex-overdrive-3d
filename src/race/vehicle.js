@@ -479,6 +479,7 @@ export class Vehicle {
 
     // Vertical: follow the ground or fly.
     const ground = pr.y;
+    this.groundY = ground; // for the contact shadow (raceCars.js)
     if (!this.airborne) {
       const predicted = this.pos.y + this.vy * dt - 0.5 * GRAVITY * dt * dt;
       if (ground < predicted - 0.03 && this.vy > 1) {

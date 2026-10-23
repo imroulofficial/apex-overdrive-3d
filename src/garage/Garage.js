@@ -1,9 +1,8 @@
 import * as THREE from 'three';
 import { createShowroom, createStudioEnvironment, NO_REFLECT } from './showroom.js';
-import { createCar } from './carModel.js';
 import { loadCar } from '../assets/modelLoader.js';
 import { createCameraRig, SHOTS } from './cameraRig.js';
-import { PaintTransition } from './carPaint.js';
+import { createCarPaint, PaintTransition } from './carPaint.js';
 import { isNative } from '../core/platform.js';
 
 // Mobile budget: the pixel ratio never exceeds 1.5 (a 3x phone would otherwise shade 4x the
@@ -24,6 +23,23 @@ const skipMirror = (root) =>
   root.traverse((o) => {
     if (o.isMesh && (o.userData.noReflect || [].concat(o.material).every((m) => m.name === 'skip'))) o.layers.set(NO_REFLECT);
   });
+
+// Stand-in for the moment before the first model has loaded.
+function emptyRig(paintColor, finish) {
+  return {
+    group: new THREE.Group(),
+    paintMaterial: createCarPaint(paintColor, finish),
+    wheels: [],
+    wheelRadius: 0.34,
+    door: null,
+    lightsOn: false,
+    setLights(on) {
+      this.lightsOn = on;
+    },
+    spinWheels() {},
+    update() {},
+  };
+}
 
 export class Garage {
   constructor(canvas, { car, paintColor, finish, look = {}, quality, onTap, onFps, onHotspot, onShowcase }) {
@@ -54,15 +70,14 @@ export class Garage {
     this.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 1200);
     this.showroom = createShowroom(this.scene);
     this.showroom.bindCamera(this.camera);
-    // The procedural car shows instantly; setCar() then swaps in an external model if one exists.
-    this.car = createCar({ paintColor, finish, style: car.procedural?.style, ...look });
+    // The turntable is empty for the moment the first model takes to load.
+    this.car = emptyRig(paintColor, finish);
     this.carId = null; // car on the turntable once setCar() resolves
     this.wantedCarId = null; // latest requested car
     this.carToken = 0;
-    this.car.group.position.y = 0.06; // on the turntable deck
-    skipMirror(this.car.group);
     this.showroom.turntable.add(this.car.group);
     this.paint = new PaintTransition(this.car.paintMaterial);
+    this.setCar(car, { color: paintColor, finish, ...look });
 
     this.rig = createCameraRig(this.camera, canvas, { onShowcase: (on) => this.onShowcase?.(on) });
     this.hotspot = { x: 0, y: 0, visible: false, open: false };
@@ -145,16 +160,15 @@ export class Garage {
     this.resize();
   }
 
-  // Spawns `def` on the turntable (external .glb when present, procedural otherwise).
-  async setCar(def, { color, finish, rim, spoiler }) {
+  // Spawns `def` on the turntable.
+  async setCar(def, { color, finish, rim }) {
     const token = ++this.carToken;
     this.wantedCarId = def.id;
-    const rig = await loadCar(def, { paintColor: color, finish, rim, spoiler });
+    const rig = await loadCar(def, { paintColor: color, finish, rim });
     if (token !== this.carToken) return; // a newer selection won
     const old = this.car;
+    // glTF clones share geometry with the loader cache, so nothing is freed here.
     this.showroom.turntable.remove(old.group);
-    // glTF clones share geometry with the loader cache, so only procedural meshes are freed.
-    if (old.source === 'procedural') old.group.traverse((o) => o.isMesh && o.geometry.dispose());
     rig.group.position.y = 0.06;
     skipMirror(rig.group);
     rig.setLights(old.lightsOn);
@@ -168,14 +182,10 @@ export class Garage {
     this.paint.start(color, finish);
   }
 
-  // Rim and rear wing on the turntable car (the race bakes whatever the save says).
+  // Rim on the turntable car (the race bakes whatever the save says).
   setRim(id) {
     this.car.setRim?.(id);
     skipMirror(this.car.group);
-  }
-
-  setSpoiler(id) {
-    this.car.setSpoiler?.(id);
   }
 
   // Opens or shuts the driver door and frames it. Returns the new state (null: no door).

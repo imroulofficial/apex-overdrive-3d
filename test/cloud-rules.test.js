@@ -52,7 +52,7 @@ test('fresh, migrated and late-game saves all pass the rules', () => {
   syncOwnedCars(late, new Set(['supercar_bundle', 'remove_ads']));
   for (const s of STAGES) settleStage(late, s, result({ smashes: 99, driftDistance: 9999, airTime: 99, pulses: 9, time: 1, bestLap: 1, driftScore: 1e6 }));
   late.career.stageStars.forEach((m) => assert.equal(m, 7));
-  for (const id of ['kz-kestrel', 'zn-zenith', 'tm-tempesta']) assert.ok(unlockCar(late, id).ok, id);
+  for (const id of ['kz-kestrel', 'ag-aurelia', 'tm-tempesta']) assert.ok(unlockCar(late, id).ok, id);
   for (const s of [fresh, migrated, late]) {
     const doc = JSON.parse(JSON.stringify(toCloudDoc(s, '0.7.0')));
     assert.ok(rulesAccept(doc), JSON.stringify(doc).slice(0, 200));

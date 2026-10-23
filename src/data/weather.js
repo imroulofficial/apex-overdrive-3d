@@ -268,8 +268,6 @@ export const WEATHER = {
   },
 };
 
-export const WEATHER_IDS = Object.keys(WEATHER);
-
 // Tyre grip on a wet road (multipliers on the surface's own coefficients). Standing water in a
 // puddle costs more and drags at the tyres. Dirt turns to slick mud in the rain.
 export function wetGrip(wet) {

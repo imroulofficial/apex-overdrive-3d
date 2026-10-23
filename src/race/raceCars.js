@@ -4,12 +4,16 @@ import { applyFinish } from '../garage/carPaint.js';
 import { FINISHES } from '../data/catalog.js';
 import { backFace, createVertexPbrMaterial, describeMaterial, isFlatMaterial, mergePainted, paintVertices } from '../render/vertexPbr.js';
 
-// Race-ready cars baked from a garage car rig (procedural or .glb, see modelLoader.js). The
-// showroom model has dozens of meshes and real light sources; on track six of them would
-// cost hundreds of draw calls and a heavy light loop in every shader. Here every untextured
-// part (trim, carbon, chrome, lenses, liners...) is folded into one vertex-coloured "atlas"
-// mesh, paint, glass and the brake lights keep their own materials, and the wheels of every
-// car from one factory are a single InstancedMesh. A car costs 4 draw calls instead of ~18.
+// Race-ready cars baked from a car rig (a track LOD of a real model, see modelLoader.js). A
+// model has dozens of meshes; on track six of them would cost hundreds of draw calls. Here
+// every untextured part (trim, carbon, chrome, lenses, liners...) is folded into one
+// vertex-coloured "atlas" mesh, paint, glass, textured parts and the lights keep their own
+// materials, and the wheels of every car from one factory are a single InstancedMesh. A rival
+// costs ~4 draw calls; the player's textured car a few more.
+//
+// Grounding: car bodies receive the sun's shadow (dark under bridges, trees and overpasses
+// like the road around them), every car sits on a soft contact shadow (ContactShadows, one
+// instanced draw for the field) and head / tail lights follow the weather's light level.
 
 const ATLAS = Symbol('atlas');
 const WHEEL_CAPACITY = 16; // per side: up to 16 cars per factory
@@ -119,6 +123,9 @@ export class CarFactory {
     this.paint = template.paintMaterial;
     this.flameTex = flameTexture();
     this.atlas = createVertexPbrMaterial({ envMapIntensity: 1.1 });
+    // Length and width of the car on the ground, for its contact shadow.
+    const size = new THREE.Box3().setFromObject(template.group).getSize(new THREE.Vector3());
+    this.footprint = { length: size.x, width: size.z };
     // Left and right wheels are mirror images, so each side gets its own batch.
     const wheelsSrc = template.group.children.filter((c) => c.isGroup && c.userData.wheelIndex !== undefined);
     this.wheelBatches = [];
@@ -195,7 +202,7 @@ export class CarFactory {
       if (mat === this.paint) return paint;
       if (mat.name === 'skip') return null;
       // Tail lenses are per car so brake lights can glow independently.
-      if (mat.userData.tailLight) {
+      if (mat.userData.tailLight || mat.userData.headLight) {
         if (!own.has(mat)) own.set(mat, mat.clone());
         return own.get(mat);
       }
@@ -210,9 +217,13 @@ export class CarFactory {
     bake(t, t, isWheel, materialMap, this.atlas).forEach((mesh) => {
       // One shadow caster per car keeps the shadow pass cheap; the paint shell is the silhouette.
       mesh.castShadow = mesh.material === paint;
+      // Every opaque part takes the sun's shadow so the car darkens with the road around it.
+      mesh.receiveShadow = !mesh.material.transparent;
       body.add(mesh);
     });
-    const tail = [...own.values()][0];
+    const lights = [...own.values()];
+    const tail = lights.find((m) => m.userData.tailLight) ?? null;
+    const head = lights.find((m) => m.userData.headLight) ?? null;
 
     const wheels = wheelsSrc.map((src, index) => {
       const wheel = new THREE.Group();
@@ -223,8 +234,8 @@ export class CarFactory {
       if (batch && batch.slots.length < WHEEL_CAPACITY) {
         batch.slots.push(spin);
       } else {
-        // Textured (.glb) wheels: everything except the caliper spins, one mesh per material.
-        const merged = bake(src, src, (o) => o.name === 'caliper', (mat) => (mat.roughness > 0.85 ? mat : this.metalOf(mat)));
+        // Textured wheels: everything except the caliper spins, one mesh per material.
+        const merged = bake(src, src, (o) => o.name === 'caliper');
         merged.forEach((mesh) => {
           mesh.castShadow = false;
           spin.add(mesh);
@@ -256,16 +267,12 @@ export class CarFactory {
       body.add(fl);
       flames.push(fl);
     }
-    return new CarVisual(root, body, wheels, tail, flames, flameMat, this.template.wheelRadius);
+    const visual = new CarVisual(root, body, wheels, tail, flames, flameMat, this.template.wheelRadius);
+    visual.head = head;
+    visual.footprint = this.footprint;
+    return visual;
   }
 
-  // Procedural rims, spokes, lip, hub and disc share one material per wheel (fewer draws);
-  // a .glb keeps its own wheel materials.
-  metalOf(mat) {
-    if (this.template.source !== 'procedural') return mat;
-    this.wheelMetal ??= mat;
-    return this.wheelMetal;
-  }
 }
 
 const BLUE = new THREE.Color(0x3aa8ff);
@@ -275,6 +282,10 @@ const PURPLE = new THREE.Color(0xb44dff);
 // Nitro flame brightness: above 1 the flames feed the bloom pass (race/Race.js sets it while
 // bloom is on; without bloom they would only clip to white).
 export const FLAME = { hdr: 1 };
+
+// Head and tail lights on track: race/Race.js switches them on for dusk, night, fog, rain and
+// snow (the weather's sun intensity), like every driver would.
+export const LIGHTS = { on: false };
 
 export class CarVisual {
   constructor(root, body, wheels, tail, flames, flameMat, wheelRadius) {
@@ -320,7 +331,8 @@ export class CarVisual {
       if (w.front) w.wheel.rotation.y = -this.steerVis * 0.45;
     }
 
-    if (this.tail) this.tail.emissiveIntensity = v.braking ? 3.6 : 0.5;
+    if (this.tail) this.tail.emissiveIntensity = v.braking ? 3.6 : LIGHTS.on ? 1.4 : 0.5;
+    if (this.head) this.head.emissiveIntensity = LIGHTS.on ? 2.6 : 0;
 
     const on = v.tier > 0;
     for (const fl of this.flames) {
@@ -337,5 +349,74 @@ export class CarVisual {
       else this.flameMat.color.copy(c?.blue ?? BLUE);
       this.flameMat.color.multiplyScalar(FLAME.hdr);
     }
+  }
+}
+
+// Soft contact shadows under every car: one InstancedMesh of dark, blurred ovals on the
+// road (multiplied in, never lit), so cars sit on the asphalt instead of floating over it
+// where the sun's shadow map is coarse or the car is in shade. Airborne cars shrink and
+// fade their shadow with height.
+function contactTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 4, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(0,0,0,0.78)');
+  grad.addColorStop(0.55, 'rgba(0,0,0,0.5)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
+
+export class ContactShadows {
+  constructor(capacity = 16) {
+    const geo = new THREE.PlaneGeometry(1, 1);
+    geo.rotateX(-Math.PI / 2);
+    const mat = new THREE.MeshBasicMaterial({
+      map: contactTexture(),
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.MultiplyBlending,
+      premultipliedAlpha: true,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      toneMapped: false,
+    });
+    // Multiply blending reads the colour; turn the texture's alpha into "how dark".
+    mat.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace('#include <dithering_fragment>', '#include <dithering_fragment>\n\tgl_FragColor = vec4( vec3( 1.0 - gl_FragColor.a ), 1.0 );');
+    };
+    this.mesh = new THREE.InstancedMesh(geo, mat, capacity);
+    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 1;
+    this.mesh.count = 0;
+    this.mesh.name = 'contact-shadows';
+    this.m = new THREE.Matrix4();
+    this.q = new THREE.Quaternion();
+    this.e = new THREE.Euler(0, 0, 0, 'YZX');
+    this.p = new THREE.Vector3();
+    this.s = new THREE.Vector3();
+  }
+
+  // `racers` carry { visual, vehicle }; the shadow lies on the road under each car.
+  sync(racers) {
+    let n = 0;
+    for (const r of racers) {
+      const v = r.vehicle;
+      const fp = r.visual?.footprint;
+      if (!v || !fp || n >= this.mesh.instanceMatrix.count) continue;
+      const lift = Math.max(0, v.pos.y - (v.groundY ?? v.pos.y));
+      const k = Math.max(0, 1 - lift / 4);
+      if (k <= 0) continue;
+      this.e.set(0, v.heading, v.pitch);
+      this.q.setFromEuler(this.e);
+      this.p.set(v.pos.x, v.pos.y - lift + 0.03, v.pos.z);
+      this.s.set(fp.length * 1.12 * (0.6 + 0.4 * k), 1, fp.width * 1.25 * (0.6 + 0.4 * k));
+      this.mesh.setMatrixAt(n++, this.m.compose(this.p, this.q, this.s));
+    }
+    this.mesh.count = n;
+    this.mesh.instanceMatrix.needsUpdate = true;
   }
 }

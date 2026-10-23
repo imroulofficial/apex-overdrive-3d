@@ -1,8 +1,13 @@
-// The 12 launch cars across Tiers D-A (blueprint section 04). Each car has a procedural
-// body (always available, offline; `procedural.style` picks the silhouette in
-// garage/carShapes.js) and an optional external model: drop the .glb at `model.url`
-// (relative to public/) and the garage and race pick it up automatically.
-// See public/assets/models/README.md.
+// The 8 launch cars across Tiers D-A, two per tier, every one a real 3D model from the studio
+// car pack (built by tools/models/optimize.mjs, see public/assets/models/README.md). Each car
+// has three files: the showroom model (`model.url`), the textured model the player drives on
+// track (`model.driveUrl`) and the light rival LOD (`model.raceUrl`).
+//
+// Each car has one job (`role`, shown in the garage) so no two cars overlap:
+//   D  Flux 85        forgiving all-rounder (starter)    Kestrel 930    drift specialist
+//   C  Stallion Jet   launch and sprints                 Ridgeback 66   all-weather stability
+//   B  Aurelia Vision nitro specialist                   Monza 55       cornering grip
+//   A  Tempesta 9X    downforce, mountain hairpins       Valkyrie GT-R  top speed flagship
 //
 // `unlock` says how a car is first owned:
 //   { type: 'starter' }                       owned from the first launch
@@ -19,75 +24,71 @@
 import { BASE_STATS } from './catalog.js';
 
 export const TIERS = {
-  D: { id: 'D', name: 'Street Tuners', blurb: 'JDM hatchbacks and compact coupes' },
-  C: { id: 'C', name: 'Offroad & Muscle', blurb: 'Rally crossovers and modern muscle' },
-  B: { id: 'B', name: 'Grand Tourers', blurb: 'European exotic coupes' },
-  A: { id: 'A', name: 'Hyper & Supercars', blurb: 'Aerodynamic hypercars' },
+  D: { id: 'D', name: 'Street Classics', blurb: 'Retro coupes for learning the roads' },
+  C: { id: 'C', name: 'Muscle & Heritage', blurb: 'Drag muscle and endurance legends' },
+  B: { id: 'B', name: 'Vision Tourers', blurb: 'Concept coupes and prototypes' },
+  A: { id: 'A', name: 'Hypercars', blurb: 'Le Mans hybrids and track hypercars' },
 };
 
-// Display names, one line per car. The blueprint asks for original, fictional brands; some
-// of these echo real model names, so they can be swapped here without touching ids, saves
-// or Play products.
+// Display names, one line per car. The blueprint asks for original, fictional brands, so no
+// manufacturer or model names appear here; ids, saves and Play products never change.
 export const DISPLAY_NAMES = {
-  'rp1-vanta': 'RP-1 Vanta',
-  'kz-kestrel': 'Fujin Type-R',
-  'rz-sakura': 'Kaze 370',
-  'rb-ridgeback': 'Trailblazer Rally',
-  'sv-stallion': 'Mustang Bandit',
-  'dr-raptor': 'Apex WRX',
-  'mz-monza': 'Monza GT3',
-  'st-stratos': 'Stuttgart Carrera',
-  'ag-aurelia': 'Bavaria M-Sport',
+  'rp1-vanta': 'Flux 85',
+  'kz-kestrel': 'Kestrel 930',
+  'sv-stallion': 'Stallion Jet',
+  'rb-ridgeback': 'Ridgeback 66',
+  'ag-aurelia': 'Aurelia Vision',
+  'mz-monza': 'Monza 55',
+  'tm-tempesta': 'Tempesta 9X',
   'rpx-hyperion': 'Valkyrie GT-R',
-  'tm-tempesta': 'Chimera Senna',
-  'zn-zenith': 'Revuelto Storm',
 };
 
-const car = (id, tier, className, stats, style, feel, unlock, { length = 4.5, ...extra } = {}) => ({
+// Cars that left the roster when it went from 12 to 8 (0.14.0), with what each cost. A save
+// that owned one is refunded once (core/saveSchema.js) and the car drops out of it.
+export const RETIRED_CARS = {
+  'rz-sakura': { price: 6500 },
+  'dr-raptor': { price: 20000 },
+  'st-stratos': { price: 36000 },
+  'zn-zenith': { price: 75000 },
+};
+
+const file = (id) => `assets/models/${id.replace(/-/g, '_')}`;
+const car = (id, tier, role, stats, feel, unlock, length) => ({
   id,
   name: DISPLAY_NAMES[id],
   tier,
-  class: `Tier ${tier} ${className}`,
+  role,
+  class: `Tier ${tier} ${role}`,
   stats,
   feel,
-  procedural: { style },
-  model: { url: `assets/models/${id.replace(/-/g, '_')}.glb`, raceUrl: `assets/models/${id.replace(/-/g, '_')}_race.glb`, length },
+  // `length` is metres nose to tail; the loader scales the model to fit.
+  model: { url: `${file(id)}.glb`, driveUrl: `${file(id)}_drive.glb`, raceUrl: `${file(id)}_race.glb`, length },
   unlock,
   released: true,
-  ...extra,
 });
 
 // Ids are permanent (saves, cloud documents and Play grants store them); names are not.
 export const CARS = [
-  // ---- Tier D · Street Tuners ----
-  car('rp1-vanta', 'D', 'Starter Coupe', BASE_STATS, 'coupe', { weight: 1, power: 2, drift: 1 }, { type: 'starter' }, {
-    model: { url: 'assets/models/rp1_vanta.glb', raceUrl: 'assets/models/rp1_vanta_race.glb', length: 4.6 }, // metres, nose to tail; the loader scales the model to fit
-  }),
-  car('kz-kestrel', 'D', 'Hot Hatch', { speed: 50, accel: 62, handling: 64, nitro: 42 }, 'hatch', { weight: 0.86, power: 1.6, drift: 0.9 }, { type: 'coins', price: 3000 }, { length: 4.2 }),
-  car('rz-sakura', 'D', 'Compact Coupe', { speed: 57, accel: 55, handling: 60, nitro: 46 }, 'zcoupe', { weight: 1.02, power: 2.2, drift: 1.2 }, { type: 'coins', price: 6500 }, { length: 4.3 }),
+  // ---- Tier D · Street Classics ----
+  car('rp1-vanta', 'D', 'All-Rounder', BASE_STATS, { weight: 1, power: 2, drift: 1 }, { type: 'starter' }, 4.21),
+  car('kz-kestrel', 'D', 'Drift Specialist', { speed: 53, accel: 58, handling: 68, nitro: 46 }, { weight: 0.84, power: 1.7, drift: 1.38 }, { type: 'coins', price: 3000 }, 4.29),
 
-  // ---- Tier C · Offroad & Muscle ----
-  car('rb-ridgeback', 'C', 'Rally Crossover', { speed: 57, accel: 66, handling: 64, nitro: 50 }, 'rally', { weight: 1.12, power: 1.6, drift: 1.25 }, { type: 'stars', stars: 15, price: 12000 }, { length: 4.3 }),
-  car('sv-stallion', 'C', 'Modern Muscle', { speed: 68, accel: 63, handling: 52, nitro: 54 }, 'muscle', { weight: 1.3, power: 1.4, drift: 1.35 }, { type: 'stars', stars: 30, price: 16000 }, { length: 4.8 }),
-  car('dr-raptor', 'C', 'Rally Sedan', { speed: 62, accel: 67, handling: 62, nitro: 56 }, 'sedan', { weight: 1.08, power: 1.8, drift: 1.1 }, { type: 'stars', stars: 45, price: 20000 }, { length: 4.6 }),
+  // ---- Tier C · Muscle & Heritage ----
+  car('sv-stallion', 'C', 'Launch King', { speed: 63, accel: 76, handling: 50, nitro: 58 }, { weight: 1.32, power: 1.35, drift: 1.3 }, { type: 'stars', stars: 15, price: 12000 }, 4.79),
+  car('rb-ridgeback', 'C', 'All-Weather Endurance', { speed: 68, accel: 61, handling: 66, nitro: 54 }, { weight: 1.12, power: 2.4, drift: 0.92 }, { type: 'stars', stars: 35, price: 18000 }, 4.19),
 
-  // ---- Tier B · Grand Tourers ----
-  car('ag-aurelia', 'B', 'Grand Tourer', { speed: 71, accel: 64, handling: 66, nitro: 62 }, 'gtfront', { weight: 1.2, power: 2.3, drift: 1.15 }, { type: 'coins', price: 28000 }, { length: 4.7 }),
-  car('st-stratos', 'B', 'Sports Coupe', { speed: 69, accel: 70, handling: 69, nitro: 58 }, 'gt', { weight: 0.98, power: 2.4, drift: 0.95 }, { type: 'coins', price: 36000 }, { length: 4.45 }),
-  car('mz-monza', 'B', 'Track Coupe', { speed: 71, accel: 70, handling: 74, nitro: 60 }, 'gt3', { weight: 0.94, power: 2.7, drift: 0.85 }, { type: 'stars', stars: 75, price: 45000 }, { length: 4.5 }),
+  // ---- Tier B · Vision Tourers ----
+  car('ag-aurelia', 'B', 'Nitro Specialist', { speed: 71, accel: 66, handling: 68, nitro: 78 }, { weight: 1.0, power: 2.3, drift: 1.12 }, { type: 'coins', price: 30000 }, 4.6),
+  car('mz-monza', 'B', 'Cornering Grip', { speed: 69, accel: 71, handling: 82, nitro: 58 }, { weight: 0.9, power: 2.7, drift: 0.82 }, { type: 'stars', stars: 75, price: 45000 }, 4.75),
 
-  // ---- Tier A · Hyper & Supercars ----
-  // The Supercar Bundle hypercar, Valkyrie GT-R (blueprint name; shipped as "RP-X Hyperion"
-  // up to 0.7.0). Its id keeps the old name on purpose: saves, Firestore documents and the
-  // Play grant all refer to 'rpx-hyperion', so renaming the car never needs a migration.
-  car('rpx-hyperion', 'A', 'Hypercar', { speed: 74, accel: 72, handling: 70, nitro: 66 }, 'hyper', { weight: 1.0, power: 2.5, drift: 1.05 }, { type: 'iap', product: 'supercar_bundle' }, {
-    model: { url: 'assets/models/valkyrie_gtr.glb', raceUrl: 'assets/models/valkyrie_gtr_race.glb', length: 4.7 },
-  }),
-  car('tm-tempesta', 'A', 'Track Hypercar', { speed: 76, accel: 75, handling: 78, nitro: 68 }, 'senna', { weight: 0.88, power: 2.8, drift: 0.85 }, { type: 'stars', stars: 120, price: 60000 }, { length: 4.75 }),
-  car('zn-zenith', 'A', 'V12 Hypercar', { speed: 84, accel: 76, handling: 70, nitro: 74 }, 'wedge', { weight: 1.12, power: 3.2, drift: 1.1 }, { type: 'coins', price: 75000 }, { length: 4.75 }),
+  // ---- Tier A · Hypercars ----
+  car('tm-tempesta', 'A', 'Downforce Prototype', { speed: 78, accel: 77, handling: 84, nitro: 66 }, { weight: 0.95, power: 2.8, drift: 0.85 }, { type: 'stars', stars: 120, price: 75000 }, 5.1),
+  // The Supercar Bundle hypercar, Valkyrie GT-R. Its id keeps the old name on purpose: saves,
+  // Firestore documents and the Play grant all refer to 'rpx-hyperion'.
+  car('rpx-hyperion', 'A', 'Top Speed Flagship', { speed: 86, accel: 74, handling: 72, nitro: 76 }, { weight: 1.06, power: 3.1, drift: 1.08 }, { type: 'iap', product: 'supercar_bundle' }, 4.85),
 ];
 
 export const carById = (id) => CARS.find((c) => c.id === id) ?? CARS[0];
 export const STARTER_CAR = CARS.find((c) => c.unlock.type === 'starter').id;
-// Cars the garage shows (every launch car has a procedural body now).
+// Cars the garage shows.
 export const RELEASED_CARS = CARS.filter((c) => c.released);

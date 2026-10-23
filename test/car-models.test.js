@@ -1,5 +1,6 @@
-// External car models in public/assets/models/: credited, phone-sized, within the race LOD
-// triangle budget and following the loader conventions (four wheel nodes, a paint material).
+// The real car models in public/assets/models/: one manifest entry per roster car, credited,
+// licensed for a commercial app, phone-sized, within the triangle budgets and following the
+// loader conventions (four wheel nodes, a paint material).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -22,8 +23,12 @@ const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies(
 const triangles = (doc) =>
   doc.getRoot().listMeshes().reduce((n, m) => n + m.listPrimitives().reduce((k, p) => k + (p.getIndices() ?? p.getAttribute('POSITION')).getCount() / 3, 0), 0);
 
-test('every car has a race LOD slot next to its showroom model', () => {
-  for (const car of CARS) assert.equal(car.model.raceUrl, car.model.url.replace(/\.glb$/, '_race.glb'), car.id);
+test('every roster car is a manifest model and every manifest model is a roster car', () => {
+  assert.deepEqual(manifest.cars.map((e) => e.id).sort(), CARS.map((c) => c.id).sort());
+  for (const car of CARS) {
+    assert.equal(car.model.raceUrl, car.model.url.replace(/\.glb$/, '_race.glb'), car.id);
+    assert.equal(car.model.driveUrl, car.model.url.replace(/\.glb$/, '_drive.glb'), car.id);
+  }
 });
 
 test('imported models are credited, phone-sized and within the triangle budgets', async () => {
@@ -31,8 +36,12 @@ test('imported models are credited, phone-sized and within the triangle budgets'
     const car = CARS.find((c) => c.id === entry.id);
     assert.ok(car, `${entry.id} is a roster car`);
     assert.ok(credits.includes(entry.source), `${entry.id} is in CREDITS.md`);
-    assert.doesNotMatch(entry.license, /-NC|-ND/, `${entry.id} licence allows commercial use`);
-    for (const [url, maxTris, maxMb] of [[car.model.url, 60000, 3], [car.model.raceUrl, 10000, 0.5]]) {
+    // A non-commercial or no-derivatives licence is only acceptable with a studio-held grant
+    // (`commercialRights`, recorded in CREDITS.md).
+    if (!entry.commercialRights) assert.doesNotMatch(entry.license, /-NC|-ND/, `${entry.id} licence allows commercial use`);
+    else assert.match(entry.license, /Commercial rights held by Red Pen Studio/, entry.id);
+    // Showroom: up to 150k triangles; the player's track model 60k; rivals under 10k.
+    for (const [url, maxTris, maxMb] of [[car.model.url, 150000, 10], [car.model.driveUrl, 60000, 3], [car.model.raceUrl, 10000, 0.5]]) {
       const file = path.join(dir, url);
       assert.ok(fs.statSync(file).size < maxMb * 1e6, `${url} under ${maxMb} MB`);
       const doc = await io.read(file);

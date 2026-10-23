@@ -9,8 +9,8 @@ import { SmashProps } from './props.js';
 import { Vehicle, statsToParams, NITRO } from './vehicle.js';
 import { DriftChain } from './driftChain.js';
 import { AIDriver } from './ai.js';
-import { CarFactory, FLAME } from './raceCars.js';
-import { createCar, RACE_DETAIL } from '../garage/carModel.js';
+import { CarFactory, ContactShadows, FLAME, LIGHTS } from './raceCars.js';
+import { carById } from '../data/cars.js';
 import { loadCar } from '../assets/modelLoader.js';
 import { ChaseCamera, HOOD_SPAN } from './chaseCamera.js';
 import { Particles, SkidMarks, SpeedLines, softDotTexture } from './effects.js';
@@ -37,7 +37,7 @@ import { MobileBloom } from '../render/bloom.js';
 const STEP = 1 / 60;
 const SMOKE = new THREE.Color(0xe9ebee);
 // The player's car is rebuilt when its body, rim or wing changes.
-const lookKey = (car, look) => `${car.id}|${look.rim ?? 'stock'}|${look.spoiler ?? 'factory'}`;
+const lookKey = (car, look) => `${car.id}|${look.rim ?? 'stock'}`;
 const DUST = new THREE.Color(0xc9b48a);
 const GRASS_BITS = new THREE.Color(0x8a9a52);
 const SPARK = new THREE.Color(0xffb347);
@@ -67,7 +67,7 @@ export class Race {
   }
 
   // Builds the world once (procedural, a few hundred ms) and pre-compiles its shaders.
-  // `look` is the player's rim and rear wing ({ rim, spoiler }, from inventory.carLook).
+  // `look` is the player's rim ({ rim }, from inventory.carLook).
   async prepare({ quality, paint, car, look = {}, stage }) {
     if (this.ready) return;
     const renderer = this.renderer;
@@ -108,12 +108,17 @@ export class Race {
     this.bloom = new MobileBloom(renderer);
     this.weather = null;
 
-    // Rivals share the procedural coupe; the player's car comes from the spawner (.glb or procedural).
-    this.rivalFactory = new CarFactory(createCar({ paintColor: paint.color, finish: paint.finish, detail: RACE_DETAIL }));
-    this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, detail: RACE_DETAIL, ...look }));
+    // The player drives the textured track model of their car; every rival drives the light
+    // LOD of the roster car it is assigned (data/rivals.js), one factory per model.
+    this.rivalFactories = new Map(); // car id -> Promise<CarFactory>
+    this.rivalFactoryList = []; // the ones that have loaded
+    this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, lod: 'drive', ...look }));
     this.playerCarKey = lookKey(car, look);
     this.playerFeel = car.feel;
-    for (const f of [this.rivalFactory, this.factory]) this.scene.add(...f.sharedMeshes);
+    // (Object3D.add() with no arguments logs an error, so empty lists are skipped.)
+    if (this.factory.sharedMeshes.length) this.scene.add(...this.factory.sharedMeshes);
+    this.contactShadows = new ContactShadows();
+    this.scene.add(this.contactShadows.mesh);
     this.skids = new SkidMarks(this.scene);
     const dot = softDotTexture();
     this.smoke = new Particles(this.scene, { count: 360, texture: dot });
@@ -152,14 +157,15 @@ export class Race {
     const keep = new Set(rivals.map((r) => r.id));
     for (const [id, r] of this.pool) {
       if (keep.has(id)) continue;
-      this.rivalFactory.release(r.visual);
+      r.factory.release(r.visual);
       this.scene.remove(r.visual.root);
       r.visual.root.traverse((o) => o.isMesh && o.geometry.dispose());
       this.pool.delete(id);
     }
     for (const r of rivals) {
       if (this.pool.has(r.id)) continue;
-      const racer = { ...r, isPlayer: false, visual: this.rivalFactory.build({ color: r.color, finish: r.finish }) };
+      const factory = await this.rivalFactory(r.car);
+      const racer = { ...r, isPlayer: false, factory, visual: factory.build({ color: r.color, finish: r.finish }) };
       this.scene.add(racer.visual.root);
       this.pool.set(r.id, racer);
     }
@@ -171,6 +177,20 @@ export class Race {
       this.reset({ stats: null });
       await this.renderer.compileAsync(this.scene, this.camera);
     }
+  }
+
+  // The factory that builds rivals in `carId` (the rival LOD, loaded once per race).
+  rivalFactory(carId) {
+    const id = carById(carId).id;
+    if (!this.rivalFactories.has(id)) {
+      this.rivalFactories.set(id, loadCar(carById(id), { lod: 'race' }).then((template) => {
+        const factory = new CarFactory(template);
+        if (factory.sharedMeshes.length) this.scene.add(...factory.sharedMeshes);
+        this.rivalFactoryList.push(factory);
+        return factory;
+      }));
+    }
+    return this.rivalFactories.get(id);
   }
 
   // Switches between the forward and the reversed road, and opens or closes the highway along
@@ -221,6 +241,8 @@ export class Race {
     this.lightning.reset();
     this.scenery.setFlash(0);
     this.bloom.setParams(w.bloom);
+    // Lights on at dusk, at night and in fog, rain or snow.
+    LIGHTS.on = w.sun.intensity < 1.25 || w.sun.elevation < 0.1;
     // Cars, glass and puddles reflect the coast under this sky: bake it into the environment
     // cubemap from just above the start line (proxies only, so no car reflects itself).
     const f = fwd.frame(0, {});
@@ -234,7 +256,7 @@ export class Race {
     if (lookKey(car, look) === this.playerCarKey) return;
     const old = this.player.visual;
     const oldFactory = this.factory;
-    this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, detail: RACE_DETAIL, ...look }));
+    this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, lod: 'drive', ...look }));
     this.playerCarKey = lookKey(car, look);
     this.player.visual = this.factory.build({ player: true });
     this.scene.remove(old.root, ...oldFactory.sharedMeshes);
@@ -619,7 +641,8 @@ export class Race {
 
   syncWheels() {
     this.factory.syncWheels();
-    this.rivalFactory.syncWheels();
+    for (const f of this.rivalFactoryList) f.syncWheels();
+    this.contactShadows.sync(this.racers);
   }
 
   toPhase(p) {

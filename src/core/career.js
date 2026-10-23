@@ -1,6 +1,6 @@
 // Career rules over a v2 save (core/saveSchema.js): which stages are open, which stars a
 // race earned, what it pays, and milestone chests. Pure functions; callers save afterwards.
-import { STAGES, CHAPTERS, MILESTONES, GAME_MODES, chapterById, describeObjective, fmtTime } from '../data/career.js';
+import { STAGES, MILESTONES, GAME_MODES, chapterById, describeObjective, fmtTime } from '../data/career.js';
 import { STAR_BONUS, finishCoins, skillBonus } from '../data/economy.js';
 
 export const starCount = (mask) => (mask & 1) + ((mask >> 1) & 1) + ((mask >> 2) & 1);
@@ -17,12 +17,6 @@ export function isChapterUnlocked(save, chapterId) {
 
 export function isStageUnlocked(save, stage) {
   return stage.number <= save.career.unlockedStage && isChapterUnlocked(save, stage.chapterId);
-}
-
-// The next chapter's star gate the player has not met yet, for the map's lock label.
-export function nextStarGate(save) {
-  const stars = totalStars(save);
-  return CHAPTERS.find((c) => c.starGate > stars) ?? null;
 }
 
 // `result` is what a race reports for the player:

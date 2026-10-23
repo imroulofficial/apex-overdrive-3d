@@ -3,7 +3,7 @@
 // rims, so switching cars never carries one car's upgrades onto another.
 import { PRODUCTS } from '../config.js';
 import { CARS, carById } from '../data/cars.js';
-import { UPGRADES, RIMS, PAINTS, SPOILERS, FX_COLORS, STAT_PER_LEVEL, upgradeCost } from '../data/catalog.js';
+import { UPGRADES, RIMS, PAINTS, FX_COLORS, STAT_PER_LEVEL, upgradeCost } from '../data/catalog.js';
 import { newCarEntry } from './saveSchema.js';
 import { totalStars } from './career.js';
 
@@ -63,8 +63,6 @@ export function unlockCar(save, carId, products) {
   return { ok: true, price: status.price };
 }
 
-export const upgradeLevel = (save, carId, upgradeId) => save.cars[carId]?.upgrades[upgradeId] ?? 0;
-
 export function buyUpgrade(save, carId, upgradeId) {
   const entry = save.cars[carId];
   const u = UPGRADES.find((x) => x.id === upgradeId);
@@ -107,20 +105,6 @@ export function buyRim(save, carId, rimId) {
   return { ok: true };
 }
 
-// Buys (if needed) and fits a rear wing on one car.
-export function buySpoiler(save, carId, spoilerId) {
-  const entry = save.cars[carId];
-  const wing = SPOILERS.find((x) => x.id === spoilerId);
-  if (!entry || !wing) return fail('unknown');
-  if (!entry.spoilers.includes(wing.id)) {
-    if (save.coins < wing.price) return fail('coins', { cost: wing.price });
-    save.coins -= wing.price;
-    entry.spoilers.push(wing.id);
-  }
-  entry.spoiler = wing.id;
-  return { ok: true };
-}
-
 // Tyre smoke ('smoke') or nitro trail ('nitroFx') colour for one car. Free.
 export function equipFx(save, carId, slot, fxId) {
   const entry = save.cars[carId];
@@ -132,5 +116,5 @@ export function equipFx(save, carId, slot, fxId) {
 // What the race and the turntable need to build a car as the player fitted it.
 export const carLook = (save, carId) => {
   const e = save.cars[carId];
-  return { rim: e?.rim ?? RIMS[0].id, spoiler: e?.spoiler ?? SPOILERS[0].id };
+  return { rim: e?.rim ?? RIMS[0].id };
 };

@@ -12,7 +12,8 @@
 //                  paint, rim, rims: [owned rim ids], spoiler, spoilers: [owned wing ids],
 //                  smoke, nitroFx (tyre smoke / nitro trail colour ids) }
 //                (spoiler/smoke/nitroFx arrived in 0.13.0 inside the existing car map, so
-//                the v2 Firestore rules accept them without a schema bump)
+//                the v2 Firestore rules accept them without a schema bump; since 0.14.0 the
+//                wing fields always read 'factory', see retiredRefund)
 //   ownedPaints  coin paints bought (shared by every car; each car equips its own)
 //   career       { unlockedStage (1-60), stageStars: [star bitmask per stage, bit 0 = star 1],
 //                  best: { [stageId]: { time, score, plays } }, milestones: [claimed ids] }
@@ -25,8 +26,8 @@
 //
 // v1 (Phases 1-6) kept upgrades and paint global, plus per-track `records`.
 import { PRODUCTS } from '../config.js';
-import { STARTING_COINS } from '../data/economy.js';
-import { CARS, STARTER_CAR } from '../data/cars.js';
+import { STARTING_COINS, UPGRADE_COSTS } from '../data/economy.js';
+import { CARS, RETIRED_CARS, STARTER_CAR } from '../data/cars.js';
 import { PAINTS, RIMS, UPGRADES, SPOILERS, FX_COLORS, DEFAULT_SMOKE, DEFAULT_NITRO } from '../data/catalog.js';
 import { STAGES, MILESTONES } from '../data/career.js';
 import { CONTROL_SCHEMES, DEFAULT_CONTROLS, CAMERA_VIEWS, DEFAULT_CAMERA } from '../data/controls.js';
@@ -58,7 +59,6 @@ const uniq = (list, valid) => [...new Set((Array.isArray(list) ? list : []).filt
 const carIds = new Set(CARS.map((c) => c.id));
 const paintIds = new Set(PAINTS.map((p) => p.id));
 const rimIds = new Set(RIMS.map((r) => r.id));
-const spoilerIds = new Set(SPOILERS.map((x) => x.id));
 const fxIds = new Set(FX_COLORS.map((f) => f.id));
 const stageIds = new Set(STAGES.map((s) => s.stageId));
 const milestoneIds = new Set(MILESTONES.map((m) => m.id));
@@ -108,15 +108,14 @@ function normalizeCar(entry, fallbackBy) {
   const upgrades = emptyUpgrades();
   for (const id of Object.keys(upgrades)) upgrades[id] = int(e.upgrades?.[id], 0, MAX_LEVEL, 0);
   const rims = uniq([DEFAULT_RIM, ...(e.rims ?? [])], (r) => rimIds.has(r));
-  const spoilers = uniq([DEFAULT_SPOILER, ...(e.spoilers ?? [])], (x) => spoilerIds.has(x));
   return {
     unlockedBy: UNLOCKED_BY.includes(e.unlockedBy) ? e.unlockedBy : fallbackBy,
     upgrades,
     paint: paintIds.has(e.paint) ? e.paint : DEFAULT_PAINT,
     rim: rims.includes(e.rim) ? e.rim : DEFAULT_RIM,
     rims,
-    spoiler: spoilers.includes(e.spoiler) ? e.spoiler : DEFAULT_SPOILER,
-    spoilers,
+    spoiler: DEFAULT_SPOILER,
+    spoilers: [DEFAULT_SPOILER],
     smoke: fxIds.has(e.smoke) ? e.smoke : DEFAULT_SMOKE,
     nitroFx: fxIds.has(e.nitroFx) ? e.nitroFx : DEFAULT_NITRO,
   };
@@ -144,10 +143,33 @@ function normalizeCareer(c) {
   };
 }
 
+// Coins a save gets back for what the 0.14.0 roster change took away: every retired car it
+// owned (purchase price, upgrade levels and rims bought for it) and every rear wing bought
+// for any car (the real car models carry their own aero, so the wing shop closed). Both are
+// gone from the save once it is normalized, so the refund is paid exactly once.
+export function retiredRefund(cars) {
+  if (!isObj(cars)) return 0;
+  const priceOf = (list, id) => list.find((x) => x.id === id)?.price ?? 0;
+  let coins = 0;
+  for (const [id, e] of Object.entries(cars)) {
+    if (!isObj(e)) continue;
+    for (const w of Array.isArray(e.spoilers) ? e.spoilers : []) coins += priceOf(SPOILERS, w);
+    const retired = RETIRED_CARS[id];
+    if (!retired) continue;
+    if (e.unlockedBy === 'coins' || e.unlockedBy === 'stars') coins += retired.price;
+    for (const level of Object.values(isObj(e.upgrades) ? e.upgrades : {})) {
+      for (let i = 0; i < int(level, 0, MAX_LEVEL, 0); i++) coins += UPGRADE_COSTS[i];
+    }
+    for (const r of Array.isArray(e.rims) ? e.rims : []) coins += priceOf(RIMS, r);
+  }
+  return coins;
+}
+
 // Fills gaps and drops anything invalid in a v2 save, so the rest of the game can trust it.
 export function normalize(data) {
   const base = defaults();
   const d = isObj(data) ? data : {};
+  const refund = retiredRefund(d.cars);
   const cars = {};
   if (isObj(d.cars)) {
     for (const [id, entry] of Object.entries(d.cars)) {
@@ -160,7 +182,7 @@ export function normalize(data) {
     ...base,
     ...d,
     v: SAVE_VERSION,
-    coins: int(d.coins, 0, Number.MAX_SAFE_INTEGER, base.coins),
+    coins: int(d.coins, 0, Number.MAX_SAFE_INTEGER, base.coins) + refund,
     car: cars[d.car] ? d.car : STARTER_CAR,
     cars,
     ownedPaints: uniq([...DEFAULT_PAINTS, ...(d.ownedPaints ?? [])], (id) => paintIds.has(id)),
