@@ -26,7 +26,7 @@ test('v1 -> v2 keeps coins and every purchase flag', () => {
   assert.deepEqual(s.purchases.granted, ['supercar_bundle']);
   assert.equal(s.purchases.noAds, true);
   assert.equal(s.savedAt, v1.savedAt);
-  assert.deepEqual(s.settings, { ...v1.settings, controls: 'touch', bloom: 'low' }); // Phase 8 added the control scheme, Phase 11 bloom
+  assert.deepEqual(s.settings, { ...v1.settings, controls: 'touch', bloom: 'low', cameraView: 'chase' }); // Phase 8 added the control scheme, Phase 11 bloom, then the camera view
   assert.deepEqual(s.ads, v1.ads);
 });
 

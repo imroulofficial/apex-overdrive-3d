@@ -12,7 +12,7 @@ import { AIDriver } from './ai.js';
 import { CarFactory, FLAME } from './raceCars.js';
 import { createCar, RACE_DETAIL } from '../garage/carModel.js';
 import { loadCar } from '../assets/modelLoader.js';
-import { ChaseCamera } from './chaseCamera.js';
+import { ChaseCamera, HOOD_SPAN } from './chaseCamera.js';
 import { Particles, SkidMarks, SpeedLines, softDotTexture } from './effects.js';
 import { mulberry32 } from './noise.js';
 import { ModeProps } from './modeProps.js';
@@ -120,6 +120,7 @@ export class Race {
     this.sparks = new Particles(this.scene, { count: 160, additive: true, texture: dot });
     this.speedLines = new SpeedLines(this.camera);
     this.chase = new ChaseCamera(this.camera);
+    this.fitCamera();
 
     const player = this.factory.build({ player: true });
     this.player = { id: 'player', name: 'You', color: paint.color, isPlayer: true, visual: player };
@@ -242,7 +243,50 @@ export class Race {
     oldFactory.sharedMeshes.forEach((m) => m.geometry.dispose());
     if (this.player.vehicle) this.player.visual.update(this.player.vehicle, 0, 0);
     this.factory.syncWheels();
+    this.fitCamera();
     await this.renderer.compileAsync(this.scene, this.camera);
+  }
+
+  // The hood view sits on the player's car, so it needs the model's nose and the height of its
+  // bonnet, centre line and both wings (cast down onto the opaque body: headlight beams, floor
+  // pools and flames reach well past the car).
+  fitCamera() {
+    const box = new THREE.Box3();
+    const part = new THREE.Box3();
+    const solid = [];
+    const group = this.factory.template.group;
+    group.updateMatrixWorld(true);
+    group.traverse((o) => {
+      if (!o.isMesh || !o.visible || o.name === 'beam') return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      if (mats.some((m) => m.blending !== THREE.NormalBlending)) return;
+      solid.push(o); // bodywork can be alpha-blended on imported models
+      if (mats.some((m) => m.transparent)) return;
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+      box.union(part.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld));
+    });
+    if (box.isEmpty()) return;
+    const ray = new THREE.Raycaster();
+    const down = new THREE.Vector3(0, -1, 0);
+    const surfaceAt = (x, z) => {
+      ray.set(new THREE.Vector3(x, box.max.y + 1, z), down);
+      const hit = ray.intersectObjects(solid, false)[0];
+      return hit ? hit.point.y : null;
+    };
+    const nose = box.max.x;
+    const bonnet = [];
+    for (let x = nose - HOOD_SPAN; x <= nose - 0.05; x += 0.1) bonnet.push(surfaceAt(x, 0));
+    // Raised wings either side (wide-body supercars) would fill the view from the centre line.
+    for (let x = nose - HOOD_SPAN; x <= nose - 0.3; x += 0.2) for (const z of [-0.45, 0.45]) {
+      const y = surfaceAt(x, z);
+      if (y !== null) bonnet.push(y);
+    }
+    this.chase.setCarSize(nose, box.max.y, bonnet.every((y) => y !== null) ? Math.max(...bonnet) : null);
+  }
+
+  // Camera view from settings or the HUD toggle (CAMERA_VIEWS); takes effect immediately.
+  setCameraView(view) {
+    this.chase.setView(view, this.player?.vehicle);
   }
 
   resize() {
@@ -980,10 +1024,10 @@ export class Race {
     const fx = Math.cos(v.heading);
     const fz = -Math.sin(v.heading);
     const slip = Math.abs(v.slip);
-    const smoking = (v.drifting && slip > 0.15) || (v.braking && v.speed > 15);
+    const smoking = (v.drifting && slip > 0.15) || (v.braking && v.brake > 0.6 && v.speed > 15);
     // Rubber on the road from both rear tyres while sliding or braking hard on the asphalt.
     const onRoad = v.mix.asphalt > 0.5;
-    const marking = onRoad && ((v.drifting && slip > 0.08) || (v.braking && v.speed > 10));
+    const marking = onRoad && ((v.drifting && slip > 0.08) || (v.braking && v.brake > 0.5 && v.speed > 10));
     const strength = v.drifting ? Math.min(1, 0.45 + slip * 1.2) : 0.5;
     for (let k = 0; k < 2; k++) {
       if (!marking) {
@@ -1102,7 +1146,7 @@ export class Race {
       speed: Math.min(1, v.speed / 70),
       boost: v.tier,
       // Tyres squeal on the asphalt only; off it they crunch and swish instead.
-      skid: (v.drifting ? Math.min(1, Math.abs(v.slip) * 2) : v.braking && v.speed > 12 ? 0.5 : 0) * v.mix.asphalt,
+      skid: (v.drifting ? Math.min(1, Math.abs(v.slip) * 2) : v.braking && v.speed > 12 ? 0.5 * Math.min(1, Math.max(0, (v.brake - 0.35) / 0.5)) : 0) * v.mix.asphalt,
       slip: v.slip ?? 0,
       gravel: v.airborne ? 0 : v.mix.gravel,
       grass: v.airborne ? 0 : v.mix.grass,
