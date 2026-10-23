@@ -28,6 +28,7 @@ import { reverseTrackDef, generatePuddles, reversePuddles } from './routes.js';
 import { Rain, Lightning, LensDrops, buildPuddles } from './atmosphere.js';
 import { buildBridge, buildWaterfall, buildTrails, Seabirds } from './setPieces.js';
 import { MobileBloom } from '../render/bloom.js';
+import { SceneCulling } from '../render/culling.js';
 
 // One race on a track: owns the 3D scene, the cars, the race state machine
 // (intro → countdown → racing → finished) and reports to the HUD every frame. What kind of
@@ -132,6 +133,8 @@ export class Race {
     this.scene.add(player.root);
     this.racers = [this.player];
     this.pool = new Map(); // rival id -> racer, built on demand per stage
+    // Static scenery is culled per cell from here on (render/culling.js).
+    this.culling = new SceneCulling(this.scene);
     await this.setStage(stage, { compile: false });
 
     this.shadowState = renderer.shadowMap.enabled;
@@ -158,14 +161,14 @@ export class Race {
     for (const [id, r] of this.pool) {
       if (keep.has(id)) continue;
       r.factory.release(r.visual);
-      this.scene.remove(r.visual.root);
-      r.visual.root.traverse((o) => o.isMesh && o.geometry.dispose());
+      r.visual.dispose();
       this.pool.delete(id);
     }
     for (const r of rivals) {
       if (this.pool.has(r.id)) continue;
       const factory = await this.rivalFactory(r.car);
-      const racer = { ...r, isPlayer: false, factory, visual: factory.build({ color: r.color, finish: r.finish }) };
+      // Rivals sit on their contact shadow only; the player's car is the one car in the shadow map.
+      const racer = { ...r, isPlayer: false, factory, visual: factory.build({ color: r.color, finish: r.finish, castShadow: false }) };
       this.scene.add(racer.visual.root);
       this.pool.set(r.id, racer);
     }
@@ -205,6 +208,7 @@ export class Race {
       this.directional.reverse = buildDirectional(t);
       this.scene.add(this.directional.reverse);
       this.propSets.reverse = new SmashProps(t, def, this.scene);
+      this.culling?.add(this.directional.reverse);
     }
     this.track = this.tracks[key];
     this.track.forced = forced;
@@ -246,6 +250,7 @@ export class Race {
     // Cars, glass and puddles reflect the coast under this sky: bake it into the environment
     // cubemap from just above the start line (proxies only, so no car reflects itself).
     const f = fwd.frame(0, {});
+    this.culling?.restoreAll();
     this.scenery.bakeEnvironment(new THREE.Vector3(f.x, fwd.roadY(0) + 6, f.z));
   }
 
@@ -259,10 +264,10 @@ export class Race {
     this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, lod: 'drive', ...look }));
     this.playerCarKey = lookKey(car, look);
     this.player.visual = this.factory.build({ player: true });
-    this.scene.remove(old.root, ...oldFactory.sharedMeshes);
+    this.scene.remove(...oldFactory.sharedMeshes);
     this.scene.add(this.player.visual.root, ...this.factory.sharedMeshes);
-    old.root.traverse((o) => o.isMesh && o.geometry.dispose());
-    oldFactory.sharedMeshes.forEach((m) => m.geometry.dispose());
+    old.dispose();
+    oldFactory.dispose();
     if (this.player.vehicle) this.player.visual.update(this.player.vehicle, 0, 0);
     this.factory.syncWheels();
     this.fitCamera();
@@ -507,18 +512,25 @@ export class Race {
     this.exit();
     window.removeEventListener('resize', this.resize);
     const textures = new Set();
+    this.culling?.dispose();
+    this.modeProps?.dispose();
     this.scene?.traverse((o) => {
       o.geometry?.dispose();
+      o.shadow?.dispose(); // the sun's shadow map
+      if (o.isInstancedMesh) o.dispose();
       for (const m of [].concat(o.material ?? [])) {
         for (const v of Object.values(m)) if (v?.isTexture) textures.add(v);
-        for (const u of Object.values(m.uniforms ?? {})) if (u?.value?.isTexture) textures.add(u.value);
+        for (const u of [...Object.values(m.uniforms ?? {}), ...Object.values(m.userData.uniforms ?? {})]) if (u?.value?.isTexture) textures.add(u.value);
         m.dispose();
       }
     });
     // Shared photo assets (render/envAssets.js) stay loaded for the next track.
     for (const t of textures) if (!t.userData?.shared) t.dispose();
+    this.scenery?.disposeEnvironment();
+    this.bloom?.destroy();
     this.scene?.environment?.dispose();
     this.scene = null;
+    this.culling = null;
     this.ready = false;
   }
 
@@ -612,6 +624,7 @@ export class Race {
     this.updateAtmosphere(dt, player, simulate);
 
     this.chase.update(dt, player, { boostTier: player.tier });
+    this.culling.update(this.camera);
     const lineLevel = player.tier === 2 ? 1 : player.tier === 1 ? 0.5 : 0;
     this.speedLines.update(dt, simulate ? lineLevel : 0, Math.max(20, player.speed), player.tier);
 

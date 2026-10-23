@@ -188,6 +188,8 @@ export function createGroundMaterial({ rockOnly = false, env = null } = {}) {
     sandColor: { value: new THREE.Color(0xcdb98c) },
     grassTint: { value: new THREE.Color(0xc4d6a0) },
   };
+  // Race.dispose frees textures it finds here (they never sit on the material itself).
+  mat.userData.uniforms = uniforms;
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     if (rockOnly) shader.defines = { ...shader.defines, ROCK_ONLY: '' };
@@ -633,6 +635,8 @@ function scatter(mesh, transforms, tint = null) {
   mesh.computeBoundingSphere();
 }
 
+const FOLIAGE_LOD_DISTANCE = 220; // metres
+
 function buildVegetation(def, terrain, quality, track, env) {
   const group = new THREE.Group();
   const rand = mulberry32(42);
@@ -690,6 +694,9 @@ function buildVegetation(def, terrain, quality, track, env) {
     scatter(tree, redwoods, (t, i) => [0.0, 0.0, 0.88 + ((i * 0.37) % 1) * 0.3]);
     const palm = new THREE.InstancedMesh(photoPalm(), [photo.palmBark, photo.fronds], palms.length);
     scatter(palm, palms, (t, i) => [0.0, 0.0, 0.9 + ((i * 0.53) % 1) * 0.2]);
+    // Lighter crowns beyond a couple of hundred metres (render/culling.js swaps them per cell).
+    tree.userData.lod = { geometry: photoRedwood({ far: true }), distance: FOLIAGE_LOD_DISTANCE };
+    palm.userData.lod = { geometry: photoPalm({ far: true }), distance: FOLIAGE_LOD_DISTANCE };
     const ferns = bushes.map((b) => ({ ...b, scale: b.scale * 1.5, stretch: 0.8 + (b.stretch - 0.6) * 0.5 }));
     const fern = new THREE.InstancedMesh(fernGeometry(), photo.fronds, ferns.length);
     fern.name = 'ferns';
@@ -1088,6 +1095,11 @@ export function buildScenery(scene, renderer, track, def, quality, env = null) {
       snapped.applyMatrix4(lightRot);
       sun.target.position.copy(snapped);
       sun.position.copy(snapped).addScaledVector(sunDir, 120);
+    },
+    // Frees the baked cubemap's render target (the race is being thrown away).
+    disposeEnvironment() {
+      envTarget?.dispose();
+      envTarget = null;
     },
     // Renders the track world into a prefiltered cubemap: cars, glass and puddles then reflect
     // the real coast, sky and sun instead of a generic studio. Re-baked whenever the weather

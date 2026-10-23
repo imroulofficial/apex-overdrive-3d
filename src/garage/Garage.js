@@ -1,20 +1,24 @@
 import * as THREE from 'three';
 import { createShowroom, createStudioEnvironment, NO_REFLECT } from './showroom.js';
-import { loadCar } from '../assets/modelLoader.js';
+import { loadCar, evictModel } from '../assets/modelLoader.js';
 import { createCameraRig, SHOTS } from './cameraRig.js';
 import { createCarPaint, PaintTransition } from './carPaint.js';
 import { isNative } from '../core/platform.js';
 
-// Mobile budget: the pixel ratio never exceeds 1.5 (a 3x phone would otherwise shade 4x the
-// pixels for no visible gain), and the garage's planar mirror (a second full scene render
+// Mobile budget: the pixel ratio never exceeds 1.5 (1.25 on phones and tablets, see below),
+// and the garage's planar mirror (a second full scene render
 // every frame) is the only extra pass, kept for High.
 export const QUALITY = {
   low: { maxPixelRatio: 1, shadows: false, reflections: false, reflectionScale: 0 },
   medium: { maxPixelRatio: 1.25, shadows: true, reflections: false, reflectionScale: 0 },
   high: { maxPixelRatio: 1.5, shadows: true, reflections: true, reflectionScale: 0.35 },
 };
+const MOBILE = isNative || matchMedia('(pointer: coarse)').matches;
+// Phones and tablets never render above 1.25x, whatever the quality: a 1080p or 1440p panel
+// at its native 2.5-3.5x would shade 4-8x the pixels of 1.25x for little visible gain.
+export const MOBILE_MAX_PIXEL_RATIO = 1.25;
 // Auto starts at Medium on phones and tablets, High on desktop; it steps down if FPS sags.
-const AUTO_START = isNative || matchMedia('(pointer: coarse)').matches ? 'medium' : 'high';
+const AUTO_START = MOBILE ? 'medium' : 'high';
 const AUTO_ORDER = ['high', 'medium', 'low'];
 const TAP_SLOP_PX = 8;
 
@@ -23,6 +27,20 @@ const skipMirror = (root) =>
   root.traverse((o) => {
     if (o.isMesh && (o.userData.noReflect || [].concat(o.material).every((m) => m.name === 'skip'))) o.layers.set(NO_REFLECT);
   });
+
+// The car leaving the turntable: glTF clones share geometry and textures with the model
+// loader's cache, which keeps them on the CPU, so only their GPU copies are freed here (three
+// uploads them again if that car comes back). Swap rims and the rig's own paint go for good.
+function freeGpu(root) {
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    o.geometry.dispose();
+    for (const m of [].concat(o.material)) {
+      for (const v of Object.values(m)) if (v?.isTexture) v.dispose();
+      m.dispose();
+    }
+  });
+}
 
 // Stand-in for the moment before the first model has loaded.
 function emptyRig(paintColor, finish) {
@@ -131,7 +149,8 @@ export class Garage {
     const w = window.innerWidth;
     const h = window.innerHeight;
     const q = QUALITY[this.qualityLevel];
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.maxPixelRatio));
+    const cap = MOBILE ? Math.min(q.maxPixelRatio, MOBILE_MAX_PIXEL_RATIO) : q.maxPixelRatio;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, cap));
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     // Keep the whole car framed on narrow (portrait) screens.
@@ -167,8 +186,10 @@ export class Garage {
     const rig = await loadCar(def, { paintColor: color, finish, rim });
     if (token !== this.carToken) return; // a newer selection won
     const old = this.car;
-    // glTF clones share geometry with the loader cache, so nothing is freed here.
     this.showroom.turntable.remove(old.group);
+    freeGpu(old.group);
+    if (this.carDef && this.carDef.id !== def.id) evictModel(this.carDef);
+    this.carDef = def;
     rig.group.position.y = 0.06;
     skipMirror(rig.group);
     rig.setLights(old.lightsOn);

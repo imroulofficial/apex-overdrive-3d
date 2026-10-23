@@ -245,6 +245,8 @@ function photoRoadMaterial(env, { widthM, maxAniso }) {
     asphaltTint: { value: new THREE.Color(0.48, 0.49, 0.54) },
     paintColor: { value: new THREE.Color(0.78, 0.78, 0.76) },
   };
+  // Race.dispose frees textures it finds here (they never sit on the material itself).
+  material.userData.uniforms = uniforms;
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = shader.vertexShader
