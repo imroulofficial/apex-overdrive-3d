@@ -1,6 +1,6 @@
 // Offline renders of the game's audio, built from the same modules the game plays live.
 // Each clip is a little script on a timeline; render.mjs saves them as WAV files.
-import { createMixer, MUSIC_LEVEL } from '../../src/audio/mixer.js';
+import { createMixer, MUSIC_LEVEL, OUTPUT } from '../../src/audio/mixer.js';
 import { EngineVoice, Gearbox, playEngineEvents, revEngine } from '../../src/audio/engine.js';
 import { ui, race, blowOff, nitroIgnite } from '../../src/audio/sfx.js';
 import { Music } from '../../src/audio/music.js';
@@ -8,11 +8,122 @@ import { Music } from '../../src/audio/music.js';
 const SR = 44100;
 const FRAME = 1 / 60;
 
+// Channels 0-1 carry the output. The rest tap the output stage so the meters can see how
+// hard the safety stages work: 2-3 the clipper's input, 4-5 the limiter's input. Only 0-1
+// are written to the WAV.
+const TAPS = ['clipper', 'trim', 'highpass'];
 function context(seconds) {
-  const ac = new OfflineAudioContext(2, Math.ceil(seconds * SR), SR);
+  const ac = new OfflineAudioContext(TAPS.length * 2, Math.ceil(seconds * SR), SR);
   const mix = createMixer(ac);
   mix.music.gain.value = MUSIC_LEVEL;
+  const nodes = mix.stage;
+  nodes.clipper.disconnect();
+  ac.destination.channelCount = TAPS.length * 2;
+  ac.destination.channelInterpretation = 'discrete';
+  const merge = ac.createChannelMerger(TAPS.length * 2);
+  TAPS.forEach((name, k) => {
+    const stereo = ac.createGain();
+    stereo.channelCount = 2;
+    stereo.channelCountMode = 'explicit';
+    const split = ac.createChannelSplitter(2);
+    nodes[name].connect(stereo).connect(split);
+    split.connect(merge, 0, k * 2);
+    split.connect(merge, 1, k * 2 + 1);
+  });
+  merge.connect(ac.destination);
   return mix;
+}
+
+// Butterworth biquad (RBJ) run over a channel, for the band meters.
+function biquad(d, type, f0) {
+  const w = (2 * Math.PI * f0) / SR;
+  const al = Math.sin(w) / (2 * Math.SQRT1_2);
+  const c = Math.cos(w);
+  const b = type === 'lowpass' ? [(1 - c) / 2, 1 - c, (1 - c) / 2] : [(1 + c) / 2, -(1 + c), (1 + c) / 2];
+  const a0 = 1 + al;
+  const a1 = -2 * c;
+  const a2 = 1 - al;
+  const o = new Float32Array(d.length);
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  for (let i = 0; i < d.length; i++) {
+    const y = (b[0] * d[i] + b[1] * x1 + b[2] * x2 - a1 * y1 - a2 * y2) / a0;
+    x2 = x1;
+    x1 = d[i];
+    y2 = y1;
+    y1 = y;
+    o[i] = y;
+  }
+  return o;
+}
+
+const energy = (d) => d.reduce((s, x) => s + x * x, 0);
+const pct = (v) => +(v * 100).toFixed(1);
+
+// Gain reduction of a compressor from its input and output taps, in 20 ms windows. The
+// compressor's static make-up gain is the ratio it applies in quiet passages, so reduction is
+// measured from there. DynamicsCompressorNode looks ahead by about 6 ms.
+function reduction(buf, inCh, outCh, scale = 1) {
+  const win = Math.round(0.02 * SR);
+  const ahead = Math.round(0.006 * SR);
+  const ratios = [];
+  for (let i = ahead; i + win < buf.length; i += win) {
+    let ei = 0;
+    let eo = 0;
+    for (const c of [0, 1]) {
+      const di = buf.getChannelData(inCh + c);
+      const dout = buf.getChannelData(outCh + c);
+      for (let j = i; j < i + win; j++) {
+        ei += di[j - ahead] ** 2;
+        eo += (dout[j] / scale) ** 2;
+      }
+    }
+    if (ei > 1e-7 * win) ratios.push(10 * Math.log10((eo + 1e-12) / ei));
+  }
+  if (!ratios.length) return { max: 0, busy: 0 };
+  const sorted = [...ratios].sort((x, y) => x - y);
+  const makeup = sorted[Math.floor(sorted.length * 0.98)];
+  const gr = ratios.map((r) => makeup - r);
+  // 99th percentile: a clip's first and last windows (voices starting and stopping) skew a
+  // plain maximum.
+  const p99 = [...gr].sort((x, y) => x - y)[Math.floor(gr.length * 0.99)];
+  return { max: p99, busy: gr.filter((x) => x > 1).length / gr.length };
+}
+
+function meters(buf) {
+  const knee = OUTPUT.knee;
+  let clipped = 0;
+  let inPeak = 0;
+  for (const c of [2, 3]) {
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < d.length; i++) {
+      const a = Math.abs(d[i]);
+      if (a > knee) clipped++;
+      if (a > inPeak) inPeak = a;
+    }
+  }
+  // Share of the output's energy below 150 Hz: what a phone speaker cannot play but its
+  // amplifier and protection DSP still have to swallow.
+  const out = buf.getChannelData(0);
+  const low = biquad(biquad(out, 'lowpass', 150), 'lowpass', 150);
+  const lim = reduction(buf, 4, 2, OUTPUT.trim);
+  const level = (c) => {
+    const d = buf.getChannelData(c);
+    let p = 0;
+    let e = 0;
+    for (let i = 0; i < d.length; i++) {
+      p = Math.max(p, Math.abs(d[i]));
+      e += d[i] * d[i];
+    }
+    return `${(20 * Math.log10(p + 1e-9)).toFixed(1)}/${(10 * Math.log10(e / d.length + 1e-12)).toFixed(1)}`;
+  };
+  return {
+    clipperPct: pct(clipped / (buf.length * 2)),
+    clipInDb: +(20 * Math.log10(inPeak + 1e-9)).toFixed(1),
+    limiterMaxDb: +lim.max.toFixed(1),
+    limiterBusyPct: pct(lim.busy),
+    limIn: level(4),
+    lowPct: pct(energy(low) / (energy(out) + 1e-12)),
+  };
 }
 
 // Drives a player engine through a scripted run: drive(t) returns the controls at time t.
@@ -192,7 +303,7 @@ const clips = {
 };
 
 function toWav(buf) {
-  const ch = buf.numberOfChannels;
+  const ch = 2;
   const n = buf.length;
   const data = new DataView(new ArrayBuffer(44 + n * ch * 2));
   const str = (o, s) => [...s].forEach((c, i) => data.setUint8(o + i, c.charCodeAt(0)));
@@ -224,7 +335,7 @@ function stats(buf) {
   let peak = 0;
   let sum = 0;
   let bad = 0;
-  for (let c = 0; c < buf.numberOfChannels; c++) {
+  for (let c = 0; c < 2; c++) {
     const d = buf.getChannelData(c);
     for (let i = 0; i < d.length; i++) {
       const x = d[i];
@@ -235,7 +346,7 @@ function stats(buf) {
       }
     }
   }
-  const rms = Math.sqrt(sum / (buf.length * buf.numberOfChannels));
+  const rms = Math.sqrt(sum / (buf.length * 2));
   return { peakDb: +(20 * Math.log10(peak + 1e-9)).toFixed(1), rmsDb: +(20 * Math.log10(rms + 1e-9)).toFixed(1), nonFinite: bad };
 }
 
@@ -249,7 +360,7 @@ async function render(name) {
   const bytes = toWav(buf);
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return { name, wav: btoa(bin), stats: stats(buf), ms, log };
+  return { name, wav: btoa(bin), stats: { ...stats(buf), ...meters(buf) }, ms, log };
 }
 
 window.__audio = { names: Object.keys(clips), render };

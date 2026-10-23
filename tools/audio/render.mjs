@@ -41,7 +41,9 @@ try {
   for (const name of names) {
     const r = await page.evaluate((n) => window.__audio.render(n), name);
     await writeFile(path.join(out, `${name}.wav`), Buffer.from(r.wav, 'base64'));
-    console.log(`${name}: peak ${r.stats.peakDb} dBFS, rms ${r.stats.rmsDb} dBFS, non-finite ${r.stats.nonFinite}, rendered in ${r.ms} ms`);
+    const s = r.stats;
+    console.log(`${name}: peak ${s.peakDb} dBFS, rms ${s.rmsDb} dBFS, non-finite ${s.nonFinite}, rendered in ${r.ms} ms`);
+    console.log(`  limiter p99 ${s.limiterMaxDb} dB, busy ${s.limiterBusyPct}% · clipper ${s.clipperPct}% of samples (input peak ${s.clipInDb} dBFS) · <150 Hz ${s.lowPct}% of energy · peak/rms into limiter ${s.limIn} dBFS`);
     for (const line of r.log) console.log(`  ${line}`);
     if (r.stats.nonFinite) failed = true;
   }

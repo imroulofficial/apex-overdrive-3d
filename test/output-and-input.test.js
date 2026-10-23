@@ -15,6 +15,15 @@ test('safety clipper is unity below the knee and never exceeds the ceiling', () 
   assert.ok(20 * Math.log10(OUTPUT.ceiling) < -2, 'ceiling sits below -2 dBFS');
 });
 
+test('limiter ceiling sits under the clipper knee, so the clipper only rounds overshoot', () => {
+  // DynamicsCompressorNode make-up gain: (1 / gain at 0 dBFS) ^ 0.6.
+  const { threshold, ratio } = OUTPUT.limiter;
+  const atFull = threshold + -threshold / ratio;
+  const ceilingDb = atFull - 0.6 * atFull + 20 * Math.log10(OUTPUT.trim);
+  assert.ok(ceilingDb < 20 * Math.log10(OUTPUT.knee), `limiter ceiling ${ceilingDb.toFixed(1)} dBFS`);
+  assert.ok(OUTPUT.highpass >= 80, 'phone-speaker high-pass in place');
+});
+
 // Minimal element: listeners, classList, a 200 px wide box at the origin.
 function el() {
   const on = {};

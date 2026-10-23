@@ -29,7 +29,7 @@ const LAYERS = [
       [690, 0.0028, 0.25],
     ],
     noise: 0.12,
-    drive: 1.5,
+    drive: 0.9,
     seed: 11,
   },
   {
@@ -43,7 +43,7 @@ const LAYERS = [
       [1250, 0.0019, 0.3],
     ],
     noise: 0.16,
-    drive: 1.8,
+    drive: 1.0,
     seed: 23,
   },
   {
@@ -57,7 +57,7 @@ const LAYERS = [
       [2050, 0.0013, 0.35],
     ],
     noise: 0.2,
-    drive: 2.1,
+    drive: 1.1,
     seed: 37,
   },
 ];
@@ -103,16 +103,61 @@ function renderLoop(ac, L) {
       env *= fall;
     }
   }
+  // Played up to `top` times faster than it was rendered, a loop's upper partials would fold
+  // back below Nyquist as inharmonic grit (AudioBufferSourceNode resamples without an
+  // anti-alias filter). Band-limit it so its fastest playback still fits.
+  const top = (L.fadeOut ? L.fadeOut[1] : LIMIT + 200) / L.rpm;
+  lowpassLoop(out, Math.min(16000, (0.42 * sr) / top), sr);
   let mean = 0;
   for (let i = 0; i < n; i++) mean += out[i];
   mean /= n;
   let peak = 1e-6;
   for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(out[i] - mean));
-  const norm = Math.tanh(L.drive);
+  // Light saturation for body (drive about 1 rounds only the tallest pulses), then every loop
+  // is set to the same loudness so the crossfades do not swell.
+  const d = new Float32Array(n);
+  let e = 0;
+  for (let i = 0; i < n; i++) {
+    d[i] = Math.tanh(((out[i] - mean) / peak) * L.drive);
+    e += d[i] * d[i];
+  }
+  const g = LOOP_RMS / Math.sqrt(e / n);
   const buf = ac.createBuffer(1, n, sr);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < n; i++) d[i] = Math.tanh(((out[i] - mean) / peak) * L.drive) / norm;
+  const ch = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) ch[i] = d[i] * g;
   return buf;
+}
+
+// Loudness every RPM loop is normalized to (about -12 dBFS RMS, peaks near -3 dBFS).
+const LOOP_RMS = 0.25;
+
+// Fourth-order Butterworth low-pass over a seamless loop, in place. Two passes round the loop
+// settle the filters, so the result is the loop's steady state and still seamless.
+function lowpassLoop(x, fc, sr) {
+  const n = x.length;
+  const w = (2 * Math.PI * fc) / sr;
+  const cw = Math.cos(w);
+  for (const q of [0.5412, 1.3066]) {
+    const al = Math.sin(w) / (2 * q);
+    const a0 = 1 + al;
+    const b0 = (1 - cw) / 2 / a0;
+    const b1 = (1 - cw) / a0;
+    const a1 = (-2 * cw) / a0;
+    const a2 = (1 - al) / a0;
+    let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    const y = new Float32Array(n);
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 0; i < n; i++) {
+        const v = b0 * x[i] + b1 * x1 + b0 * x2 - a1 * y1 - a2 * y2;
+        x2 = x1;
+        x1 = x[i];
+        y2 = y1;
+        y1 = v;
+        y[i] = v;
+      }
+    }
+    x.set(y);
+  }
 }
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -234,11 +279,13 @@ export class EngineVoice {
     this.body = gain(ac, 0.8);
     const drive = ac.createWaveShaper();
     drive.curve = saturation(1.25);
+    drive.oversample = '2x';
     this.tone = filter(ac, 'lowpass', 1200, 0.7);
-    const throat = filter(ac, 'peaking', 115, 0.9);
-    throat.gain.value = 6;
-    const chest = filter(ac, 'lowshelf', 260, 0.7);
-    chest.gain.value = 4;
+    // The weight sits where a phone speaker can still play it (150-400 Hz), not in the sub.
+    const throat = filter(ac, 'peaking', 170, 0.9);
+    throat.gain.value = 4;
+    const chest = filter(ac, 'peaking', 320, 0.8);
+    chest.gain.value = 2.5;
     this.body.connect(drive).connect(this.tone).connect(throat).connect(chest).connect(this.out);
     this.loops = engineLoops(ac).map((buffer, i) => {
       const s = src(ac.createBufferSource());
@@ -260,8 +307,11 @@ export class EngineVoice {
     const subMix = gain(ac, 1);
     this.sub.connect(subMix);
     this.sub2.connect(gain(ac, 0.45)).connect(subMix);
+    // Gentle drive: its harmonics carry the rumble on speakers that cannot play the
+    // fundamental, without turning it into a buzzing square wave.
     const subDrive = ac.createWaveShaper();
-    subDrive.curve = saturation(2.4);
+    subDrive.curve = saturation(1.6);
+    subDrive.oversample = '2x';
     this.subLp = filter(ac, 'lowpass', 190, 0.9);
     this.subGain = gain(ac, 0);
     subMix.connect(subDrive).connect(this.subLp).connect(this.subGain).connect(this.out);
@@ -398,11 +448,11 @@ export class EngineVoice {
       this.p(src.playbackRate, rpm / L.rpm, t, tc);
       this.p(g.gain, layerWeight(L, rpm), t, tc);
     }
-    this.p(this.tone.frequency, 320 + load * 700 + r * 1600 + tier * 400, t, tc);
+    this.p(this.tone.frequency, 450 + load * 600 + r * 1600 + tier * 400, t, tc);
     this.p(this.body.gain, 0.5 + 0.45 * load, t, tc);
     this.p(this.sub.frequency, rpm / 30, t, tc);
     this.p(this.sub2.frequency, rpm / 15, t, tc);
-    this.p(this.subGain.gain, (0.45 + 0.5 * load) * (1 - 0.4 * r), t, tc);
+    this.p(this.subGain.gain, (0.22 + 0.25 * load) * (1 - 0.3 * r), t, tc);
     const wf = (rpm / 60) * 11;
     this.p(this.whine.frequency, wf, t, tc);
     this.p(this.whine2.frequency, wf * 2.01, t, tc);
@@ -415,9 +465,9 @@ export class EngineVoice {
     this.p(this.turboGain.gain, 0.014 * boost * boost * (1 - 0.6 * r), t, tc);
     this.p(this.spoolBp.frequency, 1900 + boost * 3200, t, tc);
     this.p(this.spoolGain.gain, 0.4 * boost * boost, t, tc);
-    this.p(this.airGain.gain, tier ? 0.25 + 0.15 * tier : 0, t, tier ? tc : 0.2);
+    this.p(this.airGain.gain, tier ? 0.2 + 0.1 * tier : 0, t, tier ? tc : 0.2);
     this.p(this.airBp.frequency, 700 + tier * 500 + speed * 600, t, 0.2);
-    this.p(this.howlGain.gain, tier ? 0.6 * tier : 0, t, tier ? 0.08 : 0.25);
+    this.p(this.howlGain.gain, tier ? 0.4 * tier : 0, t, tier ? 0.08 : 0.25);
     this.p(this.howlBp.frequency, 650 + speed * 900 + tier * 250, t, 0.2);
     this.p(this.windGain.gain, speed * speed * 0.26, t, 0.15);
     this.p(this.windLp.frequency, 280 + speed * 1600, t, 0.15);
@@ -425,16 +475,16 @@ export class EngineVoice {
     for (const b of this.skidBands) this.p(b.f.frequency, sf * b.ratio, t, 0.06);
     this.p(this.skidSaw.frequency, sf * 0.5, t, 0.06);
     this.p(this.skidSawBp.frequency, sf, t, 0.06);
-    this.p(this.skidGain.gain, skid * 0.7 * volume, t, skid > 0 ? 0.04 : 0.09);
+    this.p(this.skidGain.gain, skid * 0.22 * volume, t, skid > 0 ? 0.04 : 0.09);
     const roll = Math.min(1, speed * 2.2) * (1 + Math.min(1, Math.abs(slip) * 2));
-    this.p(this.gravelGain.gain, gravel * roll * 0.32 * volume, t, 0.05);
+    this.p(this.gravelGain.gain, gravel * roll * 0.1 * volume, t, 0.05);
     this.p(this.gravelRumble.frequency, 90 + speed * 220, t, 0.1);
-    this.p(this.grassGain.gain, grass * roll * 0.42 * volume, t, 0.08);
+    this.p(this.grassGain.gain, grass * roll * 0.34 * volume, t, 0.08);
     this.p(this.grassLp.frequency, 500 + speed * 1400, t, 0.1);
-    this.p(this.woodGain.gain, wood * Math.min(1, speed * 3) * 0.55 * volume, t, 0.04);
+    this.p(this.woodGain.gain, wood * Math.min(1, speed * 3) * 0.18 * volume, t, 0.04);
     this.p(this.woodSeams.frequency, Math.max(4, mps / 0.6), t, 0.05);
     this.p(this.woodBp.frequency, 180 + speed * 140, t, 0.1);
-    this.p(this.out.gain, volume * (0.1 + 0.055 * load) * (1 - 0.55 * cut), t, cut ? 0.02 : tc);
+    this.p(this.out.gain, volume * (0.14 + 0.077 * load) * (0.8 + 0.4 * Math.min(1, r)) * (1 - 0.55 * cut), t, cut ? 0.02 : tc);
   }
 }
 
