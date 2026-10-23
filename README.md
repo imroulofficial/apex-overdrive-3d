@@ -9,7 +9,13 @@ Offline-first 3D arcade racer for Android by **Red Pen Studio**.
 | Stack | Three.js (WebGL2) + Vite, wrapped with Capacitor 8 |
 | Audience | 13+, no sign-up, no analytics; gameplay is offline, cloud save, ads and Play Billing use the network when available |
 
-## 60 FPS pass: culling, mobile resolution and memory (this release)
+## Sampled car audio at the device's native rate (this release)
+
+- **Recorded car sounds** (`src/audio/samples.js`, `public/assets/audio/`): the engine, turbo, nitro, tyre screech, blow-off and exhaust pops now play CC0 field recordings by Joseph Sardin ([BigSoundBank](https://bigsoundbank.com), sources and licences in `public/assets/audio/CREDITS.md`) instead of oscillators. 14 samples, 1.4 MB of 16-bit 48 kHz WAV inside the app; nothing downloads.
+- **Engine**: five RPM loops crossfaded with equal power and pitch-shifted with the gearbox (AC Cobra V8 idle, a loud four-cylinder exhaust on load for the low revs, an Aston Martin V12 pull for mid, high and top). `node tools/audio/samples.mjs` cuts them from the lossless originals, resampling each slice of the rev sweep against its own tracked pitch so it holds one RPM and loops cleanly. Turbo whistle and spool hiss come from recorded rushing air, nitro from a recorded blower, the screech from two recorded squeals (light and full drift) pitched with the slip angle.
+- **Native sample rate**: the AudioContext no longer asks for 32 kHz on Android; it runs at the hardware's own rate (48 kHz on most phones), so nothing is resampled on the way to the speaker and the mix keeps its top octave. The sampled car costs the audio thread about half what the synthesized one did at 32 kHz, and the soundtrack's hall reverb is now one mono convolution widened with a short delay (the old stereo tail was the heaviest node in the graph), so the whole graph at 48 kHz costs what it used to at 32 kHz (`node tools/audio/render.mjs --stall`). The HUD, race cues, weather and soundtrack are still synthesized.
+
+## 60 FPS pass: culling, mobile resolution and memory
 
 - **Scenery culling** (`src/render/culling.js`): every forest, boulder field and big merged mesh used to span the whole track, so the GPU drew all of it every frame, behind the camera included. Static instanced scenery is now bucketed into 160 m cells and only the cells in front of the camera and within their draw distance (240x the object's radius, capped by fog) are packed into the batch: still one draw call, none when nothing is in view. Heavy merged meshes (verges, the alpine village, city concrete and neon) are split into at most 8 chunks that share the original buffers and are frustum-culled one by one, in the main and shadow passes. Redwoods and palms switch to a far LOD (about 1/5 of the triangles) beyond 220 m.
 - **Resolution**: phones and tablets never render above a 1.25 pixel ratio, whatever the quality setting. The WebGL context already asked for `powerPreference: 'high-performance'`.
@@ -240,7 +246,7 @@ src/
   config.js            studio constants, legal URLs, ad units, Play products
   core/                save data (localStorage) and save schema v2 + migration, career and
                        per-car inventory rules, Firebase cloud save, audio API, Capacitor helpers
-  audio/               synthesis: mixer, engine + gearbox, one-shot SFX, race soundtrack
+  audio/               mixer, sampled engine + gearbox, one-shot SFX, sample bank, race soundtrack
   assets/              GLTF vehicle spawner with procedural fallback
   monetization/        AdMob service (+ browser simulator), Play Billing and entitlements
   data/catalog.js      paints, finishes, rims, rear wings, smoke/nitro colours, upgrades, prices

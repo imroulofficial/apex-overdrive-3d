@@ -6,7 +6,8 @@ import { ui, race, blowOff, nitroIgnite } from '../../src/audio/sfx.js';
 import { Music } from '../../src/audio/music.js';
 import { simulate, cost, live } from './stall.js';
 
-const SR = 44100;
+// The rate phones run at, and the rate the samples are recorded at.
+const SR = 48000;
 const FRAME = 1 / 60;
 
 // Channels 0-1 carry the output. The rest tap the output stage so the meters can see how
@@ -354,6 +355,7 @@ function stats(buf) {
 async function render(name) {
   const clip = clips[name];
   const mix = context(clip.seconds);
+  await mix.samples.ready;
   const log = clip.build(mix) ?? [];
   const t0 = performance.now();
   const buf = await mix.ac.startRendering();

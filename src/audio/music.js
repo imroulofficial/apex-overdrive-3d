@@ -82,10 +82,22 @@ export class Music {
     this.bus = gain(ac, 0.9);
     this.bus.connect(glue).connect(this.tone).connect(this.out);
 
+    // Hall: one mono convolution, widened by sending the right side 17 ms late. A stereo
+    // impulse costs two convolutions, and the convolver was the single heaviest node in the
+    // game's graph (about 7% of a desktop core at 48 kHz with a 2.4 s stereo tail).
     this.reverbSend = gain(ac, 1);
+    this.reverbSend.channelCount = 1;
+    this.reverbSend.channelCountMode = 'explicit';
     const reverb = ac.createConvolver();
-    reverb.buffer = impulse(ac, 2.4);
-    this.reverbSend.connect(reverb).connect(gain(ac, 0.32)).connect(this.bus);
+    reverb.buffer = impulse(ac, 1.6, 1);
+    const wet = gain(ac, 0.32);
+    const wide = ac.createChannelMerger(2);
+    const late = ac.createDelay(0.05);
+    late.delayTime.value = 0.017;
+    this.reverbSend.connect(reverb).connect(wet);
+    wet.connect(wide, 0, 0);
+    wet.connect(late).connect(wide, 0, 1);
+    wide.connect(this.bus);
 
     // Stereo dotted-eighth echo with a darkening feedback loop.
     this.echo = gain(ac, 1);
@@ -451,12 +463,12 @@ function hit(param, t, peak, tc) {
   param.setTargetAtTime(0, t + 0.006, tc);
 }
 
-// Stereo hall impulse: decaying noise, darker as it tails off.
-function impulse(ac, seconds) {
+// Hall impulse: decaying noise, darker as it tails off.
+function impulse(ac, seconds, channels = 2) {
   const n = Math.round(ac.sampleRate * seconds);
-  const buf = ac.createBuffer(2, n, ac.sampleRate);
+  const buf = ac.createBuffer(channels, n, ac.sampleRate);
   const rand = mulberry32(9);
-  for (let c = 0; c < 2; c++) {
+  for (let c = 0; c < channels; c++) {
     const d = buf.getChannelData(c);
     let lp = 0;
     for (let i = 0; i < n; i++) {

@@ -1,6 +1,7 @@
-// Game-facing audio API. The synthesis lives in src/audio/ (mixer, engine, sfx, music); this
-// module owns the single AudioContext, applies the Sound / Music settings and keeps the
-// call sites simple. No audio files are loaded: everything is generated on the device.
+// Game-facing audio API. The sound lives in src/audio/ (mixer, engine, sfx, music, samples);
+// this module owns the single AudioContext, applies the Sound / Music settings and keeps the
+// call sites simple. The car plays recorded samples bundled with the app (public/assets/
+// audio); the HUD, cues and soundtrack are synthesized. Nothing is fetched from the network.
 import { state } from './store.js';
 import { createMixer, MUSIC_LEVEL, MUSIC_TONE } from '../audio/mixer.js';
 import { ui, race, nitroIgnite, rainBed } from '../audio/sfx.js';
@@ -17,12 +18,13 @@ import { isNative } from './platform.js';
 // in the game is timed by ear. Android in a browser gets 'balanced'; desktop stays tight.
 const ANDROID = /Android/i.test(navigator.userAgent);
 const LATENCY = isNative ? 'playback' : ANDROID ? 'balanced' : 'interactive';
-// Every voice is synthesized, so the audio thread's work scales with the sample rate. On
-// Android the graph runs at 32 kHz (Chrome resamples to the hardware's 48 kHz on the way
-// out): about a third less work per buffer, and the 16 kHz bandwidth is still more than a
-// phone speaker plays. tools/audio/render.mjs --stall measures the difference.
-export const ANDROID_RATE = 32000;
-const RATE = isNative || ANDROID ? ANDROID_RATE : undefined;
+// The context runs at the device's own hardware rate (48 kHz on almost every phone, 44.1 kHz
+// on some), which is what an AudioContext gets when no sampleRate is asked for. Any other rate
+// makes Chrome resample the whole mix on the way to the speaker; the 32 kHz the Android build
+// used to ask for also capped the mix at 16 kHz and folded the top of pitched-up loops back
+// down as grit. The recorded samples are decoded straight to this rate. The sampled engine
+// graph does less work per sample than the old synthesized one did at 32 kHz, so the native
+// rate costs no headroom: tools/audio/render.mjs --stall measures both.
 // How far ahead of the playhead the engine's automation is queued (see audio/clock.js): any
 // frame hitch shorter than this goes unheard. It is also the engine's control latency.
 const ENGINE_LOOKAHEAD = isNative || ANDROID ? 0.07 : 0.045;
@@ -37,7 +39,7 @@ function createContext() {
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!AC) return null;
   // Older WebViews reject options they do not support: drop them one at a time.
-  for (const opts of [{ latencyHint: LATENCY, sampleRate: RATE }, { latencyHint: LATENCY }, {}]) {
+  for (const opts of [{ latencyHint: LATENCY }, {}]) {
     try {
       return new AC(opts);
     } catch {
@@ -227,7 +229,9 @@ export const raceMusic = {
 // ---- Player engine ----
 
 // Continuous engine, turbo, airflow, wind and tyre voice for the player's car, driven by a
-// six-speed virtual gearbox that runs on the audio clock (audio/engine.js EngineDriver).
+// six-speed virtual gearbox that runs on the audio clock (audio/engine.js EngineDriver). Its
+// recorded layers come in as soon as the samples finish decoding (they start loading with the
+// first sound the game makes, long before a race).
 export function createEngineSound() {
   const m = state.settings.sound ? ensure() : null;
   if (!m) return { update() {}, stop() {}, gear: 0 };

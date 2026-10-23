@@ -2,6 +2,8 @@ import { noiseSource, filter, gain, envelope, saturation, midiHz } from './mixer
 
 // One-shot sound effects. Each function takes the mixer and an optional start time `at`
 // (defaults to now) so the offline preview renderer can place them on a timeline.
+// The car's one-shots (blow-off, exhaust pops, nitro, tyre chirp) play recorded samples; the
+// HUD and race cues are synthesized.
 
 const now = (mix, at) => (at ?? mix.ac.currentTime) + 0.005;
 
@@ -39,6 +41,25 @@ function burst(mix, dest, { t, type = 'bandpass', freq = 1000, to = freq, q = 0.
   src.stop(end + 0.05);
   track(mix, end + 0.05);
   return g;
+}
+
+// A recorded one-shot from the sample bank (audio/samples.js) at playback `rate` and level
+// `peak`, from `offset` for `duration` seconds of the sample (to its end by default). Returns
+// { src, g, end }, or null while the samples are still decoding (the sound is skipped).
+function shot(mix, dest, name, { t, rate = 1, peak = 0.5, offset = 0, duration }) {
+  const buf = mix.samples?.get(name);
+  if (!buf) return null;
+  const ac = mix.ac;
+  const src = ac.createBufferSource();
+  src.buffer = buf;
+  src.playbackRate.value = rate;
+  const g = gain(ac, peak);
+  src.connect(g).connect(dest);
+  const len = Math.min(duration ?? Infinity, buf.duration - offset);
+  src.start(t, offset, len);
+  const end = t + len / rate;
+  track(mix, end + 0.02);
+  return { src, g, end };
 }
 
 function panned(mix, pan, dest = mix.sfx) {
@@ -118,94 +139,59 @@ export const ui = {
 // Race one-shots
 // ---------------------------------------------------------------------------
 
-// Turbo blow-off valve: the sharp "pshh" of the valve venting, then the compressor
-// surging ("tu-tu-tu") as the pressure collapses.
+// Turbo blow-off valve: the recorded "pshh" of an air valve venting, then the compressor
+// surging ("tu-tu-tu"): chuffs of recorded rushing air, decaying at a slowing rate.
 export function blowOff(mix, strength = 1, at) {
   const t = now(mix, at);
   const s = Math.min(1.2, Math.max(0.3, strength));
   const out = panned(mix, 0.15);
   const send = gain(mix.ac, 0.5);
   out.connect(send).connect(mix.space);
-  burst(mix, out, { t, type: 'highpass', freq: 2400, to: 1500, q: 0.6, attack: 0.004, peak: 0.42 * s, decay: 0.3 * s + 0.08, glide: 0.3 });
-  burst(mix, out, { t, type: 'bandpass', freq: 5200, to: 3000, q: 1.2, attack: 0.003, peak: 0.3 * s, decay: 0.16 });
-  // Flutter: decaying chuffs at a slowing rate.
+  // A harder lift vents more pressure: a longer, slightly lower hiss.
+  shot(mix, out, 'blowOff', { t, rate: 1.12 - 0.18 * s, peak: 0.5 * s });
   const flutters = Math.round(3 + s * 3);
   let ft = t + 0.1;
   for (let i = 0; i < flutters; i++) {
-    const a = 1.4 * s * Math.pow(0.72, i);
-    burst(mix, out, { t: ft, type: 'bandpass', freq: 1100 - i * 60, q: 2.2, attack: 0.005, peak: a, decay: 0.035 });
-    tone(mix, out, { t: ft, type: 'sine', freq: 210, to: 150, peak: a * 0.1, decay: 0.03 });
+    const f = filter(mix.ac, 'bandpass', 1100 - i * 60, 2.2);
+    f.connect(out);
+    const c = shot(mix, f, 'turboAir', { t: ft, offset: Math.random() * 1.5, duration: 0.05, peak: 0 });
+    if (c) envelope(c.g.gain, ft, { attack: 0.005, peak: 2.2 * s * Math.pow(0.72, i), decay: 0.035 });
     ft += 0.042 + i * 0.008;
   }
 }
 
-// Exhaust crackle on the overrun: a few sharp pops with a low thud.
+// Exhaust crackle on the overrun: a few recorded pops, each pitched a little differently.
 export function crackle(mix, intensity = 1, at) {
   const t = now(mix, at);
   const n = 1 + Math.floor(Math.random() * 3 * intensity);
   let pt = t;
   for (let i = 0; i < n; i++) {
-    const a = (0.2 + Math.random() * 0.2) * intensity;
-    burst(mix, mix.sfx, { t: pt, type: 'bandpass', freq: 900 + Math.random() * 1600, q: 1.1, attack: 0.001, peak: a * 2, decay: 0.03 + Math.random() * 0.03 });
-    tone(mix, mix.sfx, { t: pt, type: 'sine', freq: 95, to: 55, peak: a * 0.5, decay: 0.05 });
+    const a = (0.18 + Math.random() * 0.14) * intensity;
+    shot(mix, mix.sfx, Math.random() < 0.5 ? 'pop1' : 'pop2', { t: pt, rate: 0.85 + Math.random() * 0.35, peak: a });
     pt += 0.04 + Math.random() * 0.09;
   }
 }
 
-// Nitro ignition: a sub-bass thump, then a howling rush of air. Pulse Nitro hits harder,
-// adds a rising jet tone and sweeps across the stereo field.
+// Nitro ignition: the valve opening (a recorded air burst, pitched down into a thump), a
+// whoosh, and the blower roar swelling through a band that sweeps up. Pulse Nitro hits harder,
+// reaches higher and sweeps across the stereo field.
 export function nitroIgnite(mix, tier = 1, at) {
   const ac = mix.ac;
   const t = now(mix, at);
   const big = tier >= 2;
-  // The thump sweeps down only as far as a phone speaker can follow it, with drive light
-  // enough to add body without turning it into a buzzing square wave.
-  const drive = ac.createWaveShaper();
-  drive.curve = saturation(big ? 1.8 : 1.4);
-  drive.oversample = '2x';
-  drive.connect(mix.sfx);
-  tone(mix, drive, { t, type: 'sine', freq: big ? 190 : 170, to: big ? 55 : 60, glide: 0.4, attack: 0.002, peak: big ? 0.22 : 0.2, decay: big ? 0.6 : 0.42 });
-  tone(mix, drive, { t, type: 'triangle', freq: 110, to: 55, glide: 0.3, peak: 0.1, decay: 0.3 });
-  burst(mix, mix.sfx, { t, type: 'highpass', freq: 2800, peak: 0.3, decay: 0.03 });
-  burst(mix, mix.sfx, { t, type: 'lowpass', freq: 600, to: 160, peak: 0.25, decay: 0.2 });
-
-  // Whoosh: pink noise through a widening band that sweeps up.
+  shot(mix, mix.sfx, 'blowOff', { t, rate: big ? 0.55 : 0.62, peak: big ? 0.42 : 0.36 });
   const pan = panned(mix, big ? -0.6 : 0);
   if (big) pan.pan.linearRampToValueAtTime(0.6, t + 1.2);
-  const whoosh = burst(mix, pan, { t: t + 0.02, buffer: mix.pink, type: 'bandpass', freq: 260, to: big ? 3600 : 2600, q: 0.9, attack: 0.09, peak: big ? 0.45 : 0.36, hold: 0.25, decay: big ? 1.1 : 0.85, glide: 0.9 });
-  whoosh.connect(mix.space);
+  const whoosh = shot(mix, pan, 'whoosh', { t: t + 0.02, rate: big ? 0.8 : 0.9, peak: big ? 0.55 : 0.45 });
+  if (whoosh) whoosh.g.connect(mix.space);
 
-  // Howl: two resonant bands give the air a vowel-like whistle, with a little vibrato.
-  for (const [f0, f1, q, a] of [
-    [420, 1250, 11, 1.5],
-    [640, 1900, 14, 1.0],
-  ]) {
-    const src = noiseSource(mix);
-    const f = filter(ac, 'bandpass', f0, q);
-    f.frequency.exponentialRampToValueAtTime(f1 * (big ? 1.3 : 1), t + 0.8);
-    f.frequency.exponentialRampToValueAtTime(f1 * 0.7, t + 1.7);
-    const vib = ac.createOscillator();
-    vib.frequency.value = 5.5;
-    const vibDepth = gain(ac, f1 * 0.03);
-    vib.connect(vibDepth).connect(f.frequency);
-    const g = gain(ac);
-    envelope(g.gain, t + 0.05, { attack: 0.15, peak: a * (big ? 1.2 : 1), hold: 0.4, decay: 1.0 });
-    src.connect(f).connect(g).connect(pan);
-    src.start(t, Math.random());
-    vib.start(t);
-    src.stop(t + 1.8);
-    vib.stop(t + 1.8);
-    track(mix, t + 1.8);
-  }
-  if (big) {
-    // Jet spool: detuned saws rising through a closing filter.
-    const lp = filter(ac, 'lowpass', 900, 6);
-    lp.frequency.exponentialRampToValueAtTime(3800, t + 0.6);
-    lp.frequency.exponentialRampToValueAtTime(1200, t + 1.4);
-    lp.connect(pan);
-    for (const d of [-14, 14]) tone(mix, lp, { t, type: 'sawtooth', freq: 180, to: 720, glide: 0.7, attack: 0.06, peak: 0.07, hold: 0.3, decay: 0.8, detune: d });
-    tone(mix, mix.sfx, { t: t + 0.05, type: 'sine', freq: 130, to: 60, glide: 0.8, peak: 0.14, decay: 0.8 });
-  }
+  const band = filter(ac, 'bandpass', 300, 0.9);
+  band.frequency.setValueAtTime(300, t);
+  band.frequency.exponentialRampToValueAtTime(big ? 3600 : 2600, t + 0.9);
+  band.frequency.exponentialRampToValueAtTime(big ? 1800 : 1300, t + 1.8);
+  band.connect(pan);
+  const rush = shot(mix, band, 'nitroRush', { t, rate: big ? 1.25 : 1.05, offset: Math.random(), duration: 1.85, peak: 0 });
+  if (rush) envelope(rush.g.gain, t + 0.03, { attack: 0.12, peak: big ? 1.3 : 1.0, hold: 0.35, decay: 1.2 });
 }
 
 export const race = {
@@ -273,7 +259,7 @@ export const race = {
   // Tyres biting at drift entry.
   chirp(mix, at) {
     const t = now(mix, at);
-    burst(mix, mix.sfx, { t, type: 'bandpass', freq: 1500, to: 1100, q: 9, peak: 2.2, decay: 0.12 });
+    shot(mix, mix.sfx, 'chirp', { t, rate: 0.95 + Math.random() * 0.15, peak: 0.42 });
   },
   driftBank(mix, at) {
     const t = now(mix, at);
