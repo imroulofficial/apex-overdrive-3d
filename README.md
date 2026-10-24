@@ -11,10 +11,10 @@ Offline-first 3D arcade racer for Android by **Red Pen Studio**.
 
 ## 1.0.0 production release candidate (this release)
 
-- **Version**: `versionName` 1.0.0, `versionCode` 60 (`android/app/build.gradle`), in step with `package.json` and the in-game About line. The version code now lives in `build.gradle` instead of the CI run number, so bump it by hand for every bundle you upload to Play (`test/release.test.js` keeps the three version strings aligned).
+- **Version**: `versionName` 1.0.0, `versionCode` 61 (`android/app/build.gradle`; 60 was the first 1.0.0 candidate), in step with `package.json` and the in-game About line. The version code now lives in `build.gradle` instead of the CI run number, so bump it by hand for every bundle you upload to Play (`test/release.test.js` keeps the three version strings aligned).
 - **Live AdMob**: the manifest carries the Red Pen Studio app id `ca-app-pub-1848535996024012~6089611565`, and `src/config.js` holds the live banner, interstitial and rewarded units. The Play bundle is built with `npm run build:release` (Vite mode `release`, `.env.release` sets `VITE_RELEASE=1`), which CI now always does, so it serves only the live units. The dev server, a plain `npm run build` and debug installs keep Google's test units, so nobody on the team ever clicks a live ad (AdMob invalid-traffic policy). No repository variables are needed any more.
 - **Real Google Play Billing only**: the sandbox store (the Settings toggle, its simulated purchases, "Reset purchases" / "Reset crate" and the SANDBOX badge) is gone. `remove_ads` ($2.99) and `supercar_bundle` ($6.99) unlock only through Google Play's payment sheet; in a desktop browser the Store says Google Play is unavailable. Old saves drop any simulated purchase together with its bonus record, so a later real purchase still pays its coins.
-- **Launcher icon**: rendered from the game's own model by `node tools/icon/render.mjs`: the Valkyrie GT-R in crimson gloss at a low 3/4 front angle on a sunny race track, the track zoom-blurred for speed under a crisp blue sky, with APEX / OVERDRIVE heavy-italic type (Inter Black) across the sky. The adaptive icon carries the whole picture in its background layer (foreground left transparent, type inside the 66 dp safe zone); legacy, round and Play icons frame the visible 72 dp. The 512 px Play Store icon is at `public/assets/icon/play-store-512.png`.
+- **Launcher icon**: every icon asset is generated from the studio's master icon, `tools/icon/master.png`, by `node tools/icon/render.mjs` (sharp): the 512 px Play Store icon (`public/assets/icon/play-store-512.png`, also the in-game splash logo), legacy rounded and round icons for mdpi to xxxhdpi, the adaptive foreground (art in the visible 72 dp centre, transparent margin) over a blurred enlargement of the art as the adaptive background, and the legacy launch splash. To change the icon, replace `master.png` and rerun the script.
 
 ## Sampled car audio at the device's native rate
 
@@ -180,7 +180,7 @@ Fixes from the first device test (22 FPS, white bars, cartoon look, stock icon).
 - **Lighting**: exactly one directional sun with a 512² shadow map (texel-snapped, following the player) plus hemisphere ambient, in the race and in the garage. The garage spotlights and the car's head/tail light sources are now additive floor decals.
 - **Render loop**: pixel ratio capped at 1.5 (1.25 Medium, 1 Low); Auto starts at Medium on phones; the garage planar mirror (a second full render each frame) is High-only; the terrain is split into chunks so it frustum-culls; distant trees and trackside rails do not render into the shadow map.
 - **Look**: procedural asphalt with normal + roughness maps, painted edge and lane lines, cracks and patches; rubbered-in racing line; raised red/white rumble strips; tyre skid marks (one ring-buffer mesh); layered terrain shader (coastal grass, triplanar stratified cliff rock, wet/dry sand); ocean shader with Fresnel sky reflection and sun glint; coast redwoods, palms and undergrowth; clear-coat rival paint, smoked glass and polished alloy rims, all reflecting a cubemap baked from the actual coast at load.
-- **Icons**: adaptive launcher icon (crimson Valkyrie GT-R over carbon fibre with a cyan nitro trail), legacy/round icons for every density, a dark launch splash and `tools/icon/out/play-store-512.png`. Regenerate with `node tools/icon/render.mjs` (needs Playwright; see the header of that file).
+- **Icons**: adaptive launcher icon, legacy/round icons for every density, a dark launch splash and `tools/icon/out/play-store-512.png` (since 1.0.0 all generated from `tools/icon/master.png` by `node tools/icon/render.mjs`).
 
 ## Phase 4: zero-cost Firebase cloud save
 
@@ -290,7 +290,7 @@ src/
 public/assets/models/  drop-in .glb car models (see README there)
 android/               Capacitor Android project (signing reads env vars / keystore.properties)
 docs/                  GitHub Pages: privacy-policy.html, terms.html
-tools/icon/            launcher icon + splash renderer (dev only, not in the game bundle)
+tools/icon/            master icon + generator for every icon and splash asset (dev only)
 tools/audio/           offline audio preview renderer (dev only, not in the game bundle)
 tools/rules-test/      Firestore emulator check of firestore.rules (dev only)
 test/                  unit tests (npm test)
