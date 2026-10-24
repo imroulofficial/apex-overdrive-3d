@@ -36,7 +36,8 @@ const DPR = Number(arg('dpr', 1));
 // Simulated frame rate of the fixed-step run.
 const FPS = Number(arg('fps', 60));
 
-const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
+const pw = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
+const chromium = pw.chromium ?? pw.default.chromium;
 const server = await preview({ root, preview: { port: 4337, strictPort: false }, logLevel: 'error' });
 const browser = await chromium.launch({
   args: [
@@ -49,6 +50,49 @@ const context = await browser.newContext({ viewport: { width: WIDTH, height: Mat
 const page = await context.newPage();
 page.on('pageerror', (e) => console.error('page error:', e.message));
 page.on('console', (m) => (m.type() === 'error' ? console.error('console:', m.text()) : m.text().startsWith('[hitch]') && console.log(m.text())));
+// Web Audio watcher, installed before the game loads: every call the main thread makes into
+// the audio graph (node creation, connect / disconnect, source start / stop, AudioParam
+// automation and .value writes), counted by kind. Port messages to an AudioWorklet are
+// counted apart: they are not graph calls.
+await page.addInitScript(() => {
+  const a = (window.__webAudio = { create: 0, connect: 0, disconnect: 0, startStop: 0, param: 0, worklet: 0, byName: {} });
+  const count = (kind, name) => {
+    a[kind]++;
+    a.byName[name] = (a.byName[name] ?? 0) + 1;
+  };
+  const wrap = (proto, name, kind) => {
+    const orig = proto?.[name];
+    if (typeof orig !== 'function') return;
+    proto[name] = function (...args) {
+      count(kind, name);
+      return orig.apply(this, args);
+    };
+  };
+  const BAC = window.BaseAudioContext?.prototype;
+  if (BAC) for (const n of Object.getOwnPropertyNames(BAC)) if (n.startsWith('create')) wrap(BAC, n, 'create');
+  wrap(window.AudioNode?.prototype, 'connect', 'connect');
+  wrap(window.AudioNode?.prototype, 'disconnect', 'disconnect');
+  for (const n of ['start', 'stop']) wrap(window.AudioScheduledSourceNode?.prototype, n, 'startStop');
+  const AP = window.AudioParam?.prototype;
+  for (const n of ['setValueAtTime', 'linearRampToValueAtTime', 'exponentialRampToValueAtTime', 'setTargetAtTime', 'setValueCurveAtTime', 'cancelScheduledValues', 'cancelAndHoldAtTime']) wrap(AP, n, 'param');
+  const value = AP && Object.getOwnPropertyDescriptor(AP, 'value');
+  if (value?.set)
+    Object.defineProperty(AP, 'value', { ...value, set(v) { count('param', 'value='); value.set.call(this, v); } });
+  // Node constructors (new GainNode(ac)) count as creations too.
+  for (const n of Object.getOwnPropertyNames(window)) {
+    if (!/^[A-Z]\w*Node$/.test(n) || n === 'AudioNode' || !(window[n]?.prototype instanceof (window.AudioNode ?? Object))) continue;
+    const C = window[n];
+    window[n] = new Proxy(C, { construct(T, args, nt) { count('create', n); return Reflect.construct(T, args, nt); } });
+  }
+  const port = window.MessagePort?.prototype;
+  if (port) {
+    const post = port.postMessage;
+    port.postMessage = function (...args) {
+      a.worklet++;
+      return post.apply(this, args);
+    };
+  }
+});
 await page.goto(`${server.resolvedUrls.local[0]}?debug`);
 await page.waitForFunction(() => window.__app && window.__garage, null, { timeout: 120000 });
 
@@ -97,6 +141,9 @@ async function profile(id) {
     const app = window.__app;
     if (app.mode === 'race') await app.exitToMap();
     if (app.mode === 'map') await app.backToGarage();
+    // A player has heard the garage long before a race: the car mixer is loaded by then.
+    const audio = await app.audioLoaded();
+    console.log(`[hitch] audio ${JSON.stringify(audio?.carMixer ?? null)}`);
     await app.startRace(app.pickStage(id));
   }, id);
   return page.evaluate(async ({ seconds, realtime, fps }) => {
@@ -109,8 +156,17 @@ async function profile(id) {
     const frames = [];
     let prevHeap = heap();
     let gcs = 0;
+    const wa = window.__webAudio;
+    const calls = () => wa.create + wa.connect + wa.disconnect + wa.startStop + wa.param;
+    let lastCalls = calls();
+    let racingNames = null;
     const sample = (fn) => {
       const snap = { ...c };
+      // Graph calls since the last frame ended: timers, the audio metronome, promises.
+      const between = calls() - lastCalls;
+      const a0 = calls();
+      const w0 = wa.worklet;
+      if (!racingNames && (r.phase === 'racing')) racingNames = { ...wa.byName };
       const h0 = heap();
       if (h0 < prevHeap) gcs++;
       const t0 = performance.now();
@@ -120,7 +176,11 @@ async function profile(id) {
       const t2 = performance.now();
       const h1 = heap();
       prevHeap = h1;
+      lastCalls = calls();
       const f = { t: +r.raceTime.toFixed(3), phase: r.phase, ms: +(t2 - t0).toFixed(2), js: +(t1 - t0).toFixed(2), alloc: h1 >= h0 ? h1 - h0 : 0, gc: h1 < h0 };
+      if (lastCalls - a0) f.audio = lastCalls - a0;
+      if (between) f.audioBetween = between;
+      if (wa.worklet - w0) f.port = wa.worklet - w0;
       for (const k of Object.keys(c)) if (c[k] !== snap[k]) f[k] = c[k] - snap[k];
       frames.push(f);
       if (frames.length % 300 === 0) console.log(`[hitch] ${frames.length} frames, race ${f.t.toFixed(1)} s`);
@@ -175,6 +235,13 @@ async function profile(id) {
         msP50: pct(0.5), msP95: pct(0.95), msP99: pct(0.99), msMax: ms[ms.length - 1],
         jsAvg: +(sum('js') / Math.max(1, racing.length)).toFixed(2),
         jsMax: Math.max(...racing.map((f) => f.js)),
+        // Main-thread Web Audio graph calls while racing: inside the frame, and from timers
+        // between frames; port messages to the audio worklet mixer per frame.
+        audioCallsPerFrame: +(sum('audio') / Math.max(1, racing.length)).toFixed(2),
+        audioFrames: racing.filter((f) => f.audio).length,
+        audioCallsBetweenFrames: sum('audioBetween'),
+        portMessagesPerFrame: +(sum('port') / Math.max(1, racing.length)).toFixed(2),
+        audioByName: Object.fromEntries(Object.entries(wa.byName).map(([k, v]) => [k, v - (racingNames?.[k] ?? 0)]).filter(([, v]) => v > 0)),
       },
       before: {
         compiles: sum('compile', frames.filter((f) => !racing.includes(f))),

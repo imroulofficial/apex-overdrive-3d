@@ -22,7 +22,7 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // Bump versionCode by hand for every bundle uploaded to Play (it must only go up);
         // keep versionName in step with package.json and GAME.version (test/release.test.js).
-        versionCode 63
+        versionCode 64
         versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {

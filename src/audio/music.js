@@ -490,4 +490,6 @@ function pulseWave(ac, duty) {
   return ac.createPeriodicWave(real, imag);
 }
 
-export const MUSIC_INFO = { bpm: BPM, bar: BAR, step: STEP };
+// section: seconds per section (8 bars); order: sections in a pass, the loop coming back round
+// to `loopFrom` (tools/audio/render.mjs --soundtrack renders the track for the car mixer).
+export const MUSIC_INFO = { bpm: BPM, bar: BAR, step: STEP, section: STEP * 128, order: ORDER.length, loopFrom: LOOP_FROM };

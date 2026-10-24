@@ -3,7 +3,7 @@
 import { createMixer, MUSIC_LEVEL, OUTPUT } from '../../src/audio/mixer.js';
 import { EngineVoice, Gearbox, playEngineEvents, revEngine } from '../../src/audio/engine.js';
 import { ui, race, blowOff, nitroIgnite } from '../../src/audio/sfx.js';
-import { Music } from '../../src/audio/music.js';
+import { Music, MUSIC_INFO } from '../../src/audio/music.js';
 import { simulate, cost, live } from './stall.js';
 
 // The rate phones run at, and the rate the samples are recorded at.
@@ -425,4 +425,89 @@ async function render(name) {
   return { name, wav: btoa(bin), stats: { ...stats(buf), ...meters(buf) }, ms, log };
 }
 
-window.__audio = { names: Object.keys(clips).filter((n) => !clips[n].analysis), render, simulate, cost, live };
+// The race soundtrack as the car mixer plays it (audio/worklet/carMixer.processor.js): the
+// intro and one full pass of the loop, rendered as one so the intro runs straight into it,
+// plus a second past the loop's end for the crossfade back round. Music.out only: the duck
+// and the engine-led low-pass are the mixer's. Normalized to just under full scale for 16-bit;
+// `gain` restores the level.
+async function soundtrack() {
+  const { section, order, loopFrom } = MUSIC_INFO;
+  const start = 0.02;
+  const loopStart = start + section * loopFrom;
+  const loopEnd = start + section * order;
+  const seconds = loopEnd + 1;
+  const ac = new OfflineAudioContext(2, Math.ceil(seconds * SR), SR);
+  const mix = createMixer(ac);
+  mix.duck.disconnect();
+  mix.duck.connect(ac.destination);
+  const music = new Music(mix);
+  music.start(0);
+  // The fade-in is the mixer's too.
+  music.out.gain.cancelScheduledValues(0);
+  music.out.gain.setValueAtTime(1, 0);
+  music.schedule(seconds, 0);
+  const t0 = performance.now();
+  const buf = await ac.startRendering();
+  const ms = Math.round(performance.now() - t0);
+  // Where in the loop's first half bar to come back round: the free-running oscillators make
+  // each pass differ in phase (at the downbeat itself the kicks of two passes are nearly
+  // opposite), so the 60 ms crossfade goes where the two passes are most alike, and is kept
+  // at constant power for that likeness (rho).
+  const mono = new Float32Array(buf.length);
+  for (let c = 0; c < 2; c++) {
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < d.length; i++) mono[i] += d[i] * 0.5;
+  }
+  const xf = Math.round(0.06 * SR);
+  const a0 = Math.round(loopStart * SR);
+  const b0 = Math.round(loopEnd * SR);
+  let wrap = 0;
+  let rho = -2;
+  for (let d = 0; d < Math.round((MUSIC_INFO.bar / 2) * SR); d += 24) {
+    let ab = 0;
+    let aa = 0;
+    let bb = 0;
+    for (let i = 0; i < xf; i++) {
+      const x = mono[a0 + d + i];
+      const y = mono[b0 + d + i];
+      ab += x * y;
+      aa += x * x;
+      bb += y * y;
+    }
+    const c = ab / Math.sqrt(aa * bb + 1e-12);
+    if (c > rho) [rho, wrap] = [c, d / SR];
+  }
+  let peak = 0;
+  for (let c = 0; c < 2; c++) for (const x of buf.getChannelData(c)) peak = Math.max(peak, Math.abs(x));
+  const norm = 0.97 / peak;
+  for (let c = 0; c < 2; c++) {
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < d.length; i++) d[i] *= norm;
+  }
+  const bytes = toWav(buf);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { wav: btoa(bin), ms, info: { gain: +(1 / norm).toFixed(5), start, drop: +loopStart.toFixed(6), loopStart: +(loopStart + wrap).toFixed(6), loopEnd: +(loopEnd + wrap).toFixed(6), rho: +rho.toFixed(3), bar: MUSIC_INFO.bar, seconds: +seconds.toFixed(3) } };
+}
+
+// The scripted race of stall.js through two control paths, without hitches, as WAV (the
+// graph version and the car mixer, for an A/B listen and a level check per second).
+async function compare(path, seconds = 24) {
+  const r = await simulate({ path, seconds, hitches: false, rate: SR, keep: true });
+  const buf = r.buffer;
+  const perSecond = [];
+  for (let s = 0; s + 1 <= seconds; s++) {
+    let sum = 0;
+    for (let c = 0; c < 2; c++) {
+      const d = buf.getChannelData(c);
+      for (let i = s * SR; i < (s + 1) * SR; i++) sum += d[i] * d[i];
+    }
+    perSecond.push(+(10 * Math.log10(sum / (2 * SR) + 1e-12)).toFixed(1));
+  }
+  const bytes = toWav(buf);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { wav: btoa(bin), perSecond, stats: stats(buf) };
+}
+
+window.__audio = { compare, names: Object.keys(clips).filter((n) => !clips[n].analysis), render, simulate, cost, live, soundtrack };

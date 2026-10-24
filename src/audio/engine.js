@@ -2,6 +2,7 @@ import { noiseSource, filter, gain } from './mixer.js';
 import { loopSource } from './samples.js';
 import { blowOff, crackle } from './sfx.js';
 import { Gate } from './clock.js';
+import { Gearbox, LAYERS, layerWeight, layerTrim, REVS, IDLE, REDLINE, ENGINE_LEVEL, clamp } from './gearbox.js';
 
 // The player's engine, built the way commercial racers build theirs: recorded RPM loops,
 // pitch-shifted with the revs and crossfaded between, plus recorded turbo, nitro and tyre
@@ -11,142 +12,13 @@ import { Gate } from './clock.js';
 // an Aston Martin V12 pulling to the redline, each slice resampled to hold one steady pitch
 // so it can loop. No layer is an oscillator.
 
-const IDLE = 950;
-const REDLINE = 7600;
-const LIMIT = 7900;
-// Where each gear runs out, as a fraction of the car's top speed. Sixth reaches into the
-// nitro overspeed so Pulse Nitro still pulls through the gears.
-const GEAR_TOP = [0.24, 0.42, 0.6, 0.78, 0.98, 1.4];
-const GEARS = GEAR_TOP.length;
-
-// The RPM loops, crossfaded with equal power: the sample, the rpm it was recorded at, and its
-// fade-in and fade-out ranges. Each rpm is 30 × the loop's fundamental (twice the crank
-// speed, the strongest line in all three recordings) as samples.mjs measures it, so every
-// layer plays at the pitch the gearbox asks for and the crossfades do not jump. No loop is
-// played outside about 0.55-1.85× its own speed. The fades are wide (650-900 rpm), so one
-// recording's tone morphs into the next over a whole stretch of the rev range instead of
-// switching at a point.
-//
-// `trim` (dB) and `tilt` (dB per octave of pitch shift) level-match the loops: each one,
-// soloed and swept through its range (tools/audio engine-sweep-layer-N clips), is brought onto
-// one shared loudness-vs-rpm line, so neither layer of a crossfade is louder than the other
-// and a sweep through the gears has no steps at the crossovers.
-export const LAYERS = [
-  { sample: 'engineIdle', rpm: 985, fadeIn: null, fadeOut: [1200, 1850], trim: -0.6, tilt: 0.8 },
-  { sample: 'engineLow', rpm: 2040, fadeIn: [1200, 1850], fadeOut: [2550, 3400], trim: 1.1, tilt: -1.6 },
-  { sample: 'engineMid', rpm: 3840, fadeIn: [2550, 3400], fadeOut: [4150, 5000], trim: -0.2, tilt: -0.3 },
-  { sample: 'engineHigh', rpm: 5220, fadeIn: [4150, 5000], fadeOut: [5650, 6550], trim: 0, tilt: -0.1 },
-  { sample: 'engineTop', rpm: 6735, fadeIn: [5650, 6550], fadeOut: null, trim: -0.3, tilt: -1.3 },
-];
-
-const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-const smooth = (x) => x * x * (3 - 2 * x);
-
-// A layer's crossfade weight at `rpm` (equal power: the squares of two neighbours sum to 1).
-export function layerWeight(L, rpm) {
-  let w = 1;
-  if (L.fadeIn) w *= Math.sin((smooth(clamp((rpm - L.fadeIn[0]) / (L.fadeIn[1] - L.fadeIn[0]), 0, 1)) * Math.PI) / 2);
-  if (L.fadeOut) w *= Math.cos((smooth(clamp((rpm - L.fadeOut[0]) / (L.fadeOut[1] - L.fadeOut[0]), 0, 1)) * Math.PI) / 2);
-  return w;
-}
-
-// The level-match gain of a layer playing at `rpm` (see LAYERS).
-export const layerTrim = (L, rpm) => 10 ** (((L.trim ?? 0) + (L.tilt ?? 0) * Math.log2(rpm / L.rpm)) / 20);
-
-// ---------------------------------------------------------------------------
-// Gearbox: turns road speed and throttle into RPM, boost pressure and shift events
-// ---------------------------------------------------------------------------
-
-export class Gearbox {
-  constructor() {
-    this.reset();
-  }
-
-  reset() {
-    this.gear = 0;
-    this.rpm = IDLE;
-    this.boost = 0;
-    this.shiftT = 0;
-    this.limiterT = 0;
-    this.liftT = 9;
-    this.popT = 0;
-    this.throttle = 0;
-    this.events = [];
-  }
-
-  // speedNorm: forward speed / top speed. neutral: revving on the grid or in the garage.
-  step(dt, { speedNorm = 0, throttle = 0, neutral = false, airborne = false }) {
-    const ev = this.events;
-    ev.length = 0;
-    let target;
-    let tc;
-    if (neutral) {
-      this.gear = 0;
-      target = IDLE + throttle * (LIMIT + 300 - IDLE);
-      tc = target > this.rpm ? 0.085 : 0.3;
-    } else {
-      if (this.shiftT > 0) this.shiftT -= dt;
-      else if (this.gear < GEARS - 1 && speedNorm > GEAR_TOP[this.gear] * 0.985 && throttle > 0.3) {
-        this.gear += 1;
-        this.shiftT = 0.16;
-        ev.push({ type: 'upshift', gear: this.gear, boost: this.boost });
-      } else if (this.gear > 0 && speedNorm < GEAR_TOP[this.gear - 1] * 0.72) {
-        this.gear -= 1;
-        this.shiftT = 0.12;
-        ev.push({ type: 'downshift', gear: this.gear });
-      }
-      const ratio = clamp(speedNorm / GEAR_TOP[this.gear], 0, 1.06);
-      target = IDLE + (REDLINE - IDLE) * ratio;
-      // Clutch slip off the line, wheels free in the air.
-      if (this.gear === 0) target = Math.max(target, IDLE + throttle * 2600);
-      if (airborne && throttle > 0.3) target += 1500;
-      tc = this.shiftT > 0 ? 0.045 : target > this.rpm ? 0.07 : 0.12;
-    }
-    this.rpm += (Math.min(target, LIMIT + 200) - this.rpm) * (1 - Math.exp(-dt / tc));
-
-    // Rev limiter: bounce off the cut while the throttle stays pinned.
-    this.limiterT -= dt;
-    let cut = this.shiftT > 0.05 ? 1 : 0;
-    if (this.rpm > LIMIT && throttle > 0.5) {
-      if (this.limiterT <= 0) {
-        this.rpm -= 650;
-        this.limiterT = 0.075;
-      }
-      cut = 0.6;
-    }
-
-    // Turbo: spools with load and RPM, vents through the blow-off valve on a lift.
-    const r = clamp((this.rpm - 2200) / 3800, 0, 1);
-    const want = neutral ? throttle * r * 0.9 : throttle > 0.4 ? r : 0;
-    const before = this.boost;
-    this.boost += (want - this.boost) * (1 - Math.exp(-dt / (want > this.boost ? (neutral ? 0.3 : 0.55) : 0.1)));
-    if (this.throttle > 0.5 && throttle < 0.25) {
-      this.liftT = 0;
-      if (before > 0.35) ev.push({ type: 'bov', strength: before });
-    }
-    for (const e of ev) if (e.type === 'upshift' && e.boost > 0.4) e.bov = e.boost * 0.7;
-
-    // Overrun crackle for a moment after lifting at high RPM.
-    this.liftT += dt;
-    this.popT -= dt;
-    if (throttle < 0.25 && this.liftT < 1.4 && this.rpm > 3800 && this.popT <= 0) {
-      this.popT = 0.12 + Math.random() * 0.35;
-      if (Math.random() < 0.55) ev.push({ type: 'pop', intensity: clamp((this.rpm - 3800) / 3000, 0.3, 1) });
-    }
-    this.throttle = throttle;
-    this.cut = cut;
-    return ev;
-  }
-}
+// The gearbox, the layer table and the rev scripts are shared with the audio-thread mixer
+// (audio/worklet/carMixer.processor.js).
+export { Gearbox, LAYERS, layerWeight, layerTrim, REVS } from './gearbox.js';
 
 // ---------------------------------------------------------------------------
 // Engine voice: the sample graph, driven by set() at a given time
 // ---------------------------------------------------------------------------
-
-// The voice's level into the sfx bus at full load, tuned to the level budget in mixer.js
-// (engine about -16 to -18 dBFS RMS at the master input). 0.5 with the level-matched layers
-// and the master warmth EQ lands where 0.55 did before them.
-const ENGINE_LEVEL = 0.5;
 
 // gated: layers that are often silent (RPM loops outside their range, turbo, tyres, surfaces,
 // nitro air) stay unplugged from the graph while their level is zero, so the audio thread
@@ -420,14 +292,7 @@ export class EngineDriver {
   }
 }
 
-// A free-revving one-shot for the garage: throttle(t) is the pedal over `duration` seconds.
-const REVS = {
-  // Headlight toggle: one hard stab into the limiter, blow-off and crackle on the way down.
-  stab: { duration: 1.6, throttle: (t) => (t > 0.04 && t < 0.42 ? 1 : 0) },
-  // Race start: a quick blip, then a long pull.
-  double: { duration: 2.0, throttle: (t) => (t > 0.03 && t < 0.2 ? 0.8 : t > 0.42 && t < 0.86 ? 1 : 0) },
-};
-
+// A free-revving one-shot for the garage (REVS in audio/gearbox.js).
 let activeRev = null;
 export function revEngine(mix, kind = 'stab', at) {
   const { duration, throttle } = REVS[kind] ?? REVS.stab;

@@ -1,7 +1,12 @@
 // Game-facing audio API. The sound lives in src/audio/ (mixer, engine, sfx, music, samples);
 // this module owns the single AudioContext, applies the Sound / Music settings and keeps the
-// call sites simple. The car plays recorded samples bundled with the app (public/assets/
-// audio); the HUD, cues and soundtrack are synthesized. Nothing is fetched from the network.
+// call sites simple. A race plays through the car mixer (audio/carMixer.js), one
+// AudioWorkletProcessor that runs the engine, tyres, surfaces, rain, race one-shots and the
+// soundtrack on the audio thread, fed one message per frame; where AudioWorklet is missing
+// (or until the mixer has its samples) the same sounds play through the Web Audio graph. The
+// car plays recorded samples bundled with the app (public/assets/audio); the HUD, cues and
+// soundtrack are synthesized (the race soundtrack ships pre-rendered from that synth for the
+// mixer). Nothing is fetched from the network.
 import { state } from './store.js';
 import { createMixer, MUSIC_LEVEL, MUSIC_TONE } from '../audio/mixer.js';
 import { ui, race, nitroIgnite, rainBed } from '../audio/sfx.js';
@@ -9,6 +14,7 @@ import { EngineVoice, EngineDriver, playEngineEvents, revEngine } from '../audio
 import { Music } from '../audio/music.js';
 import { AudioClock } from '../audio/clock.js';
 import { VoicePool, PRIORITY } from '../audio/voices.js';
+import { CarMixer } from '../audio/carMixer.js';
 import { isNative } from './platform.js';
 
 // Android's audio thread has to finish each hardware buffer before the speaker needs it.
@@ -30,6 +36,7 @@ const LATENCY = isNative ? 'playback' : ANDROID ? 'balanced' : 'interactive';
 const ENGINE_LOOKAHEAD = isNative || ANDROID ? 0.07 : 0.045;
 
 let mix = null;
+let car = null;
 let clock = null;
 let pool = null;
 let music = null;
@@ -57,6 +64,7 @@ function ensure() {
     mix = createMixer(ac);
     clock = new AudioClock(ac);
     pool = new VoicePool(mix);
+    if (CarMixer.supported(ac)) car = new CarMixer(mix);
     applyAudioSettings();
   }
   if (mix.ac.state === 'suspended') mix.ac.resume();
@@ -68,6 +76,26 @@ const fx = (priority, fn) => (...args) => {
   if (!state.settings.sound) return;
   const m = ensure();
   if (m) pool.play(priority, (vm) => fn(vm, ...args));
+};
+
+// The car mixer, once it holds its samples (graph path until then, or for good without it).
+const onCar = () => (car?.live ? car : null);
+
+// A race one-shot: on the car mixer as baked shot `name` at gain(…args) and rate(…args),
+// otherwise the graph version. Spacing (below) applies to both.
+const rfx = (priority, name, fn, { gain, rate, gap, variant } = {}) => {
+  const graph = fx(priority, gap ? spaced(name, gap, fn) : fn);
+  return (...args) => {
+    if (!state.settings.sound) return;
+    const c = ensure() && onCar();
+    if (!c) return graph(...args);
+    if (gap) {
+      const t = mix.ac.currentTime;
+      if (t - (lastHit.get(name) ?? -1) < gap) return;
+      lastHit.set(name, t);
+    }
+    c.shot(variant ? variant(...args) : name, gain ? gain(...args) : 1, rate ? rate(...args) : 1);
+  };
 };
 
 // Impacts can fire on consecutive physics steps (a cone field, grinding a rail). Stacked
@@ -86,10 +114,16 @@ export function applyAudioSettings() {
   const t = mix.ac.currentTime;
   mix.sfx.gain.setTargetAtTime(state.settings.sound ? 1 : 0, t, 0.05);
   mix.music.gain.setTargetAtTime(state.settings.music ? MUSIC_LEVEL : 0, t, 0.05);
-  if (musicWanted && state.settings.music && !music?.playing) startMusic();
-  if (!state.settings.music && music) {
-    music.stop(0.2);
-    clock.remove(music);
+  if (musicWanted && state.settings.music && !music?.playing && !carMusic) startMusic();
+  if (!state.settings.music) {
+    if (music) {
+      music.stop(0.2);
+      clock.remove(music);
+    }
+    if (carMusic) {
+      car.music('stop');
+      carMusic = false;
+    }
   }
 }
 
@@ -104,55 +138,61 @@ export const sfx = {
   // a whole engine voice of its own (one at a time), outside the one-shot pool.
   lights: fx(cue, (m) => {
     ui.relay(m);
-    revEngine(mix, 'stab');
+    if (onCar()) car.rev('stab');
+    else revEngine(mix, 'stab');
   }),
   // Driver door: hydraulic strut open / close.
   door: fx(cue, (m, open) => ui.door(m, open)),
   // Race Start: blip and pull.
   rev: () => {
-    if (state.settings.sound && ensure()) revEngine(mix, 'double');
+    if (!state.settings.sound || !ensure()) return;
+    if (onCar()) car.rev('double');
+    else revEngine(mix, 'double');
   },
 };
 
+// Thunder by distance (0 overhead .. 1): the nearest of three baked strikes.
+const thunderShot = (d) => (d < 0.35 ? 'thunderNear' : d < 0.7 ? 'thunderMid' : 'thunderFar');
+
 export const raceSfx = {
-  beep: fx(key, (m) => race.beep(m)),
-  go: fx(key, (m) => {
+  beep: rfx(key, 'beep', (m) => race.beep(m)),
+  go: rfx(key, 'go', (m) => {
     race.go(m);
     music?.drop();
   }),
-  nitro: fx(key, (m) => {
+  nitro: rfx(key, 'nitro', (m) => {
     nitroIgnite(m, 1);
     duckFor(0.55, 1.2);
   }),
-  pulse: fx(key, (m) => {
+  pulse: rfx(key, 'pulse', (m) => {
     nitroIgnite(m, 2);
     duckFor(0.4, 1.6);
   }),
-  empty: fx(cue, (m) => race.empty(m)),
-  smash: fx(impact, spaced('smash', 0.06, (m, big) => race.smash(m, big))),
-  wall: fx(impact, spaced('wall', 0.09, (m, k) => race.wall(m, k))),
-  bump: fx(detail, spaced('bump', 0.08, (m) => race.bump(m))),
-  land: fx(impact, spaced('land', 0.12, (m, k) => race.land(m, k))),
-  chirp: fx(detail, (m) => race.chirp(m)),
-  driftBank: fx(cue, (m) => race.driftBank(m)),
-  combo: fx(cue, (m, level) => race.combo(m, level)),
-  perfect: fx(key, (m) => {
+  empty: rfx(cue, 'empty', (m) => race.empty(m)),
+  smash: rfx(impact, 'smash', (m, big) => race.smash(m, big), { gap: 0.06, variant: (big) => (big ? 'smashBig' : 'smash') }),
+  wall: rfx(impact, 'wall', (m, k) => race.wall(m, k), { gap: 0.09, gain: (k) => Math.min(1, 0.25 + k * 0.04) }),
+  bump: rfx(detail, 'bump', (m) => race.bump(m), { gap: 0.08 }),
+  land: rfx(impact, 'land', (m, k) => race.land(m, k), { gap: 0.12, gain: (k) => Math.min(1, 0.3 + k * 0.04) }),
+  chirp: rfx(detail, 'chirp', (m) => race.chirp(m), { rate: () => 0.95 + Math.random() * 0.1 }),
+  driftBank: rfx(cue, 'driftBank', (m) => race.driftBank(m)),
+  combo: rfx(cue, 'combo', (m, level) => race.combo(m, level), { variant: (level = 1) => `combo${Math.max(1, Math.min(3, level))}` }),
+  perfect: rfx(key, 'perfect', (m) => {
     race.perfect(m);
     duckFor(0.5, 0.9);
   }),
-  shatter: fx(impact, spaced('shatter', 0.06, (m, kind) => race.shatter(m, kind))),
-  lap: fx(key, (m) => race.lap(m)),
-  finish: fx(key, (m) => race.finish(m)),
-  coin: fx(detail, (m, i) => race.coin(m, i)),
-  pylon: fx(cue, (m) => race.pylon(m)),
-  checkpoint: fx(cue, (m) => race.checkpoint(m)),
-  tick: fx(cue, (m) => race.tick(m)),
-  eliminated: fx(key, (m, big) => {
+  shatter: rfx(impact, 'shatter', (m, kind) => race.shatter(m, kind), { gap: 0.06, variant: (kind) => (kind === 'neon' ? 'shatterNeon' : 'shatterStall') }),
+  lap: rfx(key, 'lap', (m) => race.lap(m)),
+  finish: rfx(key, 'finish', (m) => race.finish(m)),
+  coin: rfx(detail, 'coin', (m, i) => race.coin(m, i), { rate: (i = 0) => (1500 + i * 40) / 1500 }),
+  pylon: rfx(cue, 'pylon', (m) => race.pylon(m)),
+  checkpoint: rfx(cue, 'checkpoint', (m) => race.checkpoint(m)),
+  tick: rfx(cue, 'tick', (m) => race.tick(m)),
+  eliminated: rfx(key, 'eliminated', (m, big) => {
     race.eliminated(m, big);
     duckFor(0.45, 1.4);
-  }),
+  }, { variant: (big) => (big ? 'eliminatedBig' : 'eliminated') }),
   // Storm: a crack (close strikes) and a long rolling rumble; `distance` 0 (overhead)..1.
-  thunder: fx(impact, (m, distance) => race.thunder(m, distance)),
+  thunder: rfx(impact, 'thunder', (m, distance) => race.thunder(m, distance), { variant: (d = 0.5) => thunderShot(d) }),
 };
 
 // ---- Weather ambience ----
@@ -161,7 +201,19 @@ export const raceSfx = {
 export function createRainSound() {
   const m = state.settings.sound ? ensure() : null;
   if (!m) return { set() {}, stop() {} };
-  return rainBed(m);
+  const c = onCar();
+  if (!c) return rainBed(m);
+  let level = -1;
+  return {
+    set(v) {
+      if (Math.abs(v - level) < 0.01) return;
+      level = v;
+      c.rain(v);
+    },
+    stop() {
+      c.rain(0, true);
+    },
+  };
 }
 
 // ---- Music ----
@@ -195,10 +247,21 @@ function duckForEngine(intensity, t) {
   }
 }
 
+// The soundtrack plays on the car mixer when it has it (pre-rendered from audio/music.js),
+// with its ducking and tone done there too.
+let carMusic = false;
+
 function startMusic() {
   const m = ensure();
   if (!m || !state.settings.music) return;
-  music ??= new Music(m, { gated: true });
+  const c = onCar();
+  if (c?.musicReady) {
+    c.music('start');
+    carMusic = true;
+    return;
+  }
+  // The graph soundtrack stays plugged in for the whole race: no gate rewires it mid-race.
+  music ??= new Music(m, { gated: false });
   const t = m.ac.currentTime;
   m.duck.gain.setValueAtTime(1, t);
   m.musicTone.frequency.setValueAtTime(MUSIC_TONE.open, t);
@@ -214,10 +277,15 @@ export const raceMusic = {
   },
   stop() {
     musicWanted = false;
+    if (carMusic) {
+      car.music('stop');
+      carMusic = false;
+    }
     music?.stop();
     if (music) clock.remove(music);
   },
   setPaused(paused) {
+    if (carMusic) car.music(paused ? 'pause' : 'resume');
     music?.setPaused(paused);
     if (paused && mix) {
       mix.duck.gain.setTargetAtTime(1, mix.ac.currentTime, 0.1);
@@ -234,7 +302,24 @@ export const raceMusic = {
 // first sound the game makes, long before a race).
 export function createEngineSound() {
   const m = state.settings.sound ? ensure() : null;
-  if (!m) return { update() {}, stop() {}, gear: 0 };
+  if (!m) return { update() {}, stop() {} };
+  const c = onCar();
+  if (c) {
+    // The gearbox, the layers, blow-off and crackle all run on the audio thread; a frame
+    // hands over the car's state (and the one-shots it fired) in one message.
+    c.startEngine();
+    let stopped = false;
+    return {
+      update(controls) {
+        if (!stopped && c.live) c.sendFrame(controls);
+      },
+      stop() {
+        if (stopped) return;
+        stopped = true;
+        c.stopEngine(0.25);
+      },
+    };
+  }
   // Every layer stays plugged in from the grid to the finish: the RPM loops, tyres, turbo and
   // surfaces play continuously and only their gains and rates move. Unplugging idle layers
   // saved about 3% of a desktop core (tools/audio/render.mjs --gates) but rewired the graph
@@ -255,9 +340,6 @@ export function createEngineSound() {
   clock.add(driver);
   let stopped = false;
   return {
-    get gear() {
-      return driver.box.gear;
-    },
     // Called every race frame with the car's state. speedNorm forward speed / top speed;
     // throttle 0..1; neutral on the grid; speed 0..1 (wind); boost nitro tier 0..2; skid 0..1;
     // slip angle (rad); gravel / grass 0..1 share of the tyres off the asphalt; wood 0..1 on
@@ -291,7 +373,17 @@ export function audioStats() {
     outputLatency: ac.outputLatency ?? null,
     voices: pool.active(),
     ...pool.stats,
+    carMixer: car ? { live: car.live, music: car.musicReady, failed: car.failed, ...car.stats } : null,
   };
+}
+
+// Opens the audio context (if sound is on) and resolves once the car mixer has its samples,
+// one-shots and soundtrack, or has given up (QA: a race started after it runs on the mixer).
+export async function audioLoaded() {
+  ensure();
+  await car?.loaded;
+  await car?.musicLoaded;
+  return audioStats();
 }
 
 export function resumeAudio() {

@@ -24,6 +24,7 @@ import { Music as SampledMusic, MUSIC_INFO } from '../../src/audio/music.js';
 import { Music as SynthMusic } from './legacy/music.js';
 import { VoicePool, PRIORITY, MAX_VOICES } from '../../src/audio/voices.js';
 import { AudioClock } from '../../src/audio/clock.js';
+import { CarMixer } from '../../src/audio/carMixer.js';
 
 const FRAME = 1 / 60;
 
@@ -68,22 +69,73 @@ function controls(g) {
 
 // One-shots on game time: [time, priority, play(mix)]. A cone field at 14 s stacks up.
 const SHOTS = [
-  [0.4, 'key', (m) => race.beep(m)],
-  [1.2, 'key', (m) => race.beep(m)],
-  [2.0, 'key', (m) => race.beep(m)],
-  [2.5, 'key', (m) => race.go(m)],
-  [7, 'key', (m, car) => car.nitroIgnite(m, 1)],
-  [7.35, 'key', (m, car) => car.nitroIgnite(m, 2)],
-  [11, 'detail', (m) => race.chirp(m)],
-  [13.6, 'cue', (m) => race.driftBank(m)],
-  ...[0, 0.07, 0.14, 0.21, 0.28, 0.35, 0.42, 0.49].map((dt, i) => [14 + dt, 'impact', (m) => race.smash(m, i % 3 === 0)]),
-  [14.1, 'impact', (m) => race.shatter(m, 'neon')],
-  [14.25, 'impact', (m) => race.wall(m, 14)],
-  [14.3, 'key', (m) => race.perfect(m)],
-  [14.4, 'detail', (m) => race.bump(m)],
-  [15.5, 'impact', (m) => race.thunder(m, 0.2)],
-  [20, 'key', (m) => race.lap(m)],
+  [0.4, 'key', (m) => race.beep(m), ['beep']],
+  [1.2, 'key', (m) => race.beep(m), ['beep']],
+  [2.0, 'key', (m) => race.beep(m), ['beep']],
+  [2.5, 'key', (m) => race.go(m), ['go']],
+  [7, 'key', (m, car) => car.nitroIgnite(m, 1), ['nitro']],
+  [7.35, 'key', (m, car) => car.nitroIgnite(m, 2), ['pulse']],
+  [11, 'detail', (m) => race.chirp(m), ['chirp']],
+  [13.6, 'cue', (m) => race.driftBank(m), ['driftBank']],
+  ...[0, 0.07, 0.14, 0.21, 0.28, 0.35, 0.42, 0.49].map((dt, i) => [14 + dt, 'impact', (m) => race.smash(m, i % 3 === 0), [i % 3 === 0 ? 'smashBig' : 'smash']]),
+  [14.1, 'impact', (m) => race.shatter(m, 'neon'), ['shatterNeon']],
+  [14.25, 'impact', (m) => race.wall(m, 14), ['wall', 0.81]],
+  [14.3, 'key', (m) => race.perfect(m), ['perfect']],
+  [14.4, 'detail', (m) => race.bump(m), ['bump']],
+  [15.5, 'impact', (m) => race.thunder(m, 0.2), ['thunderNear']],
+  [20, 'key', (m) => race.lap(m), ['lap']],
 ];
+
+// The race on the car mixer (audio/carMixer.js): the whole race on the audio thread, one
+// message per frame and no timers. `car` is a loaded CarMixer.
+function workletRace(mix, car, { without = [] } = {}) {
+  mix.music.gain.value = MUSIC_LEVEL;
+  if (!without.includes('music')) car.music('start');
+  car.startEngine();
+  car.rain(0.5);
+  let game = 0;
+  let lastFrame = null;
+  let v = 0;
+  let shot = 0;
+  const runFrame = (now) => {
+    const dt = lastFrame === null ? 0 : Math.max(0, Math.min(0.05, now - lastFrame));
+    lastFrame = now;
+    game += dt;
+    const c = controls(game);
+    const thr = c.throttle ?? 1;
+    const tier = c.tier ?? 0;
+    const top = tier === 2 ? 1.36 : tier === 1 ? 1.18 : 1;
+    let a = thr * 0.26 * (1 - Math.min(1, (v / top) ** 2)) * (v < 0.4 ? 1.25 : 1);
+    if (tier) a += tier === 2 ? 0.5 : 0.25;
+    if (v > top) a -= (v - top) * 1.4;
+    if (!thr) a -= 0.04;
+    v = c.neutral ? 0 : Math.max(0, v + a * dt);
+    while (shot < SHOTS.length && SHOTS[shot][0] <= game) {
+      const [name, gain = 1] = SHOTS[shot++][3];
+      car.shot(name, gain);
+    }
+    car.sendFrame({ dt: dt || FRAME, speedNorm: v, throttle: thr, neutral: !!c.neutral, speed: Math.min(1, v * 0.9), boost: tier, skid: c.skid ?? 0, slip: c.slip ?? 0, volume: without.includes('engine') ? 0 : 1 });
+  };
+  return {
+    runFrame,
+    runTimers() {},
+    music: null,
+    pool: { stats: { peak: 0, stolen: 0, dropped: 0 } },
+    steps: [],
+    notes: { queued: Infinity, late: 0 },
+    musicStart: 0,
+    setPlayhead() {},
+  };
+}
+
+// A car mixer on `mix`, loaded with its samples, one-shots and soundtrack.
+async function carMixer(mix) {
+  const car = new CarMixer(mix);
+  await car.loaded;
+  if (!car.live) throw new Error('car mixer did not load');
+  await car.musicLoaded;
+  return car;
+}
 
 // The race's audio, wired up the way the given control path does it. Returns the main-thread
 // work (a frame of the race, a timer tick) for the caller to run at audio time `now`.
@@ -193,21 +245,21 @@ function raceAudio(mix, path, { live = false, t0 = 0, without = [], gated = { en
   };
 }
 
-export async function simulate({ seconds = 24, path = 'current', hitches = true, profile = 'normal', rate = 44100, without, gated } = {}) {
+export async function simulate({ seconds = 24, path = 'current', hitches = true, profile = 'normal', rate = 44100, without, gated, keep = false } = {}) {
   const SR = rate;
   const QUANTUM = 128 / SR;
   const ac = new OfflineAudioContext(2, Math.ceil(seconds * SR), SR);
   const mix = createMixer(ac);
   await mix.samples.ready;
   const current = path !== 'previous';
-  const { runFrame, runTimers, pool, steps, notes, musicStart, setPlayhead } = raceAudio(mix, path, { without, gated });
+  const { runFrame, runTimers, pool, steps, notes, musicStart, setPlayhead } = path === 'worklet' ? workletRace(mix, await carMixer(mix), { without }) : raceAudio(mix, path, { without, gated });
 
   // Main-thread work, in the order a phone would run it.
   const fr = frames(seconds, { hitches, sizes: HITCHES[profile] });
   const busy = fr.filter(([, d]) => d > FRAME * 1.5);
   const events = fr.map(([s]) => ({ t: s, kind: 'frame' }));
   const tick = current ? 0.02 : 0.025;
-  for (let due = 0; due < seconds; due += tick) events.push({ t: released(due, busy), kind: 'timer' });
+  if (path !== 'worklet') for (let due = 0; due < seconds; due += tick) events.push({ t: released(due, busy), kind: 'timer' });
   const at = new Map();
   for (const e of events) {
     const q = Math.ceil(e.t / QUANTUM) * QUANTUM;
@@ -266,6 +318,8 @@ export async function simulate({ seconds = 24, path = 'current', hitches = true,
     renderMs: Math.round(ms),
     peakDb: +(20 * Math.log10(peak + 1e-9)).toFixed(1),
     nonFinite: bad,
+    // keep: the rendered race itself (render.mjs --compare writes it out).
+    buffer: keep ? buf : undefined,
   };
 }
 
@@ -316,20 +370,30 @@ export async function live({ path = 'current', seconds = 12, profile = 'normal',
   const mix = createMixer(ac);
   await mix.samples.ready;
   const t0 = ac.currentTime + 0.1;
-  const race = raceAudio(mix, path, { live: true, t0 });
+  const race = path === 'worklet' ? workletRace(mix, await carMixer(mix)) : raceAudio(mix, path, { live: true, t0 });
   const tick = (now) => {
     race.setPlayhead(now);
     race.runTimers(now);
   };
   let clock = null;
   let timer = 0;
-  if (path !== 'previous') {
+  if (path === 'worklet') {
+    // No clock: nothing to queue ahead.
+  } else if (path !== 'previous') {
     clock = new AudioClock(ac);
     clock.add({ fill: tick });
   } else timer = setInterval(() => tick(ac.currentTime), 25);
 
   const stalls = frames(seconds, { sizes: HITCHES[profile] }).filter(([, d]) => d > FRAME * 1.5);
-  const before = ac.playoutStats?.toJSON();
+  // Chrome's playout stats (playbackStats since Chrome ~130; playoutStats before).
+  const playout = () => {
+    const p = ac.playbackStats?.toJSON?.();
+    if (p) return { events: p.underrunEvents, ms: p.underrunDuration * 1000, total: p.totalDuration };
+    const o = ac.playoutStats?.toJSON?.();
+    return o ? { events: o.fallbackFramesEvents, ms: o.fallbackFramesDuration, total: o.totalFramesDuration / 1000 } : null;
+  };
+  const before = playout();
+  const timeline = [];
   await new Promise((resolve) => {
     const start = performance.now();
     let k = 0;
@@ -337,6 +401,9 @@ export async function live({ path = 'current', seconds = 12, profile = 'normal',
       const el = (performance.now() - start) / 1000;
       if (el > seconds) return resolve();
       const now = ac.currentTime;
+      // Underruns per second of the run, to see where they fall.
+      const sec = Math.floor(el);
+      if (sec > timeline.length - 1) timeline.push(playout()?.events ?? 0);
       race.setPlayhead(now);
       race.runFrame(now);
       while (k < stalls.length && stalls[k][0] <= el) spin((stalls[k++][1] - FRAME) * 1000);
@@ -344,7 +411,7 @@ export async function live({ path = 'current', seconds = 12, profile = 'normal',
     };
     requestAnimationFrame(loop);
   });
-  const after = ac.playoutStats?.toJSON();
+  const after = playout();
   clock?.halt();
   clearInterval(timer);
   const out = {
@@ -354,8 +421,10 @@ export async function live({ path = 'current', seconds = 12, profile = 'normal',
     sampleRate: ac.sampleRate,
     baseLatencyMs: Math.round((ac.baseLatency ?? 0) * 1000),
     outputLatencyMs: Math.round((ac.outputLatency ?? 0) * 1000),
-    underruns: after ? after.fallbackFramesEvents - before.fallbackFramesEvents : null,
-    underrunMs: after ? Math.round(after.fallbackFramesDuration - before.fallbackFramesDuration) : null,
+    underruns: after ? after.events - before.events : null,
+    underrunMs: after ? Math.round(after.ms - before.ms) : null,
+    playedSeconds: after ? +(after.total - before.total).toFixed(1) : null,
+    perSecond: timeline.map((e, i) => (i ? e - timeline[i - 1] : e - (before?.events ?? 0))),
     voicesPeak: race.pool.stats.peak,
   };
   await ac.close();

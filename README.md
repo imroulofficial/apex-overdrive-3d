@@ -11,6 +11,27 @@ Offline-first 3D arcade racer for Android by **Red Pen Studio**.
 
 ## 1.0.0 production release candidate (this release)
 
+### Real-time car mixer (versionCode 64)
+
+The race sound (engine, turbo, tyres, surfaces, wind, one-shots, rain and soundtrack) now plays from one AudioWorklet, `src/audio/worklet/carMixer.processor.js`. Nothing in the Web Audio graph is created, connected, disconnected or scheduled during a race.
+
+- **Boot**: the mixer gets all of its PCM once when the game loads (`src/audio/carMixer.js`). That covers the engine loops and beds, plus every race one-shot baked by an OfflineAudioContext from the game's own `sfx.js` code. Its five outputs are wired once to the static mix buses.
+- **Per frame**: the main thread sends one preallocated `Float32Array` with the car state and up to 8 one-shots (`src/audio/worklet/protocol.js`). The gearbox (`src/audio/gearbox.js`, shared with the fallback) steps on the audio thread every 128 samples and fires blow-off and crackle itself. The 70 ms worker scheduler and all main-thread AudioParam calls are gone from this path.
+- **DSP**: loops are read with a phase accumulator and linear interpolation. Every surface channel (gravel, grass, wood, skid) is always running, and one-pole envelopes glide between them. One-shots play from a fixed 8-voice pool that steals by priority and age, with a 12 ms fade. The processor allocates nothing while it runs (0 GCs in 40,000 blocks, `test/car-mixer.test.js`), and it warms up its JIT for 4 s after loading.
+- **Soundtrack**: pre-rendered from `music.js` to `public/assets/audio/race-soundtrack.ogg` (Opus 128 kbps, 1.5 MB, `node tools/audio/render.mjs --soundtrack`). The intro runs into the loop, the drop at GO cuts in at the next bar, and the loop seam is a 60 ms crossfade at the point where the two passes are most alike.
+- **Fallback**: without AudioWorklet (no secure context, an old WebView, or a processor error), the previous graph path runs unchanged, with the music no longer gated.
+- **Measured** (headless race, Emerald Coast stage 1):
+
+  | | v63 graph | v64 mixer |
+  |---|---|---|
+  | Web Audio calls per racing frame | 62.7 | 0 |
+  | Port messages per frame | – | about 1 |
+  | Audio-thread cost at 48 kHz | 14.8% of a core | 4.1% |
+  | Underruns with 75% main-thread ballast (`--live --ballast 0.75`) | 61-747 | 0-2 |
+  | Engine hold during a 2 s main-thread stall (`--stall`) | up to 2,039 ms | 0 ms |
+
+  Levels match the old mix within about 0.5 dB per second (`node tools/audio/render.mjs --compare`). `tools/perf/hitch.mjs` now counts every Web Audio call and port message per frame.
+
 ### Hitch-free racing (versionCode 63)
 
 A race used to stall graphics and sound together every second or two on phones. A frame-by-frame profile of a race (`node tools/perf/hitch.mjs`, below) showed why: shaders compiling and render targets being created the first time something came into view mid-race, and about 200 KB of JavaScript garbage every frame, so the garbage collector ran every few frames. When the main thread stalls past the engine's 70 ms look-ahead, the engine sound holds too, which is why audio stuttered with the picture.
@@ -33,7 +54,7 @@ A race used to stall graphics and sound together every second or two on phones. 
 - **Map**: a chapter held back by its star gate says how many stars are missing (it used to say "opens in a coming update").
 - **Audio**: RPM loops level-matched (per-layer `trim`/`tilt` measured from soloed sweeps; the spread at the crossovers went from about 2.5 dB to under 0.3 dB) and crossfaded over wider 650-900 rpm ranges; a master warmth EQ (+1.5 dB at 215 Hz, -1.5 dB shelf above 9.5 kHz); a tyre bus (screech and chirp) with a -2 dB dip at 3.5 kHz and a 4th-order 12 kHz cut; turbo spool hiss cut above 12 kHz; `ENGINE_LEVEL` 0.5 keeps the level budget (limiter no busier than before). `node tools/audio/render.mjs engine-rpm-sweep engine-sweep-layer-0 …` renders the analysis clips.
 
-- **Version**: `versionName` 1.0.0, `versionCode` 63 (`android/app/build.gradle`; 60-62 were the earlier 1.0.0 candidates), in step with `package.json` and the in-game About line. The version code now lives in `build.gradle` instead of the CI run number, so bump it by hand for every bundle you upload to Play (`test/release.test.js` keeps the three version strings aligned).
+- **Version**: `versionName` 1.0.0, `versionCode` 64 (`android/app/build.gradle`; 60-63 were the earlier 1.0.0 candidates), in step with `package.json` and the in-game About line. The version code now lives in `build.gradle` instead of the CI run number, so bump it by hand for every bundle you upload to Play (`test/release.test.js` keeps the three version strings aligned).
 - **Live AdMob**: the manifest carries the Red Pen Studio app id `ca-app-pub-1848535996024012~6089611565`, and `src/config.js` holds the live banner, interstitial and rewarded units. The Play bundle is built with `npm run build:release` (Vite mode `release`, `.env.release` sets `VITE_RELEASE=1`), which CI now always does, so it serves only the live units. The dev server, a plain `npm run build` and debug installs keep Google's test units, so nobody on the team ever clicks a live ad (AdMob invalid-traffic policy). No repository variables are needed any more.
 - **Real Google Play Billing only**: the sandbox store (the Settings toggle, its simulated purchases, "Reset purchases" / "Reset crate" and the SANDBOX badge) is gone. `remove_ads` ($2.99) and `supercar_bundle` ($6.99) unlock only through Google Play's payment sheet; in a desktop browser the Store says Google Play is unavailable. Old saves drop any simulated purchase together with its bonus record, so a later real purchase still pays its coins.
 - **Launcher icon**: every icon asset is generated from the studio's master icon, `tools/icon/master.png`, by `node tools/icon/render.mjs` (sharp): the 512 px Play Store icon (`public/assets/icon/play-store-512.png`, also the in-game splash logo), legacy rounded and round icons for mdpi to xxxhdpi, the adaptive foreground (art in the visible 72 dp centre, transparent margin) over a blurred enlargement of the art as the adaptive background, and the legacy launch splash. To change the icon, replace `master.png` and rerun the script.

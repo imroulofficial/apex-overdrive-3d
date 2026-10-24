@@ -172,6 +172,12 @@ export function crackle(mix, intensity = 1, at) {
   }
 }
 
+// One recorded exhaust pop at full level (`which` 1 or 2): the car mixer bakes these and plays
+// crackle from them itself (audio/worklet/carMixer.processor.js).
+export function pop(mix, which = 1, at) {
+  shot(mix, mix.sfx, which === 2 ? 'pop2' : 'pop1', { t: now(mix, at), peak: 1 });
+}
+
 // Nitro ignition: the valve opening (a recorded air burst, pitched down into a thump), a
 // whoosh, and the blower roar swelling through a band that sweeps up. Pulse Nitro hits harder,
 // reaches higher and sweeps across the stereo field.
