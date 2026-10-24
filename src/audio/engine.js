@@ -378,6 +378,7 @@ export class EngineDriver {
     this.onStep = onStep;
     this.onEvents = onEvents ?? ((ev, t) => playEngineEvents(voice.mix, ev, t));
     this.controls = { throttle: 0, neutral: true, volume: 1 };
+    this.state = {}; // the voice settings of one control step, refilled
     this.next = -1;
   }
 
@@ -397,7 +398,21 @@ export class EngineDriver {
       const box = this.box;
       const events = box.step(c.hold ? 0 : CONTROL_STEP, { speedNorm, throttle, neutral, airborne });
       if (volume > 0 && events.length) this.onEvents(events, t);
-      this.voice.set({ rpm: box.rpm, load: throttle, boost: box.boost, tier: boost, speed, skid, slip, cut: box.cut, gravel, grass, wood, mps, volume }, t);
+      const v = this.state;
+      v.rpm = box.rpm;
+      v.load = throttle;
+      v.boost = box.boost;
+      v.tier = boost;
+      v.speed = speed;
+      v.skid = skid;
+      v.slip = slip;
+      v.cut = box.cut;
+      v.gravel = gravel;
+      v.grass = grass;
+      v.wood = wood;
+      v.mps = mps;
+      v.volume = volume;
+      this.voice.set(v, t);
       this.onStep?.(t, box, c);
       this.next += CONTROL_STEP;
     }

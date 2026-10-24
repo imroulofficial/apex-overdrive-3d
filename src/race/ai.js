@@ -14,6 +14,8 @@ import { wetGrip } from '../data/weather.js';
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
+const NO_RAMPS = [];
+
 export class AIDriver {
   constructor(vehicle, track, { aggression = 0.5, skill = 0.95, laneBias = 0, rand = Math.random, duel = false } = {}) {
     this.duel = duel;
@@ -85,7 +87,7 @@ export class AIDriver {
     if (onTrail) this.lane = clamp(this.lane, -limit, limit);
 
     // Ramps: the bold go for them, the cautious steer around partial ones.
-    for (const r of onTrail ? [] : track.ramps) {
+    for (const r of onTrail ? NO_RAMPS : track.ramps) {
       const ahead = track.delta(pr.s, r.s0);
       if (ahead < 0 || ahead > 110) continue;
       const centre = (r.from + r.to) / 2;

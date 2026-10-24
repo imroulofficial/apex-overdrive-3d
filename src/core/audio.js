@@ -235,7 +235,11 @@ export const raceMusic = {
 export function createEngineSound() {
   const m = state.settings.sound ? ensure() : null;
   if (!m) return { update() {}, stop() {}, gear: 0 };
-  const voice = new EngineVoice(m, { gated: true }).start();
+  // Every layer stays plugged in from the grid to the finish: the RPM loops, tyres, turbo and
+  // surfaces play continuously and only their gains and rates move. Unplugging idle layers
+  // saved about 3% of a desktop core (tools/audio/render.mjs --gates) but rewired the graph
+  // at every gear's crossfade; the race now never connects or disconnects an engine node.
+  const voice = new EngineVoice(m, { gated: false }).start();
   const driver = new EngineDriver(voice, {
     lookahead: ENGINE_LOOKAHEAD,
     // Blow-off and crackle are pooled one-shots like any other.
@@ -261,7 +265,9 @@ export function createEngineSound() {
     // Frame time is not used otherwise: the gearbox steps on the audio clock.
     update(controls) {
       if (stopped) return;
-      driver.input({ ...controls, hold: controls.dt === 0 });
+      // (The race hands the same object over every frame: no copy per frame.)
+      controls.hold = controls.dt === 0;
+      driver.input(controls);
       clock.tick();
     },
     stop() {

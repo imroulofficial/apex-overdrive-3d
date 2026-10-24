@@ -104,21 +104,23 @@ class CellBatch {
     }
     // Bounds are the visible cells', worked out here; three's own test would see the whole field.
     mesh.frustumCulled = false;
-    this.signature = '';
+    this.dirty = true;
   }
 
-  // state per cell: 0 hidden, 1 near (full detail), 2 far (LOD)
+  // state per cell: 0 hidden, 1 near (full detail), 2 far (LOD). Runs every frame, so it
+  // allocates nothing: a changed cell marks the batch dirty instead of building a signature
+  // string (a string per cell per batch per frame was ~100 KB of garbage a frame).
   update(cam, frustum, fogLimit) {
-    let sig = '';
+    let changed = this.dirty;
     for (const cell of this.cells) {
       const d = cam.distanceTo(cell.sphere.center) - cell.sphere.radius;
       let state = 0;
       if (d < Math.min(cell.reach, fogLimit) && frustum.intersectsSphere(cell.sphere)) state = this.far && d > this.lodDistance ? 2 : 1;
+      if (state !== cell.state) changed = true;
       cell.state = state;
-      sig += state;
     }
-    if (sig === this.signature) return;
-    this.signature = sig;
+    if (!changed) return;
+    this.dirty = false;
     this.pack(this.mesh, 1);
     if (this.far) this.pack(this.far, 2);
   }
@@ -129,16 +131,31 @@ class CellBatch {
     let n = 0;
     for (const cell of this.cells) {
       if (cell.state !== state) continue;
+      // Element copies: a subarray() view per instance would be garbage on every repack.
+      const src = this.matrices;
       for (const i of cell.items) {
-        dst.set(this.matrices.subarray(i * 16, i * 16 + 16), n * 16);
-        if (col && this.colors) col.set(this.colors.subarray(i * 3, i * 3 + 3), n * 3);
+        const a = i * 16;
+        const b = n * 16;
+        for (let k = 0; k < 16; k++) dst[b + k] = src[a + k];
+        if (col && this.colors) {
+          col[n * 3] = this.colors[i * 3];
+          col[n * 3 + 1] = this.colors[i * 3 + 1];
+          col[n * 3 + 2] = this.colors[i * 3 + 2];
+        }
         n++;
       }
     }
     target.count = n;
     target.visible = n > 0;
+    // Only the packed front of the buffer goes to the GPU.
+    target.instanceMatrix.clearUpdateRanges();
+    target.instanceMatrix.addUpdateRange(0, n * 16);
     target.instanceMatrix.needsUpdate = true;
-    if (col) target.instanceColor.needsUpdate = true;
+    if (col) {
+      target.instanceColor.clearUpdateRanges();
+      target.instanceColor.addUpdateRange(0, n * 3);
+      target.instanceColor.needsUpdate = true;
+    }
   }
 
   // Every instance back in the batch (reflection bakes copy the batch as it is).
@@ -148,13 +165,17 @@ class CellBatch {
     if (this.colors) m.instanceColor.array.set(this.colors);
     m.count = this.total;
     m.visible = true;
+    m.instanceMatrix.clearUpdateRanges();
     m.instanceMatrix.needsUpdate = true;
-    if (this.colors) m.instanceColor.needsUpdate = true;
+    if (this.colors) {
+      m.instanceColor.clearUpdateRanges();
+      m.instanceColor.needsUpdate = true;
+    }
     if (this.far) {
       this.far.count = 0;
       this.far.visible = false;
     }
-    this.signature = '';
+    this.dirty = true;
   }
 
   dispose() {

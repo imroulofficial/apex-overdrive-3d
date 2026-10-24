@@ -174,7 +174,11 @@ export class Trail {
     let i = Math.min(this.n - 2, Math.floor(l / this.spacing));
     while (i > 0 && this.s[i] > l) i--;
     while (i < this.n - 2 && this.s[i + 1] <= l) i++;
-    return { i, t: (l - this.s[i]) / (this.s[i + 1] - this.s[i] || 1) };
+    // One result object, refilled (callers read it at once).
+    const out = (this._ix ??= { i: 0, t: 0 });
+    out.i = i;
+    out.t = (l - this.s[i]) / (this.s[i + 1] - this.s[i] || 1);
+    return out;
   }
 
   frame(ls, out = {}) {

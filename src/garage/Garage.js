@@ -302,7 +302,7 @@ export class Garage {
   }
 
   frame(now) {
-    const dt = Math.min(0.05, (now - this.last) / 1000);
+    const dt = Math.max(0, Math.min(0.05, (now - this.last) / 1000));
     this.last = now;
     this.trackPerformance(dt);
     this.showroom.update(dt);

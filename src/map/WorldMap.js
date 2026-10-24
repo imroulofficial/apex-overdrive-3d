@@ -286,7 +286,7 @@ export class WorldMap {
   }
 
   frame(now) {
-    const dt = Math.min(0.05, (now - this.last) / 1000);
+    const dt = Math.max(0, Math.min(0.05, (now - this.last) / 1000));
     this.last = now;
     this.fpsT = (this.fpsT ?? 0) + dt;
     this.fpsN = (this.fpsN ?? 0) + 1;

@@ -263,7 +263,11 @@ export class Track {
     let i = Math.min(this.n - 1, Math.floor(ss / this.spacing));
     while (i > 0 && this.s[i] > ss) i--;
     while (i < this.n - 1 && this.s[i + 1] <= ss) i++;
-    return { i, t: (ss - this.s[i]) / (this.s[i + 1] - this.s[i] || 1) };
+    // One result object, refilled (callers read it at once): this runs many times a frame.
+    const out = (this._ix ??= { i: 0, t: 0 });
+    out.i = i;
+    out.t = (ss - this.s[i]) / (this.s[i + 1] - this.s[i] || 1);
+    return out;
   }
 
   // Road frame at arc length s: centre, tangent and right vector (horizontal).
