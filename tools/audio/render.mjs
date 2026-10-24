@@ -6,6 +6,7 @@
 //   node tools/audio/render.mjs [clip names…]
 //   node tools/audio/render.mjs --stall      frame-stall test and audio-thread cost (stall.js)
 //   node tools/audio/render.mjs --live       live underrun test in a real AudioContext (stall.js)
+//   node tools/audio/render.mjs --gates      audio-thread cost with and without idle layers unplugged
 //
 // Output: tools/audio/out/<clip>.wav
 import { createServer } from 'vite';
@@ -49,6 +50,15 @@ try {
         const r = await page.evaluate((a) => window.__audio.live(a), { path, latencyHint, rate, ballast, seconds: 16 });
         console.log(`${path}, ballast ${ballast}: ${r.underruns} underruns (${r.underrunMs} ms of audio missing in 16 s) · ${r.latencyHint} at ${r.sampleRate / 1000} kHz, buffer ${r.baseLatencyMs} ms, output latency ${r.outputLatencyMs} ms · one-shots peak ${r.voicesPeak}`);
       }
+    }
+    process.exit(0);
+  }
+  // What unplugging idle layers saves: the race graph with gates on the engine and the music,
+  // and with either kept plugged in for the whole race.
+  if (process.argv.includes('--gates')) {
+    for (const gated of [{ engine: true, music: true }, { engine: false, music: true }, { engine: false, music: false }]) {
+      const c = await page.evaluate((g) => window.__audio.cost('current', { rate: 48000, runs: 5, gated: g }), gated);
+      console.log(`gates engine ${gated.engine ? 'on ' : 'off'} music ${gated.music ? 'on ' : 'off'}: ${c.renderMs} ms to render 24 s (${c.corePct}% of one core here)`);
     }
     process.exit(0);
   }

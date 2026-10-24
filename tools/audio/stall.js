@@ -87,7 +87,7 @@ const SHOTS = [
 
 // The race's audio, wired up the way the given control path does it. Returns the main-thread
 // work (a frame of the race, a timer tick) for the caller to run at audio time `now`.
-function raceAudio(mix, path, { live = false, t0 = 0, without = [] } = {}) {
+function raceAudio(mix, path, { live = false, t0 = 0, without = [], gated = { engine: false, music: true } } = {}) {
   mix.music.gain.value = MUSIC_LEVEL;
   const current = path !== 'previous';
   const car = path === 'current' ? { ...sampled, nitroIgnite: sampledNitro } : { ...synth, nitroIgnite: synthNitro };
@@ -97,7 +97,7 @@ function raceAudio(mix, path, { live = false, t0 = 0, without = [] } = {}) {
 
   // Music, counting every 16th it queues and the ones queued after their time had passed.
   const Music = path === 'current' ? SampledMusic : SynthMusic;
-  const music = new Music(mix, current ? { gated: true, lookahead: 0.3 } : { lookahead: 0.15 });
+  const music = new Music(mix, current ? { gated: gated.music, lookahead: 0.3 } : { lookahead: 0.15 });
   const notes = { queued: 0, late: 0 };
   let playhead = 0;
   const play = music.play.bind(music);
@@ -110,7 +110,7 @@ function raceAudio(mix, path, { live = false, t0 = 0, without = [] } = {}) {
   music.start(t0 + musicStart);
 
   // Engine, recording the audio times its controls land on.
-  const voice = new EngineVoice(mix, { gated: current }).start(t0);
+  const voice = new EngineVoice(mix, { gated: current && gated.engine }).start(t0);
   const steps = [];
   const set = voice.set.bind(voice);
   voice.set = (s, t, tc) => {
@@ -193,14 +193,14 @@ function raceAudio(mix, path, { live = false, t0 = 0, without = [] } = {}) {
   };
 }
 
-export async function simulate({ seconds = 24, path = 'current', hitches = true, profile = 'normal', rate = 44100, without } = {}) {
+export async function simulate({ seconds = 24, path = 'current', hitches = true, profile = 'normal', rate = 44100, without, gated } = {}) {
   const SR = rate;
   const QUANTUM = 128 / SR;
   const ac = new OfflineAudioContext(2, Math.ceil(seconds * SR), SR);
   const mix = createMixer(ac);
   await mix.samples.ready;
   const current = path !== 'previous';
-  const { runFrame, runTimers, pool, steps, notes, musicStart, setPlayhead } = raceAudio(mix, path, { without });
+  const { runFrame, runTimers, pool, steps, notes, musicStart, setPlayhead } = raceAudio(mix, path, { without, gated });
 
   // Main-thread work, in the order a phone would run it.
   const fr = frames(seconds, { hitches, sizes: HITCHES[profile] });
@@ -273,9 +273,9 @@ export async function simulate({ seconds = 24, path = 'current', hitches = true,
 // `runs` renders at sample rate `rate`, as a share of one core of this machine. It includes
 // the control JS run at each suspend, so it overstates the graph's own cost a little.
 // `without` leaves parts out ('music', 'engine') to break the cost down.
-export async function cost(path, { seconds = 24, runs = 3, rate = 44100, without } = {}) {
+export async function cost(path, { seconds = 24, runs = 3, rate = 44100, without, gated } = {}) {
   let best = Infinity;
-  for (let i = 0; i < runs; i++) best = Math.min(best, (await simulate({ seconds, path, hitches: false, rate, without })).renderMs);
+  for (let i = 0; i < runs; i++) best = Math.min(best, (await simulate({ seconds, path, hitches: false, rate, without, gated })).renderMs);
   return { path, rate, renderMs: best, corePct: +((best / (seconds * 1000)) * 100).toFixed(2) };
 }
 

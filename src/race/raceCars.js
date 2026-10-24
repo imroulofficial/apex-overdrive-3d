@@ -203,6 +203,10 @@ export class CarFactory {
     this.paint = template.paintMaterial;
     this.flameTex = flameTexture();
     this.atlas = createVertexPbrMaterial({ envMapIntensity: 1.1 });
+    // The same shading for the instanced wheels, as its own material: one material drawn both
+    // instanced and not makes three.js rebuild its program parameters at every switch, twice
+    // a frame per car (garbage the collector then has to clear mid-race).
+    this.wheelAtlas = createVertexPbrMaterial({ envMapIntensity: 1.1 });
     // Length and width of the car on the ground, for its contact shadow.
     const box = new THREE.Box3().setFromObject(template.group, true);
     const size = box.getSize(new THREE.Vector3());
@@ -233,6 +237,7 @@ export class CarFactory {
       mesh.dispose();
     }
     this.atlas.dispose();
+    this.wheelAtlas.dispose();
     this.flameTex.dispose();
   }
 
@@ -260,7 +265,7 @@ export class CarFactory {
       }
     });
     if (!flat || !geos.length) return null;
-    const mesh = new THREE.InstancedMesh(mergePainted(geos), this.atlas, WHEEL_CAPACITY);
+    const mesh = new THREE.InstancedMesh(mergePainted(geos), this.wheelAtlas, WHEEL_CAPACITY);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.count = 0;
     // Wheels move with the cars; the batch bounds would have to be rebuilt every frame.
@@ -398,6 +403,10 @@ export const FLAME = { hdr: 1 };
 // snow (the weather's sun intensity), like every driver would.
 export const LIGHTS = { on: false };
 
+// Damped spring toward `target` (moving at `rate`) over step h, integrated implicitly so stiff
+// settings stay stable at 30 FPS: returns the new velocity.
+const spring = (h, x, vx, target, w, z, rate = 0) => (vx + h * (w * w * (target - x) + 2 * z * w * rate)) / (1 + h * 2 * z * w + h * h * w * w);
+
 export class CarVisual {
   constructor(root, body, wheels, tail, flames, flameMat, wheelRadius) {
     this.root = root;
@@ -453,17 +462,14 @@ export class CarVisual {
     }
     const snap = dt <= 0 || !r.init;
     const h = Math.min(dt, 1 / 20);
-    // Damped spring toward `target` (moving at `rate`), integrated implicitly so stiff
-    // settings stay stable at 30 FPS: returns the new velocity.
-    const spring = (x, vx, target, w, z, rate = 0) => (vx + h * (w * w * (target - x) + 2 * z * w * rate)) / (1 + h * 2 * z * w + h * h * w * w);
     if (snap) {
       r.pitch = pitch;
       r.roll = roll;
       r.vPitch = r.vRoll = 0;
     } else {
-      r.vPitch = spring(r.pitch, r.vPitch, pitch, 22, 0.9);
+      r.vPitch = spring(h, r.pitch, r.vPitch, pitch, 22, 0.9);
       r.pitch += r.vPitch * h;
-      r.vRoll = spring(r.roll, r.vRoll, roll, 22, 0.9);
+      r.vRoll = spring(h, r.roll, r.vRoll, roll, 22, 0.9);
       r.roll += r.vRoll * h;
     }
     // Floor lock: the lowest ride height at this pitch and roll that keeps every point on or
@@ -484,7 +490,7 @@ export class CarVisual {
       r.vy = targetRate;
       r.init = true;
     } else {
-      r.vy = spring(r.y, r.vy, target, 30, 1, targetRate);
+      r.vy = spring(h, r.y, r.vy, target, 30, 1, targetRate);
       r.y += r.vy * h;
     }
     if (r.y < floor) {

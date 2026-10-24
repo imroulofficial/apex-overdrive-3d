@@ -14,9 +14,9 @@ const FRAME = 1 / 60;
 // hard the safety stages work: 2-3 the clipper's input, 4-5 the limiter's input. Only 0-1
 // are written to the WAV.
 const TAPS = ['clipper', 'trim', 'highpass'];
-function context(seconds) {
+function context(seconds, opts) {
   const ac = new OfflineAudioContext(TAPS.length * 2, Math.ceil(seconds * SR), SR);
-  const mix = createMixer(ac);
+  const mix = createMixer(ac, opts);
   mix.music.gain.value = MUSIC_LEVEL;
   const nodes = mix.stage;
   nodes.clipper.disconnect();
@@ -164,7 +164,26 @@ function driveEngine(mix, seconds, drive, { from = 0 } = {}) {
   return log;
 }
 
+// A steady cruise at part throttle, then a long drift: the stretch where a short loop's period
+// shows (the same RPM loop and tyre loop held for seconds). Rendered with the 12 s baked loops
+// and, for comparison, with the recorded 0.45-2 s loops.
+const cruise = (longLoops) => ({
+  seconds: 16,
+  mixer: { longLoops },
+  build(mix) {
+    const voice = new EngineVoice(mix).start(0);
+    for (let t = 0; t < 15.5; t += FRAME) {
+      const drift = t > 9;
+      voice.set({ rpm: drift ? 5400 : 2700, load: drift ? 0.9 : 0.55, speed: 0.55, skid: drift ? 0.85 : 0, slip: drift ? 0.5 : 0, volume: 1 }, t);
+    }
+    voice.stop(15.5, 0.4);
+    return [];
+  },
+});
+
 const clips = {
+  'engine-cruise-drift': cruise(true),
+  'engine-cruise-drift-short-loops': cruise(false),
   // Standing start through all six gears, a lift (blow-off + crackle), then back on it.
   'engine-6-gears': {
     seconds: 22,
@@ -394,7 +413,7 @@ function stats(buf) {
 
 async function render(name) {
   const clip = clips[name];
-  const mix = context(clip.seconds);
+  const mix = context(clip.seconds, clip.mixer);
   await mix.samples.ready;
   const log = clip.build(mix) ?? [];
   const t0 = performance.now();

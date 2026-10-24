@@ -222,10 +222,19 @@ export class SmashProps {
     const rand = mulberry32(99);
     const hw = track.halfWidth;
 
-    const addCone = (s, d) => this.items.push({ type: 'cone', s: track.wrapS(s), d, radius: 0.32 });
-    const addPanel = (s, d) => this.items.push({ type: 'panel', s: track.wrapS(s), d, radius: 0.3, half: 1.2 });
-    const addStall = (s, d) => this.items.push({ type: 'stall', s: track.wrapS(s), d, radius: 0.6, half: 1.3, breaks: true });
-    const addNeon = (s, d) => this.items.push({ type: 'neon', s: track.wrapS(s), d, radius: 0.35, breaks: true });
+    // Every prop has every field, in one order, from the start: props of mixed shapes made the
+    // collision loop's property reads megamorphic, and each read of a number field then
+    // boxed a fresh heap number (garbage every physics step, for every car).
+    const add = (type, s, d, radius, half = 0, breaks = false) =>
+      this.items.push({
+        type, s: track.wrapS(s), d, radius, half, breaks,
+        meshes: null, slot: 0, glow: null, home: null, homeQuat: null, axis: null, pos: null, vel: null, quat: null, spin: null,
+        hint: -1, proj: null, state: 'idle', cool: 0, hit: false, first: false,
+      });
+    const addCone = (s, d) => add('cone', s, d, 0.32);
+    const addPanel = (s, d) => add('panel', s, d, 0.3, 1.2);
+    const addStall = (s, d) => add('stall', s, d, 0.6, 1.3, true);
+    const addNeon = (s, d) => add('neon', s, d, 0.35, 0, true);
 
     for (const f of def.slaloms ?? []) {
       const s0 = f * track.length;
@@ -361,7 +370,7 @@ export class SmashProps {
       if (p.pos.y > car.pos.y + 1.6 || p.pos.y < car.pos.y - 1.5) continue;
       // Car as two circles along its heading.
       let hit = false;
-      for (const off of [1.2, -1.2]) {
+      for (let off = 1.2; off > -2; off -= 2.4) {
         const cx = car.pos.x + Math.cos(car.heading) * off;
         const cz = car.pos.z - Math.sin(car.heading) * off;
         let dx = p.pos.x - cx;

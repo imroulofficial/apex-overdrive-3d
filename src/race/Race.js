@@ -29,6 +29,8 @@ import { Rain, Lightning, LensDrops, buildPuddles } from './atmosphere.js';
 import { buildBridge, buildWaterfall, buildTrails, Seabirds } from './setPieces.js';
 import { MobileBloom } from '../render/bloom.js';
 import { SceneCulling } from '../render/culling.js';
+import { RaceQuality } from './quality.js';
+import { unifyProgramStates } from '../render/programStates.js';
 
 // One race on a track: owns the 3D scene, the cars, the race state machine
 // (intro → countdown → racing → finished) and reports to the HUD every frame. What kind of
@@ -52,6 +54,18 @@ const RED_DIRT = new THREE.Color(0xb4532c);
 const SPRAY = new THREE.Color(0xd9e0e4);
 const COAST_INPUT = { steer: 0, throttle: 0, brake: false, brakePressed: false, nitroTaps: [] };
 const now = () => performance.now() / 1000;
+// Running order: cars still racing by distance, then the knocked-out ones by where they went out.
+const byPosition = (a, b) => (a.out !== b.out ? (a.out ? 1 : -1) : a.out ? a.place - b.place : b.progress - a.progress);
+// Particle settings, filled in place for each emit (nothing is allocated per frame in a race).
+const PUFF = { color: null, size: 0.6, life: 1, grow: 1.5, alpha: 0.5 };
+const puff = (color, size, life, grow, alpha) => {
+  PUFF.color = color;
+  PUFF.size = size;
+  PUFF.life = life;
+  PUFF.grow = grow;
+  PUFF.alpha = alpha;
+  return PUFF;
+};
 // World builders by track biome (data/tracks.js `biome`); the coast is the default.
 const SCENERY = { coast: buildScenery, alpine: buildAlpineScenery, neon: buildNeonScenery };
 
@@ -65,6 +79,7 @@ export class Race {
     this.running = false;
     this.frame = this.frame.bind(this);
     this.resize = this.resize.bind(this);
+    this.tuner = new RaceQuality();
   }
 
   // Builds the world once (procedural, a few hundred ms) and pre-compiles its shaders.
@@ -133,7 +148,9 @@ export class Race {
     this.scene.add(player.root);
     this.racers = [this.player];
     this.pool = new Map(); // rival id -> racer, built on demand per stage
-    // Static scenery is culled per cell from here on (render/culling.js).
+    // One shader program per material for the whole race (render/programStates.js), then
+    // static scenery is culled per cell from here on (render/culling.js).
+    unifyProgramStates(this.scene);
     this.culling = new SceneCulling(this.scene);
     await this.setStage(stage, { compile: false });
 
@@ -208,6 +225,7 @@ export class Race {
       this.directional.reverse = buildDirectional(t);
       this.scene.add(this.directional.reverse);
       this.propSets.reverse = new SmashProps(t, def, this.scene);
+      unifyProgramStates(this.scene);
       this.culling?.add(this.directional.reverse);
     }
     this.track = this.tracks[key];
@@ -422,7 +440,10 @@ export class Race {
   // `fx`: the player's tyre smoke and nitro trail colours ({ smoke, nitro } FX_COLORS entries).
   begin({ stats, paint, fx = null, input, hud, onFinish, autoQuality = false, earnedStars = 0, startNitro = false, bloom = 'low' }) {
     this.autoQuality = autoQuality;
-    this.bloom.setLevel(bloom);
+    if (!autoQuality) this.tuner = new RaceQuality();
+    this.bloom.setLevel(this.tuner.bloomFor(bloom));
+    // Renderer settings are fixed from here to the finish (race/quality.js).
+    if (autoQuality) this.tuner.step(this.renderer, this.bloom, () => this.resize());
     FLAME.hdr = this.bloom.enabled ? 2.6 : 1;
     // Each weather preset has its own exposure on top of the renderer's (restored on exit).
     this.baseExposure ??= this.renderer.toneMappingExposure;
@@ -441,6 +462,8 @@ export class Race {
     this.scenery.sun.castShadow = this.renderer.shadowMap.enabled;
     this.reset({ stats });
     if (startNitro) this.player.vehicle.nitro = NITRO.max;
+    this.chase.snap(this.player.vehicle);
+    this.warmUp();
     input.setEnabled(false);
     this.chase.intro(this.player.vehicle, 3.2);
     this.engine?.stop();
@@ -454,13 +477,57 @@ export class Race {
     this.start();
   }
 
+  // Everything the race can draw, made resident before the countdown (the loading wipe still
+  // covers the screen): every shader program the scene, its shadow pass and the bloom passes
+  // need, every texture uploaded, every vertex and index buffer on the GPU. Objects hidden at
+  // the start (rain, snow, puddles, the far LOD batches, flames, sparks, the reversed road)
+  // are shown for one draw of the whole world, nothing frustum-culled, into an 8x8 target.
+  // Without it three.js compiles and uploads on first sight, in the middle of the race: a
+  // stall of 50-500 ms on a phone each time something new comes into view.
+  warmUp() {
+    const r = this.renderer;
+    const scene = this.scene;
+    unifyProgramStates(scene); // rivals and set-pieces added since prepare()
+    this.culling.restoreAll();
+    const shown = [];
+    const unculled = [];
+    const textures = new Set();
+    scene.traverse((o) => {
+      if (!o.visible) {
+        o.visible = true;
+        shown.push(o);
+      }
+      if (o.frustumCulled) {
+        o.frustumCulled = false;
+        unculled.push(o);
+      }
+      for (const m of [].concat(o.material ?? [])) {
+        for (const v of Object.values(m)) if (v?.isTexture) textures.add(v);
+        for (const u of [...Object.values(m.uniforms ?? {}), ...Object.values(m.userData?.uniforms ?? {})]) if (u?.value?.isTexture) textures.add(u.value);
+      }
+    });
+    for (const t of textures) if (!t.isRenderTargetTexture) r.initTexture(t);
+    r.compile(scene, this.camera);
+    this.warmTarget ??= new THREE.WebGLRenderTarget(8, 8, { depthBuffer: true });
+    const target = r.getRenderTarget();
+    r.setRenderTarget(this.warmTarget);
+    r.render(scene, this.camera);
+    r.setRenderTarget(target);
+    for (const o of shown) o.visible = false;
+    for (const o of unculled) o.frustumCulled = true;
+    // Back to what the camera sees (the culler repacks on its next update), then one real
+    // frame through the bloom chain: its targets are allocated and its passes compiled.
+    this.culling.update(this.camera);
+    this.bloom.resize();
+    this.bloom.render(scene, this.camera);
+  }
+
   start() {
     if (this.running) return;
     this.running = true;
     this.last = performance.now();
     this.fpsAcc = 0;
     this.fpsFrames = 0;
-    this.slowSeconds = 0;
     this.renderer.setAnimationLoop(this.frame);
   }
 
@@ -533,6 +600,7 @@ export class Race {
     for (const t of textures) if (!t.userData?.shared) t.dispose();
     this.scenery?.disposeEnvironment();
     this.bloom?.destroy();
+    this.warmTarget?.dispose();
     this.scene?.environment?.dispose();
     this.scene = null;
     this.culling = null;
@@ -540,13 +608,17 @@ export class Race {
   }
 
   frame(nowMs) {
-    const dt = Math.min(0.05, (nowMs - this.last) / 1000);
+    // rAF stamps a frame with the time it began, which can be earlier than a long task that
+    // ran just before it (the warm-up): never let that run time backwards.
+    const dt = Math.max(0, Math.min(0.05, (nowMs - this.last) / 1000));
     this.last = nowMs;
     this.trackPerformance(dt);
     if (this.phase !== 'paused') this.update(dt);
     this.bloom.render(this.scene, this.camera);
   }
 
+  // Frame rate for the FPS readout and, while racing, for auto quality (race/quality.js), which
+  // only ever acts between races.
   trackPerformance(dt) {
     this.fpsAcc += dt;
     this.fpsFrames += 1;
@@ -555,22 +627,7 @@ export class Race {
     this.fpsAcc = 0;
     this.fpsFrames = 0;
     this.onFps?.(fps);
-    // Auto quality: if we cannot hold ~60 FPS, drop the wide bloom halo first, then the
-    // render resolution, then bloom altogether.
-    if (!this.autoQuality) return;
-    this.slowSeconds = fps < 50 ? this.slowSeconds + 1 : 0;
-    if (this.slowSeconds < 3) return;
-    this.slowSeconds = 0;
-    const pr = this.renderer.getPixelRatio();
-    if (this.bloom.level === 'medium') this.bloom.setLevel('low');
-    else if (pr > 1) {
-      this.renderer.setPixelRatio(Math.max(1, pr - 0.25));
-      this.renderer.setSize(window.innerWidth, window.innerHeight, false);
-      this.resize();
-    } else if (this.bloom.enabled) {
-      this.bloom.setLevel('off');
-      FLAME.hdr = 1;
-    }
+    if (this.autoQuality && this.phase === 'racing') this.tuner.sample(fps);
   }
 
   update(dt) {
@@ -631,7 +688,9 @@ export class Race {
     this.scenery.follow(player.pos);
     this.updateAtmosphere(dt, player, simulate);
 
-    this.chase.update(dt, player, { boostTier: player.tier });
+    const chaseOpts = (this.chaseOpts ??= { boostTier: 0 });
+    chaseOpts.boostTier = player.tier;
+    this.chase.update(dt, player, chaseOpts);
     this.culling.update(this.camera);
     const lineLevel = player.tier === 2 ? 1 : player.tier === 1 ? 0.5 : 0;
     this.speedLines.update(dt, simulate ? lineLevel : 0, Math.max(20, player.speed), player.tier);
@@ -696,14 +755,12 @@ export class Race {
 
   simStep(h, playerInput, first) {
     const active = this.active;
-    const ctx = {
-      time: this.time,
-      cars: active,
-      props: this.props,
-      racing: true,
-      playerGap: 0,
-      rival: this.player.out ? null : this.player.vehicle,
-    };
+    const ctx = (this._ctx ??= { time: 0, cars: null, props: null, racing: true, playerGap: 0, rival: null });
+    ctx.time = this.time;
+    ctx.cars = active;
+    ctx.props = this.props;
+    ctx.playerGap = 0;
+    ctx.rival = this.player.out ? null : this.player.vehicle;
     const playerProgress = this.player.progress;
     for (const r of active) {
       let input;
@@ -749,8 +806,12 @@ export class Race {
   }
 
   // Cars still in the race (Elimination knocks them out one by one).
+  // (One array, refilled: read it before the next call.)
   get active() {
-    return this.racers.filter((r) => !r.out);
+    const list = (this._active ??= []);
+    list.length = 0;
+    for (const r of this.racers) if (!r.out) list.push(r);
+    return list;
   }
 
   // Slipstream: a car tucked in behind another gets extra pull along its heading.
@@ -845,8 +906,10 @@ export class Race {
       r.progress = r.finished ? course.distance + 1e6 - r.finishTime : r.dist;
     }
     if (this.phase === 'racing') this.topSpeed = Math.max(this.topSpeed, Math.abs(this.player.vehicle.forward) * 3.6);
-    // Running order: cars still racing by distance, then the knocked-out ones by where they went out.
-    this.positions = [...this.racers].sort((a, b) => (a.out !== b.out ? (a.out ? 1 : -1) : a.out ? a.place - b.place : b.progress - a.progress));
+    const order = this.positions;
+    order.length = 0;
+    for (const r of this.racers) order.push(r);
+    order.sort(byPosition);
   }
 
   finishRacer(r) {
@@ -860,7 +923,8 @@ export class Race {
   // Knocks a car out of the race (Elimination): a fireball, then it is gone.
   eliminate(r) {
     if (r.out) return;
-    const alive = this.active.length;
+    let alive = 0;
+    for (const x of this.racers) if (!x.out) alive++;
     r.out = true;
     r.place = alive;
     const v = r.vehicle;
@@ -882,35 +946,17 @@ export class Race {
     for (let k = 0; k < (big ? 70 : 50); k++) {
       const a = Math.random() * Math.PI * 2;
       const sp = 4 + Math.random() * 12;
-      this.sparks.emit(pos.x, pos.y + 0.8, pos.z, Math.cos(a) * sp, 3 + Math.random() * 10, Math.sin(a) * sp, {
-        color: Math.random() < 0.5 ? FIRE : EMBER,
-        size: 0.35 + Math.random() * 0.3,
-        life: 0.5 + Math.random() * 0.6,
-        grow: -0.2,
-        alpha: 1,
-      });
+      this.sparks.emit(pos.x, pos.y + 0.8, pos.z, Math.cos(a) * sp, 3 + Math.random() * 10, Math.sin(a) * sp, puff(Math.random() < 0.5 ? FIRE : EMBER, 0.35 + Math.random() * 0.3, 0.5 + Math.random() * 0.6, -0.2, 1));
     }
     for (let k = 0; k < 26; k++) {
-      this.smoke.emit(pos.x + (Math.random() - 0.5) * 2, pos.y + 0.6, pos.z + (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 4, 2 + Math.random() * 3, (Math.random() - 0.5) * 4, {
-        color: k < 8 ? FIRE : SOOT,
-        size: 1.4,
-        life: 1.2 + Math.random() * 0.8,
-        grow: 3.2,
-        alpha: k < 8 ? 0.7 : 0.5,
-      });
+      this.smoke.emit(pos.x + (Math.random() - 0.5) * 2, pos.y + 0.6, pos.z + (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 4, 2 + Math.random() * 3, (Math.random() - 0.5) * 4, puff(k < 8 ? FIRE : SOOT, 1.4, 1.2 + Math.random() * 0.8, 3.2, k < 8 ? 0.7 : 0.5));
     }
   }
 
   // Sparks for mode pickups (Time Trial pylons).
   burst(pos, color, n = 20) {
     for (let k = 0; k < n; k++) {
-      this.sparks.emit(pos.x, pos.y + 1 + Math.random(), pos.z, (Math.random() - 0.5) * 8, 2 + Math.random() * 5, (Math.random() - 0.5) * 8, {
-        color,
-        size: 0.22,
-        life: 0.4 + Math.random() * 0.35,
-        grow: -0.3,
-        alpha: 1,
-      });
+      this.sparks.emit(pos.x, pos.y + 1 + Math.random(), pos.z, (Math.random() - 0.5) * 8, 2 + Math.random() * 5, (Math.random() - 0.5) * 8, puff(color, 0.22, 0.4 + Math.random() * 0.35, -0.3, 1));
     }
   }
 
@@ -1059,26 +1105,14 @@ export class Race {
     const fz = -Math.sin(v.heading);
     for (let k = 0; k < 26; k++) {
       const side = (Math.random() - 0.5) * 2;
-      this.sparks.emit(v.pos.x - fx * 2.2 - fz * side, v.pos.y + 0.4, v.pos.z - fz * 2.2 + fx * side, v.vel.x * 0.5 - fx * 6 + (Math.random() - 0.5) * 8, 1 + Math.random() * 3, v.vel.y * 0.5 - fz * 6 + (Math.random() - 0.5) * 8, {
-        color: Math.random() < 0.6 ? PERFECT_SPARK : SPARK,
-        size: 0.24,
-        life: 0.45 + Math.random() * 0.3,
-        grow: -0.3,
-        alpha: 1,
-      });
+      this.sparks.emit(v.pos.x - fx * 2.2 - fz * side, v.pos.y + 0.4, v.pos.z - fz * 2.2 + fx * side, v.vel.x * 0.5 - fx * 6 + (Math.random() - 0.5) * 8, 1 + Math.random() * 3, v.vel.y * 0.5 - fz * 6 + (Math.random() - 0.5) * 8, puff(Math.random() < 0.6 ? PERFECT_SPARK : SPARK, 0.24, 0.45 + Math.random() * 0.3, -0.3, 1));
     }
   }
 
   // Neon tube glass: a shower of coloured sparks.
   sparkBurst(pos, color) {
     for (let k = 0; k < 30; k++) {
-      this.sparks.emit(pos.x, pos.y + 2 + Math.random() * 1.2, pos.z, (Math.random() - 0.5) * 9, 1 + Math.random() * 5, (Math.random() - 0.5) * 9, {
-        color: Math.random() < 0.7 ? color : SPARK,
-        size: 0.2,
-        life: 0.4 + Math.random() * 0.4,
-        grow: -0.3,
-        alpha: 1,
-      });
+      this.sparks.emit(pos.x, pos.y + 2 + Math.random() * 1.2, pos.z, (Math.random() - 0.5) * 9, 1 + Math.random() * 5, (Math.random() - 0.5) * 9, puff(Math.random() < 0.7 ? color : SPARK, 0.2, 0.4 + Math.random() * 0.4, -0.3, 1));
     }
   }
 
@@ -1086,7 +1120,7 @@ export class Race {
     const v = r.vehicle;
     const near = v.pos.distanceToSquared(this.player.vehicle.pos) < 120 * 120;
     if (!near || v.airborne) {
-      r.skidTrails = [null, null];
+      r.skidTrails[0] = r.skidTrails[1] = null;
       return;
     }
     const fx = Math.cos(v.heading);
@@ -1112,16 +1146,10 @@ export class Race {
       r.smokeAcc = (r.smokeAcc ?? 0) + rate * dt;
       while (r.smokeAcc >= 1) {
         r.smokeAcc -= 1;
-        for (const side of [-1, 1]) {
+        for (let side = -1; side <= 1; side += 2) {
           const x = v.pos.x - fx * 1.3 + -fz * side * 0.86;
           const z = v.pos.z - fz * 1.3 + fx * side * 0.86;
-          this.smoke.emit(x, v.pos.y + 0.25, z, v.vel.x * 0.15 + (Math.random() - 0.5) * 2, 0.8 + Math.random(), v.vel.y * 0.15 + (Math.random() - 0.5) * 2, {
-            color: r.isPlayer ? this.playerSmoke ?? SMOKE : SMOKE,
-            size: 0.7,
-            life: 1.1 + Math.random() * 0.5,
-            grow: 2.2,
-            alpha: v.drifting ? 0.32 : 0.18,
-          });
+          this.smoke.emit(x, v.pos.y + 0.25, z, v.vel.x * 0.15 + (Math.random() - 0.5) * 2, 0.8 + Math.random(), v.vel.y * 0.15 + (Math.random() - 0.5) * 2, puff(r.isPlayer ? this.playerSmoke ?? SMOKE : SMOKE, 0.7, 1.1 + Math.random() * 0.5, 2.2, v.drifting ? 0.32 : 0.18));
         }
       }
     }
@@ -1130,56 +1158,32 @@ export class Race {
         const side = Math.sign(v.proj.d);
         const x = v.pos.x + v.proj.rx * side * 0.9 + (Math.random() - 0.5) * 2;
         const z = v.pos.z + v.proj.rz * side * 0.9 + (Math.random() - 0.5) * 2;
-        this.sparks.emit(x, v.pos.y + 0.4, z, v.vel.x * 0.6 + (Math.random() - 0.5) * 6, 2 + Math.random() * 4, v.vel.y * 0.6 + (Math.random() - 0.5) * 6, {
-          color: SPARK,
-          size: 0.16,
-          life: 0.35 + Math.random() * 0.25,
-          grow: -0.2,
-          alpha: 1,
-        });
+        this.sparks.emit(x, v.pos.y + 0.4, z, v.vel.x * 0.6 + (Math.random() - 0.5) * 6, 2 + Math.random() * 4, v.vel.y * 0.6 + (Math.random() - 0.5) * 6, puff(SPARK, 0.16, 0.35 + Math.random() * 0.25, -0.2, 1));
       }
     }
     if (v.tier === 2 && r.isPlayer && Math.random() < 0.7) {
       const x = v.pos.x - fx * 2.5;
       const z = v.pos.z - fz * 2.5;
-      this.sparks.emit(x, v.pos.y + 0.35, z, v.vel.x * 0.7 + (Math.random() - 0.5) * 3, Math.random() * 2, v.vel.y * 0.7 + (Math.random() - 0.5) * 3, {
-        color: Math.random() < 0.5 ? PULSE_SPARK : SPARK,
-        size: 0.22,
-        life: 0.3,
-        grow: -0.3,
-        alpha: 0.9,
-      });
+      this.sparks.emit(x, v.pos.y + 0.35, z, v.vel.x * 0.7 + (Math.random() - 0.5) * 3, Math.random() * 2, v.vel.y * 0.7 + (Math.random() - 0.5) * 3, puff(Math.random() < 0.5 ? PULSE_SPARK : SPARK, 0.22, 0.3, -0.3, 0.9));
     }
     // Red dirt kicked up off the redwood trails (mud, in the rain, stays low and heavy).
     const dirt = v.mix.dirt ?? 0;
     if (dirt > 0.2 && v.speed > 6 && Math.random() < Math.min(1, dirt * (v.drifting ? 2.2 : 1.3))) {
       const mud = this.track.wet > 0.5;
-      for (const side of [-1, 1]) {
+      for (let side = -1; side <= 1; side += 2) {
         const x = v.pos.x - fx * 1.4 + -fz * side * 0.8;
         const z = v.pos.z - fz * 1.4 + fx * side * 0.8;
-        this.smoke.emit(x, v.pos.y + 0.2, z, v.vel.x * 0.15 + (Math.random() - 0.5) * 2, mud ? 0.4 : 1 + Math.random(), v.vel.y * 0.15 + (Math.random() - 0.5) * 2, {
-          color: RED_DIRT,
-          size: mud ? 0.5 : 0.85,
-          life: mud ? 0.5 : 1.1,
-          grow: mud ? 0.6 : 2.6,
-          alpha: mud ? 0.55 : v.drifting ? 0.5 : 0.36,
-        });
+        this.smoke.emit(x, v.pos.y + 0.2, z, v.vel.x * 0.15 + (Math.random() - 0.5) * 2, mud ? 0.4 : 1 + Math.random(), v.vel.y * 0.15 + (Math.random() - 0.5) * 2, puff(RED_DIRT, mud ? 0.5 : 0.85, mud ? 0.5 : 1.1, mud ? 0.6 : 2.6, mud ? 0.55 : v.drifting ? 0.5 : 0.36));
       }
     }
     // Spray off a wet road: a fine mist behind the rear tyres, a burst through a puddle.
     const wet = this.track.wet;
     if (wet > 0.3 && v.speed > 14 && v.mix.asphalt > 0.4 && Math.random() < wet * (v.puddle ? 1 : 0.55)) {
       const k = v.puddle ? 1.6 : 1;
-      for (const side of [-1, 1]) {
+      for (let side = -1; side <= 1; side += 2) {
         const x = v.pos.x - fx * 1.6 + -fz * side * 0.85;
         const z = v.pos.z - fz * 1.6 + fx * side * 0.85;
-        this.smoke.emit(x, v.pos.y + 0.2, z, v.vel.x * 0.6 + -fz * side * 1.5 * k, 0.6 * k + Math.random() * 0.6, v.vel.y * 0.6 + fx * side * 1.5 * k, {
-          color: SPRAY,
-          size: 0.4 * k,
-          life: 0.4,
-          grow: 1.4,
-          alpha: (v.puddle ? 0.28 : 0.12) * wet,
-        });
+        this.smoke.emit(x, v.pos.y + 0.2, z, v.vel.x * 0.6 + -fz * side * 1.5 * k, 0.6 * k + Math.random() * 0.6, v.vel.y * 0.6 + fx * side * 1.5 * k, puff(SPRAY, 0.4 * k, 0.4, 1.4, (v.puddle ? 0.28 : 0.12) * wet));
       }
     }
     // Loose surfaces: a gravel dust plume, or torn-up turf off the grass.
@@ -1188,8 +1192,8 @@ export class Race {
       const grass = v.mix.grass > v.mix.gravel;
       const x = v.pos.x - fx * 1.4;
       const z = v.pos.z - fz * 1.4;
-      if (grass) this.smoke.emit(x, v.pos.y + 0.2, z, v.vel.x * 0.2, 1.2, v.vel.y * 0.2, { color: GRASS_BITS, size: 0.45, life: 0.6, grow: 0.6, alpha: 0.5 });
-      else this.smoke.emit(x, v.pos.y + 0.2, z, v.vel.x * 0.1, 0.6, v.vel.y * 0.1, { color: DUST, size: 0.9, life: 1.0, grow: 2.4, alpha: v.drifting ? 0.4 : 0.28 });
+      if (grass) this.smoke.emit(x, v.pos.y + 0.2, z, v.vel.x * 0.2, 1.2, v.vel.y * 0.2, puff(GRASS_BITS, 0.45, 0.6, 0.6, 0.5));
+      else this.smoke.emit(x, v.pos.y + 0.2, z, v.vel.x * 0.1, 0.6, v.vel.y * 0.1, puff(DUST, 0.9, 1.0, 2.4, v.drifting ? 0.4 : 0.28));
     }
   }
 
@@ -1205,62 +1209,71 @@ export class Race {
       const drv = this.player.ai ? this.player.ai.input : input;
       throttle = drv.brake && !v.drifting ? 0 : drv.throttle ?? 1;
     }
-    this.engine.update({
-      dt,
-      speedNorm: Math.max(0, v.forward) / v.params.topSpeed,
-      throttle,
-      neutral: grid,
-      airborne: v.airborne,
-      speed: Math.min(1, v.speed / 70),
-      boost: v.tier,
-      // Tyres squeal on the asphalt only; off it they crunch and swish instead.
-      skid: (v.drifting ? Math.min(1, Math.abs(v.slip) * 2) : v.braking && v.speed > 12 ? 0.5 * Math.min(1, Math.max(0, (v.brake - 0.35) / 0.5)) : 0) * v.mix.asphalt,
-      slip: v.slip ?? 0,
-      gravel: v.airborne ? 0 : v.mix.gravel,
-      grass: v.airborne ? 0 : v.mix.grass,
-      // Hollow tyre roll over the bridge planks.
-      wood: !v.airborne && v.onWood ? 1 : 0,
-      mps: v.speed,
-    });
+    const c = (this.engineCtl ??= {});
+    c.dt = dt;
+    c.speedNorm = Math.max(0, v.forward) / v.params.topSpeed;
+    c.throttle = throttle;
+    c.neutral = grid;
+    c.airborne = v.airborne;
+    c.speed = Math.min(1, v.speed / 70);
+    c.boost = v.tier;
+    // Tyres squeal on the asphalt only; off it they crunch and swish instead.
+    c.skid = (v.drifting ? Math.min(1, Math.abs(v.slip) * 2) : v.braking && v.speed > 12 ? 0.5 * Math.min(1, Math.max(0, (v.brake - 0.35) / 0.5)) : 0) * v.mix.asphalt;
+    c.slip = v.slip ?? 0;
+    c.gravel = v.airborne ? 0 : v.mix.gravel;
+    c.grass = v.airborne ? 0 : v.mix.grass;
+    // Hollow tyre roll over the bridge planks.
+    c.wood = !v.airborne && v.onWood ? 1 : 0;
+    c.mps = v.speed;
+    this.engine.update(c);
   }
 
+  // One state object and one racer list, refilled every frame (the HUD only reads them).
   updateHud() {
     const v = this.player.vehicle;
     const p = this.player;
     const L = this.track.length;
     const course = this.course;
-    let lapText;
-    if (course.endless) lapText = `LAP ${Math.max(1, p.lapsDone + 1)}`;
-    else if (course.layout === 'circuit') lapText = `LAP ${Math.min(course.laps, Math.max(1, p.lapsDone + 1))}/${course.laps}`;
-    else lapText = `SPRINT ${Math.round(raceFraction(p.dist, course, L) * 100)}%`;
-    this.hud.update({
-      phase: this.phase,
-      speed: Math.round(Math.abs(v.forward) * 3.6),
-      position: this.positions.indexOf(p) + 1,
-      total: this.racers.length,
-      solo: course.solo,
-      lapText,
-      time: p.finished || p.done ? p.finishTime : this.raceTime,
-      nitro: v.nitro / NITRO.max,
-      tier: v.tier,
-      sinceTap: v.canPulse ? now() - v.lastTap : -1,
-      drifting: v.drifting,
-      driftScore: Math.round(v.driftScore * this.chain.multiplier),
-      combo: this.chain.multiplier,
-      chainTotal: this.chain.total,
-      linkLeft: this.chain.linkLeft,
-      apexReady: v.apexReady,
-      surface: v.surface,
-      wrongWay: v.wrongWay > 1.2,
-      draft: this.phase === 'racing' && p.draft > 0.2,
-      panel: this.mode.panel(),
-      racers: this.racers.map((r) => ({
-        frac: r.finished ? 1 : raceFraction(r.dist, course, L),
-        color: r.color,
-        isPlayer: r.isPlayer,
-        out: r.out,
-      })),
-    });
+    // The lap line only becomes a new string when its number changes.
+    const lapKey = course.endless || course.layout === 'circuit' ? p.lapsDone : Math.round(raceFraction(p.dist, course, L) * 100);
+    if (lapKey !== this.lapKey || !this.lapText) {
+      this.lapKey = lapKey;
+      if (course.endless) this.lapText = `LAP ${Math.max(1, p.lapsDone + 1)}`;
+      else if (course.layout === 'circuit') this.lapText = `LAP ${Math.min(course.laps, Math.max(1, p.lapsDone + 1))}/${course.laps}`;
+      else this.lapText = `SPRINT ${lapKey}%`;
+    }
+    if (!this.hudRacers || this.hudRacers.length !== this.racers.length) this.hudRacers = this.racers.map(() => ({ frac: 0, color: null, isPlayer: false, out: false }));
+    for (let i = 0; i < this.racers.length; i++) {
+      const r = this.racers[i];
+      const h = this.hudRacers[i];
+      h.frac = r.finished ? 1 : raceFraction(r.dist, course, L);
+      h.color = r.color;
+      h.isPlayer = r.isPlayer;
+      h.out = r.out;
+    }
+    const s = (this.hudState ??= {});
+    s.phase = this.phase;
+    s.speed = Math.round(Math.abs(v.forward) * 3.6);
+    s.position = this.positions.indexOf(p) + 1;
+    s.total = this.racers.length;
+    s.solo = course.solo;
+    s.lapText = this.lapText;
+    s.time = p.finished || p.done ? p.finishTime : this.raceTime;
+    s.nitro = v.nitro / NITRO.max;
+    s.tier = v.tier;
+    s.sinceTap = v.canPulse ? now() - v.lastTap : -1;
+    s.drifting = v.drifting;
+    s.driftScore = Math.round(v.driftScore * this.chain.multiplier);
+    s.combo = this.chain.multiplier;
+    s.chainTotal = this.chain.total;
+    s.linkLeft = this.chain.linkLeft;
+    s.apexReady = v.apexReady;
+    s.surface = v.surface;
+    s.wrongWay = v.wrongWay > 1.2;
+    s.draft = this.phase === 'racing' && p.draft > 0.2;
+    s.panel = this.mode.panel();
+    s.racers = this.hudRacers;
+    this.hud.update(s);
   }
 }
 

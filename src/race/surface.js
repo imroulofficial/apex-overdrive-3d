@@ -72,8 +72,9 @@ export function deckMix(out = {}) {
 }
 
 // Handling multipliers for a mix: a weighted blend of the surfaces' coefficients.
+const BLENDED = ['grip', 'driftGrip', 'top', 'drag', 'steer', 'jitter'];
 export function blendSurface(mix, out = {}) {
-  for (const k of ['grip', 'driftGrip', 'top', 'drag', 'steer', 'jitter']) {
+  for (const k of BLENDED) {
     out[k] = SURFACES.asphalt[k] * mix.asphalt + SURFACES.gravel[k] * mix.gravel + SURFACES.grass[k] * mix.grass + SURFACES.dirt[k] * (mix.dirt ?? 0);
   }
   return out;

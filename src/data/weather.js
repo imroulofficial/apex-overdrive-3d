@@ -270,14 +270,17 @@ export const WEATHER = {
 
 // Tyre grip on a wet road (multipliers on the surface's own coefficients). Standing water in a
 // puddle costs more and drags at the tyres. Dirt turns to slick mud in the rain.
+// (Cached per wetness: the physics asks every step, and a race's wetness is fixed. Read-only.)
+const wetCache = new Map();
 export function wetGrip(wet) {
   const w = Math.max(0, Math.min(1, wet));
-  return {
-    grip: 1 - 0.16 * w,
-    driftGrip: 1 - 0.1 * w,
-    steer: 1 - 0.05 * w,
-    mud: 1 - 0.22 * w,
-  };
+  let g = wetCache.get(w);
+  if (!g) {
+    g = Object.freeze({ grip: 1 - 0.16 * w, driftGrip: 1 - 0.1 * w, steer: 1 - 0.05 * w, mud: 1 - 0.22 * w });
+    if (wetCache.size > 64) wetCache.clear();
+    wetCache.set(w, g);
+  }
+  return g;
 }
 
 export const PUDDLE = { grip: 0.62, drag: 0.12, steer: 0.86 };

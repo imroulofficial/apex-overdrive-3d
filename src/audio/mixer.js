@@ -83,7 +83,9 @@ export function softClipCurve(knee = OUTPUT.knee, ceiling = OUTPUT.ceiling, n = 
   return c;
 }
 
-export function createMixer(ac) {
+// longLoops: false keeps the recorded loops at their own short length (tools/audio's
+// before/after renders of audio/longLoop.js).
+export function createMixer(ac, { longLoops = true } = {}) {
   const master = ac.createGain();
   master.gain.value = OUTPUT.master;
   // Fourth-order Butterworth high-pass (two biquads).
@@ -154,12 +156,14 @@ export function createMixer(ac) {
     music,
     musicTone,
     duck,
-    noise: noiseBuffer(ac, 2, 1),
-    pink: pinkBuffer(ac, 3),
-    wobble: wobbleBuffer(ac, 4, 11),
+    // Noise beds long enough that their loop never shows (a 2-4 s bed played at speed came
+    // round every 1-2 s: the engine's level drift, the gravel chop and the wind pulsed with it).
+    noise: noiseBuffer(ac, 12, 1),
+    pink: pinkBuffer(ac, 12),
+    wobble: wobbleBuffer(ac, 24, 11),
     seams: seamBuffer(ac),
     // Recorded samples, decoded at this context's rate (get() is null until they are ready).
-    samples: sampleBank(ac),
+    samples: sampleBank(ac, { long: longLoops }),
     // The output stage, for tools/audio's meters.
     stage: { highpass: hp2, limiter, trim, clipper },
   };
