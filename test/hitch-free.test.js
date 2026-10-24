@@ -154,3 +154,24 @@ test('the race calls auto quality only from begin(), never from its frame loop',
   assert.match(body('begin'), /tuner\.step/);
   assert.match(body('begin'), /this\.warmUp\(\)/);
 });
+
+test('instanced shadow casters get their own depth materials, split by instance colours', async () => {
+  const THREE = await import('three');
+  const { unifyProgramStates } = await import('../src/render/programStates.js');
+  const scene = new THREE.Scene();
+  const geo = new THREE.BoxGeometry();
+  const mat = new THREE.MeshStandardMaterial();
+  const plain = new THREE.InstancedMesh(geo, mat, 4);
+  const tinted = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial(), 4);
+  tinted.setColorAt(0, new THREE.Color(1, 0, 0));
+  const single = new THREE.Mesh(geo, mat);
+  const quiet = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial(), 4);
+  for (const o of [plain, tinted, single]) o.castShadow = true;
+  scene.add(plain, tinted, single, quiet);
+  unifyProgramStates(scene);
+  assert.ok(plain.customDepthMaterial?.isMeshDepthMaterial);
+  assert.ok(tinted.customDepthMaterial?.isMeshDepthMaterial);
+  assert.notEqual(plain.customDepthMaterial, tinted.customDepthMaterial);
+  assert.equal(single.customDepthMaterial, undefined);
+  assert.equal(quiet.customDepthMaterial, undefined);
+});

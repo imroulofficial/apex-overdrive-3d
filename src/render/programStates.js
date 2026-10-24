@@ -11,7 +11,14 @@ import * as THREE from 'three';
 //     that have them (photo fronds on palms and redwoods vs. ferns) gets a white instanceColor;
 //   - a transparent double-sided material is drawn in a single pass. three.js otherwise draws
 //     it twice a frame, back faces then front, flagging the material for an update before each.
-//     The race's are flames, glass, foliage cards and sprites, which do not need the two passes.
+//     The race's are flames, glass, foliage cards and sprites, which do not need the two passes;
+//   - instanced shadow casters draw their shadows with depth materials of their own. The shadow
+//     pass otherwise draws every caster with one shared depth material, which flips between
+//     instanced and not on every switch; each flip rebuilds its parameters from whatever caster
+//     is current, so the first time a textured caster (a ramp) follows an instanced one, which
+//     only happens once it comes into the sun's view, a new depth shader compiles mid-race.
+const INSTANCED_DEPTH = [new THREE.MeshDepthMaterial(), new THREE.MeshDepthMaterial()];
+
 export function unifyProgramStates(root) {
   const coloured = new Set();
   const instanced = [];
@@ -29,5 +36,8 @@ export function unifyProgramStates(root) {
     o.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 3).fill(1), 3);
     added++;
   }
+  root.traverse((o) => {
+    if (o.isInstancedMesh && o.castShadow) o.customDepthMaterial = INSTANCED_DEPTH[o.instanceColor ? 1 : 0];
+  });
   return added;
 }

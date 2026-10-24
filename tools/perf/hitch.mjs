@@ -70,7 +70,16 @@ await page.evaluate((q) => {
       return orig.apply(this, a);
     };
   };
-  wrap('compileShader', () => c.compile++);
+  // Which shader, for finding what still compiles mid-race (three names them SHADER_NAME).
+  const shaders = (window.__shaders = []);
+  wrap('compileShader', (a) => {
+    c.compile++;
+    const src = gl.getShaderSource(a[0]) || '';
+    const name = /#define SHADER_NAME (.*)/.exec(src)?.[1] ?? '?';
+    const defs = (src.match(/^#define (USE_\w+|INSTANC\w+|DOUBLE_SIDED|FLAT_SHADED|USE_FOG|FOG_EXP2)/gm) || []).map((d) => d.slice(8));
+    const r = window.__app.race;
+    shaders.push({ t: r?.raceTime ?? null, phase: r?.phase ?? null, name, defs: defs.join(' ') });
+  });
   wrap('linkProgram', () => c.link++);
   wrap('bufferData', (a) => { c.uploads++; c.uploadBytes += bytes(a[1]); });
   wrap('bufferSubData', (a) => {
@@ -171,6 +180,8 @@ async function profile(id) {
         compiles: sum('compile', frames.filter((f) => !racing.includes(f))),
         rtAllocs: sum('rtAlloc', frames.filter((f) => !racing.includes(f))),
       },
+      // Shaders compiled once the race was running: each one is a hitch the warm-up missed.
+      lateShaders: window.__shaders.filter((x) => x.phase === 'racing' || x.phase === 'finished'),
       frameLog: frames,
     };
   }, { seconds: SECONDS, realtime: REALTIME, fps: FPS });
