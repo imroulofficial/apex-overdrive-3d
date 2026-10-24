@@ -1,7 +1,7 @@
 import { ADS, PRODUCTS } from '../config.js';
 import { state, save, addCoins } from '../core/store.js';
 import { sfx } from '../core/audio.js';
-import { ads } from '../monetization/ads.js';
+import { ads, rewardedFallback } from '../monetization/ads.js';
 import { billing } from '../monetization/billing.js';
 import { toast } from './hud.js';
 
@@ -132,10 +132,8 @@ export function createStore({ onPurchased } = {}) {
       save();
       sfx.buy();
       toast(`+${fmt(ADS.rewardCrateCoins)} coins from the crate!`);
-    } else if (outcome === 'unavailable') {
-      toast('No ad available right now. Try again in a moment.');
     } else {
-      toast('Watch the whole ad to open the crate.');
+      toast(rewardedFallback(outcome, 'Watch the whole ad to open the crate.'));
     }
     renderCrate();
   });

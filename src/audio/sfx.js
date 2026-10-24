@@ -259,7 +259,7 @@ export const race = {
   // Tyres biting at drift entry.
   chirp(mix, at) {
     const t = now(mix, at);
-    shot(mix, mix.sfx, 'chirp', { t, rate: 0.95 + Math.random() * 0.15, peak: 0.42 });
+    shot(mix, mix.tyre ?? mix.sfx, 'chirp', { t, rate: 0.95 + Math.random() * 0.15, peak: 0.42 });
   },
   driftBank(mix, at) {
     const t = now(mix, at);

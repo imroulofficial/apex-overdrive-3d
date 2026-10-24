@@ -4,12 +4,13 @@ import { sampleBank } from './samples.js';
 // plays recorded samples bundled with the app (audio/samples.js); the HUD, race cues, the
 // weather beds and the soundtrack are synthesized on the device. Nothing needs the network.
 //
-//   engine voice ─┐
-//   race / ui sfx ─┼─ sfx bus ──────────────────────────┐
+//   tyre screech, chirp ─ tyre bus (de-harsh, 12 kHz cut) ─┐
+//   engine voice ─┐                                       │
+//   race / ui sfx ─┼─ sfx bus ────────────────────────────┴┐
 //                  ├─ space (slap delay) ───────────────┤
 //   rain, wind, ───┴─ ambience ─ low-pass ──────────────┤
 //   thunder
-//   music ─ glue comp ─ duck ─ music low-pass ─ music bus ─┼─ master ─ high-pass ─ limiter ─ trim ─ clipper ─ speakers
+//   music ─ glue comp ─ duck ─ music low-pass ─ music bus ─┼─ master ─ warmth EQ ─ high-pass ─ limiter ─ trim ─ clipper ─ speakers
 //
 // The background sits behind the car the way a commercial racer mixes it: the ambience bus
 // is damped (low-passed) so rain and wind never compete with the engine's top end, and the
@@ -44,6 +45,14 @@ export const MUSIC_LEVEL = 0.28;
 export const AMBIENCE = { lowpass: 3800, q: 0.55, level: 1 };
 // Music low-pass, wide open in menus and closing toward `engine` Hz at full engine load.
 export const MUSIC_TONE = { open: 16000, engine: 5200 };
+
+// Mastering EQ on the whole mix, ahead of the output stage: a broad, gentle lift of the
+// low-mid body (the 180-250 Hz warmth a phone speaker can still play) and a soft shelf off the
+// very top, where recorded air, hiss and squeal tire the ear long before they add detail.
+export const MASTER_EQ = { warmth: { freq: 215, q: 0.75, gain: 1.5 }, air: { freq: 9500, gain: -1.5 } };
+// Tyre bus (drift screech, scrub, chirp): a small dip in the 3-4 kHz squeal resonance and a
+// clean 4th-order Butterworth cut above 12 kHz, so a long drift stays bright but never shrill.
+export const TYRE_EQ = { dip: { freq: 3500, q: 1.1, gain: -2 }, highcut: 12000 };
 
 export const OUTPUT = {
   master: 1,
@@ -86,7 +95,11 @@ export function createMixer(ac) {
   const clipper = ac.createWaveShaper();
   clipper.curve = softClipCurve();
   clipper.oversample = '4x';
-  master.connect(hp1).connect(hp2).connect(limiter).connect(trim).connect(clipper).connect(ac.destination);
+  const warmth = filter(ac, 'peaking', MASTER_EQ.warmth.freq, MASTER_EQ.warmth.q);
+  warmth.gain.value = MASTER_EQ.warmth.gain;
+  const air = filter(ac, 'highshelf', MASTER_EQ.air.freq);
+  air.gain.value = MASTER_EQ.air.gain;
+  master.connect(warmth).connect(air).connect(hp1).connect(hp2).connect(limiter).connect(trim).connect(clipper).connect(ac.destination);
 
   const sfx = ac.createGain();
   sfx.connect(master);
@@ -110,6 +123,15 @@ export function createMixer(ac) {
   spaceLp.connect(dr).connect(merge, 0, 1);
   merge.connect(sfx);
 
+  const tyre = ac.createGain();
+  const dip = filter(ac, 'peaking', TYRE_EQ.dip.freq, TYRE_EQ.dip.q);
+  dip.gain.value = TYRE_EQ.dip.gain;
+  tyre
+    .connect(dip)
+    .connect(filter(ac, 'lowpass', TYRE_EQ.highcut, 0.5412))
+    .connect(filter(ac, 'lowpass', TYRE_EQ.highcut, 1.3066))
+    .connect(sfx);
+
   const ambience = ac.createGain();
   ambience.gain.value = AMBIENCE.level;
   ambience.connect(filter(ac, 'lowpass', AMBIENCE.lowpass, AMBIENCE.q)).connect(sfx);
@@ -127,6 +149,7 @@ export function createMixer(ac) {
     sfx,
     ui,
     space,
+    tyre,
     ambience,
     music,
     musicTone,

@@ -184,3 +184,23 @@ test('tilt steering has a dead zone and saturates at full lock', () => {
   const half = tiltToSteer((TILT.full + TILT.deadzone) / 2);
   near(half, 0.5, 1e-9);
 });
+
+test('recovery puts a lost car back on the road facing forward and keeps its race tallies', () => {
+  const track = new Track(EMERALD_COAST);
+  const v = new Vehicle(track, statsToParams(BASE_STATS), { skills: true });
+  v.reset(400, 0);
+  const forward = v.heading;
+  // Spun round, pushed into the fence, with drift distance and nitro already earned.
+  v.heading += Math.PI;
+  v.pos.x += 30;
+  v.driftDistance = 512;
+  v.proximityScore = 90;
+  v.nitro = 64;
+  v.recover(400, 2);
+  near(Math.cos(v.heading - forward), 1, 1e-9);
+  assert.equal(v.speed, 0);
+  assert.equal(v.driftDistance, 512);
+  assert.equal(v.proximityScore, 90);
+  assert.equal(v.nitro, 64);
+  assert.ok(Math.abs(v.proj.d - 2) < 0.5, `back on the road (d = ${v.proj.d.toFixed(2)})`);
+});

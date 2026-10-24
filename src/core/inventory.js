@@ -64,7 +64,7 @@ export function unlockCar(save, carId, products) {
 }
 
 export function buyUpgrade(save, carId, upgradeId) {
-  const entry = save.cars[carId];
+  const entry = ownedEntry(save, carId);
   const u = UPGRADES.find((x) => x.id === upgradeId);
   if (!entry || !u) return fail('unknown');
   const level = entry.upgrades[u.id];
@@ -76,24 +76,41 @@ export function buyUpgrade(save, carId, upgradeId) {
   return { ok: true, cost, level: level + 1 };
 }
 
+// What one upgrade level adds to a stat: STAT_PER_LEVEL, or less on a stat that starts so
+// high that full steps would hit the 100 cap early. Every level then still counts, and Level 5
+// lands where it always did (base + 5 full steps, at most 100).
+export const statStep = (base, maxLevel) => Math.min(STAT_PER_LEVEL, Math.max(0, 100 - base) / maxLevel);
+
 // A car's stats (0-100) with its own upgrades applied.
 export function carStats(save, carId) {
   const values = { ...carById(carId).stats };
   const levels = save.cars[carId]?.upgrades ?? {};
-  for (const u of UPGRADES) values[u.stat] = Math.min(100, values[u.stat] + (levels[u.id] ?? 0) * STAT_PER_LEVEL);
+  for (const u of UPGRADES) {
+    const base = values[u.stat];
+    values[u.stat] = Math.min(100, Math.round((base + (levels[u.id] ?? 0) * statStep(base, u.maxLevel)) * 10) / 10);
+  }
   return values;
 }
 
+// Coin paints are bought once (ownedPaints, which also holds the chest paints); purchase-
+// exclusive paints follow the Play entitlement.
+export const ownsPaint = (save, paint) => (paint.product ? save.purchases.paints.includes(paint.id) : save.ownedPaints.includes(paint.id));
+
+// Only owned cars take upgrades, rims and paint (a refunded IAP car keeps its entry).
+const ownedEntry = (save, carId) =>
+  save.ownedCars?.includes(carId) || ownsCar(save, carId, activeProducts(save)) ? save.cars[carId] ?? null : null;
+
 export function equipPaint(save, carId, paintId) {
-  const entry = save.cars[carId];
-  if (!entry || !PAINTS.some((p) => p.id === paintId)) return false;
+  const entry = ownedEntry(save, carId);
+  const paint = PAINTS.find((p) => p.id === paintId);
+  if (!entry || !paint || !ownsPaint(save, paint)) return false;
   entry.paint = paintId;
   return true;
 }
 
 // Buys (if needed) and equips a rim on one car.
 export function buyRim(save, carId, rimId) {
-  const entry = save.cars[carId];
+  const entry = ownedEntry(save, carId);
   const rim = RIMS.find((r) => r.id === rimId);
   if (!entry || !rim) return fail('unknown');
   if (!entry.rims.includes(rim.id)) {

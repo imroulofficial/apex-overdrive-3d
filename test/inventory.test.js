@@ -103,3 +103,30 @@ test('smoke and nitro colours are free and per car; the wing shop is closed', as
   assert.ok(!equipFx(save, 'rp1-vanta', 'paint', 'gold'));
   assert.equal(save.cars['rpx-hyperion'].smoke, 'white');
 });
+
+test('every upgrade level adds to the stat, even on a car that starts near the cap', () => {
+  const save = defaults();
+  save.coins = 1e6;
+  syncOwnedCars(save, new Set(['supercar_bundle']));
+  save.purchases.owned = ['supercar_bundle'];
+  const base = carById('rpx-hyperion').stats.speed;
+  let last = carStats(save, 'rpx-hyperion').speed;
+  for (let i = 0; i < 5; i++) {
+    assert.ok(buyUpgrade(save, 'rpx-hyperion', 'topSpeed').ok);
+    const now = carStats(save, 'rpx-hyperion').speed;
+    assert.ok(now > last, `level ${i + 1} adds speed (${last} -> ${now})`);
+    last = now;
+  }
+  assert.equal(last, Math.min(100, base + 5 * STAT_PER_LEVEL));
+});
+
+test('only owned cars and owned paints can be fitted', () => {
+  const save = defaults();
+  save.coins = 1e6;
+  assert.equal(buyUpgrade(save, 'tm-tempesta', 'topSpeed').ok, false);
+  assert.equal(buyRim(save, 'tm-tempesta', 'mesh').ok, false);
+  assert.ok(!equipPaint(save, 'rp1-vanta', 'liquid-gold')); // a coin paint not bought yet
+  assert.ok(!equipPaint(save, 'rp1-vanta', 'founder')); // No Ads Pack exclusive
+  save.ownedPaints.push('liquid-gold');
+  assert.ok(equipPaint(save, 'rp1-vanta', 'liquid-gold'));
+});

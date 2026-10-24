@@ -151,6 +151,19 @@ export class Vehicle {
     this.events.length = 0;
   }
 
+  // Puts the car back on the road at `s`, pointing the right way (the race's safety net for a
+  // car stuck on a fence or lost the wrong way). The race tallies carry on: drift distance,
+  // the rail bonus, the nitro bar and any events this step already raised.
+  recover(s, d) {
+    const { driftDistance, proximityScore, nitro } = this;
+    const events = this.events.slice();
+    this.reset(s, d);
+    this.driftDistance = driftDistance;
+    this.proximityScore = proximityScore;
+    this.nitro = nitro;
+    this.events.push(...events);
+  }
+
   // Projects the car onto the highway and, near or on a trail, onto the trail; decides which
   // one it is following. Returns that projection.
   locate() {
