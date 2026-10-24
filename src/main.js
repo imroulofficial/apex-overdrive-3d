@@ -27,7 +27,7 @@ import { carStats, carLook } from './core/inventory.js';
 import { ads, rewardedFallback } from './monetization/ads.js';
 import { billing } from './monetization/billing.js';
 import { cloud } from './core/cloud.js';
-import { suspendAudio, resumeAudio } from './core/audio.js';
+import { suspendAudio, resumeAudio, audioStats, audioLoaded } from './core/audio.js';
 import { chestDialog } from './ui/chest.js';
 import { onAppStateChange, onBackButton } from './core/platform.js';
 
@@ -565,6 +565,9 @@ if (DEBUG) {
     openMap, backToGarage, exitToMap,
     openBriefing: (id) => openBriefing(typeof id === 'string' ? stageById(id) : id),
     map, mapHud, briefing, dialogue, chest, state, ads, billing, store, cloud,
+    // Audio meters, and a promise for the car mixer holding everything it plays.
+    audio: audioStats,
+    audioLoaded,
     stageIds: STAGES.map((s) => s.stageId),
     carIds: CARS.map((c) => c.id),
     // Puts a car on the turntable (QA only: the save is not touched).
