@@ -8,13 +8,13 @@ import { GAME, ADMOB_APP_ID, PRODUCTION_AD_UNITS, TEST_AD_UNITS, ADS, PRODUCTS, 
 const read = (p) => readFile(new URL(`../${p}`, import.meta.url), 'utf8');
 const RES = 'android/app/src/main/res';
 
-test('package.json, build.gradle and the About line agree on 1.0.0 (code 60)', async () => {
+test('package.json, build.gradle and the About line agree on 1.0.0 (code 61)', async () => {
   const pkg = JSON.parse(await read('package.json'));
   const gradle = await read('android/app/build.gradle');
   assert.equal(pkg.version, '1.0.0');
   assert.equal(GAME.version, pkg.version);
   assert.match(gradle, /versionName "1\.0\.0"/);
-  assert.match(gradle, /versionCode 60\b/);
+  assert.match(gradle, /versionCode 61\b/);
   assert.doesNotMatch(await read('.github/workflows/build-aab.yml'), /-PversionCode/);
 });
 
@@ -62,6 +62,11 @@ test('every launcher density and the 512 px Play icon are present at their sizes
       assert.deepEqual([width, height], [want, want], `${d}/${f}`);
     }
   }
+  // Adaptive foreground: the art fills the visible 72 dp centre, the 18 dp margin is transparent.
+  const fg = await sharp(new URL(`../${RES}/mipmap-xxxhdpi/ic_launcher_foreground.png`, import.meta.url).pathname).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const alphaAt = (x, y) => fg.data[(y * fg.info.width + x) * 4 + 3];
+  assert.equal(alphaAt(10, 10), 0);
+  assert.equal(alphaAt(fg.info.width >> 1, fg.info.height >> 1), 255);
   const store = await sharp(new URL('../public/assets/icon/play-store-512.png', import.meta.url).pathname).metadata();
   assert.deepEqual([store.width, store.height, store.format], [512, 512, 'png']);
   assert.match(await read(`${RES}/mipmap-anydpi-v26/ic_launcher.xml`), /ic_launcher_foreground/);
