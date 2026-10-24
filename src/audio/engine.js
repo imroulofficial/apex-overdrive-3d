@@ -23,24 +23,35 @@ const GEARS = GEAR_TOP.length;
 // fade-in and fade-out ranges. Each rpm is 30 × the loop's fundamental (twice the crank
 // speed, the strongest line in all three recordings) as samples.mjs measures it, so every
 // layer plays at the pitch the gearbox asks for and the crossfades do not jump. No loop is
-// played outside about 0.6-1.8× its own speed.
+// played outside about 0.55-1.85× its own speed. The fades are wide (650-900 rpm), so one
+// recording's tone morphs into the next over a whole stretch of the rev range instead of
+// switching at a point.
+//
+// `trim` (dB) and `tilt` (dB per octave of pitch shift) level-match the loops: each one,
+// soloed and swept through its range (tools/audio engine-sweep-layer-N clips), is brought onto
+// one shared loudness-vs-rpm line, so neither layer of a crossfade is louder than the other
+// and a sweep through the gears has no steps at the crossovers.
 export const LAYERS = [
-  { sample: 'engineIdle', rpm: 985, fadeIn: null, fadeOut: [1250, 1800] },
-  { sample: 'engineLow', rpm: 2040, fadeIn: [1250, 1800], fadeOut: [2700, 3300] },
-  { sample: 'engineMid', rpm: 3840, fadeIn: [2700, 3300], fadeOut: [4300, 4900] },
-  { sample: 'engineHigh', rpm: 5220, fadeIn: [4300, 4900], fadeOut: [5800, 6400] },
-  { sample: 'engineTop', rpm: 6735, fadeIn: [5800, 6400], fadeOut: null },
+  { sample: 'engineIdle', rpm: 985, fadeIn: null, fadeOut: [1200, 1850], trim: -0.6, tilt: 0.8 },
+  { sample: 'engineLow', rpm: 2040, fadeIn: [1200, 1850], fadeOut: [2550, 3400], trim: 1.1, tilt: -1.6 },
+  { sample: 'engineMid', rpm: 3840, fadeIn: [2550, 3400], fadeOut: [4150, 5000], trim: -0.2, tilt: -0.3 },
+  { sample: 'engineHigh', rpm: 5220, fadeIn: [4150, 5000], fadeOut: [5650, 6550], trim: 0, tilt: -0.1 },
+  { sample: 'engineTop', rpm: 6735, fadeIn: [5650, 6550], fadeOut: null, trim: -0.3, tilt: -1.3 },
 ];
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const smooth = (x) => x * x * (3 - 2 * x);
 
-function layerWeight(L, rpm) {
+// A layer's crossfade weight at `rpm` (equal power: the squares of two neighbours sum to 1).
+export function layerWeight(L, rpm) {
   let w = 1;
   if (L.fadeIn) w *= Math.sin((smooth(clamp((rpm - L.fadeIn[0]) / (L.fadeIn[1] - L.fadeIn[0]), 0, 1)) * Math.PI) / 2);
   if (L.fadeOut) w *= Math.cos((smooth(clamp((rpm - L.fadeOut[0]) / (L.fadeOut[1] - L.fadeOut[0]), 0, 1)) * Math.PI) / 2);
   return w;
 }
+
+// The level-match gain of a layer playing at `rpm` (see LAYERS).
+export const layerTrim = (L, rpm) => 10 ** (((L.trim ?? 0) + (L.tilt ?? 0) * Math.log2(rpm / L.rpm)) / 20);
 
 // ---------------------------------------------------------------------------
 // Gearbox: turns road speed and throttle into RPM, boost pressure and shift events
@@ -133,8 +144,9 @@ export class Gearbox {
 // ---------------------------------------------------------------------------
 
 // The voice's level into the sfx bus at full load, tuned to the level budget in mixer.js
-// (engine about -16 to -18 dBFS RMS at the master input).
-const ENGINE_LEVEL = 0.55;
+// (engine about -16 to -18 dBFS RMS at the master input). 0.5 with the level-matched layers
+// and the master warmth EQ lands where 0.55 did before them.
+const ENGINE_LEVEL = 0.5;
 
 // gated: layers that are often silent (RPM loops outside their range, turbo, tyres, surfaces,
 // nitro air) stay unplugged from the graph while their level is zero, so the audio thread
@@ -161,11 +173,12 @@ export class EngineVoice {
     this.out.connect(send).connect(mix.space);
 
     // Combustion: the RPM loops through a load-dependent tone filter (a lift closes it, the
-    // way an engine on the overrun loses its rasp) and a low-mid lift for phone speakers.
+    // way an engine on the overrun loses its rasp) and a broad low-mid lift (the body a phone
+    // speaker can still play; the master EQ adds a little more warmth on top).
     this.body = gain(ac, 0.8);
     this.tone = filter(ac, 'lowpass', 4000, 0.6);
-    const weight = filter(ac, 'peaking', 230, 0.8);
-    weight.gain.value = 3;
+    const weight = filter(ac, 'peaking', 200, 0.7);
+    weight.gain.value = 2.5;
     this.body.connect(this.tone).connect(weight).connect(this.out);
     this.loops = LAYERS.map((L) => {
       const s = src(loopSource(mix, L.sample));
@@ -187,7 +200,8 @@ export class EngineVoice {
     plug(this.whistleGain, this.out);
     this.spoolHp = filter(ac, 'highpass', 2600, 0.7);
     this.spoolGain = gain(ac, 0);
-    air.connect(this.spoolHp).connect(this.spoolGain);
+    // The recording's air is brightest above 12 kHz, where it only tires the ear: cut it.
+    air.connect(this.spoolHp).connect(filter(ac, 'lowpass', 12000, 0.7)).connect(this.spoolGain);
     plug(this.spoolGain, this.out);
 
     // Nitro airflow: a recorded blower roar while the boost lasts, brighter and faster for
@@ -207,10 +221,11 @@ export class EngineVoice {
 
     // Tyre screech: two recorded squeals, a light one for a scrub and a hard four-tyre squeal
     // for a full drift, crossfaded by how hard the tyres slide and pitched up with the slip.
+    // They play through the mixer's tyre bus (de-harsh dip, 12 kHz cut).
     this.skidGain = gain(ac, 0);
     const skidSend = gain(ac, 0.35);
     skidSend.connect(mix.space);
-    plug(this.skidGain, dest, skidSend);
+    plug(this.skidGain, dest === mix.sfx && mix.tyre ? mix.tyre : dest, skidSend);
     this.skids = ['skidLight', 'skidHeavy'].map((name) => {
       const s = src(loopSource(mix, name));
       const g = gain(ac, 0);
@@ -297,7 +312,7 @@ export class EngineVoice {
       const w = layerWeight(L, rpm);
       // A layer out of its range keeps its last pitch while silent, so it schedules nothing.
       if (w > 0) this.p(src.playbackRate, rpm / L.rpm, t, tc);
-      this.p(g.gain, w, t, tc);
+      this.p(g.gain, w > 0 ? w * layerTrim(L, rpm) : 0, t, tc);
     }
     this.p(this.tone.frequency, 1100 + load * 2200 + r * 3200 + tier * 800, t, tc);
     this.p(this.body.gain, 0.55 + 0.45 * load, t, tc);

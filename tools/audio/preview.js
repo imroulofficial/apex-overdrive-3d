@@ -177,6 +177,46 @@ const clips = {
       }, {});
     },
   },
+  // Analysis clip: the RPM loops alone at full load, swept slowly from idle to the limiter
+  // and back (12 s each way), so every crossfade can be checked for level, tone and pitch
+  // jumps. The rpm is written into the log every 0.25 s for the analysis script.
+  'engine-rpm-sweep': {
+    seconds: 25,
+    build(mix) {
+      const voice = new EngineVoice(mix).start(0);
+      const log = [];
+      const lo = 950;
+      const hi = 7800;
+      for (let t = 0; t < 24; t += FRAME) {
+        const k = t < 12 ? t / 12 : (24 - t) / 12;
+        // Exponential sweep: equal time per musical interval, like a real pull.
+        const rpm = lo * (hi / lo) ** k;
+        voice.set({ rpm, load: 1, volume: 1 }, t);
+        if (Math.abs(t * 4 - Math.round(t * 4)) < FRAME * 2) log.push(`rpm ${t.toFixed(2)} ${Math.round(rpm)}`);
+      }
+      voice.stop(24, 0.4);
+      return log;
+    },
+  },
+  // The same sweep with one RPM loop left in (analysis of each layer's level and tone).
+  ...Object.fromEntries(
+    [0, 1, 2, 3, 4].map((k) => [
+      `engine-sweep-layer-${k}`,
+      {
+        seconds: 25,
+        analysis: true,
+        build(mix) {
+          const voice = new EngineVoice(mix).start(0);
+          voice.loops.forEach((l, i) => i !== k && l.g.disconnect());
+          for (let t = 0; t < 24; t += FRAME) {
+            const q = t < 12 ? t / 12 : (24 - t) / 12;
+            voice.set({ rpm: 950 * (7800 / 950) ** q, load: 1, volume: 1 }, t);
+          }
+          voice.stop(24, 0.4);
+        },
+      },
+    ])
+  ),
   'garage-headlight-rev': {
     seconds: 5,
     build(mix) {
@@ -366,4 +406,4 @@ async function render(name) {
   return { name, wav: btoa(bin), stats: { ...stats(buf), ...meters(buf) }, ms, log };
 }
 
-window.__audio = { names: Object.keys(clips), render, simulate, cost, live };
+window.__audio = { names: Object.keys(clips).filter((n) => !clips[n].analysis), render, simulate, cost, live };

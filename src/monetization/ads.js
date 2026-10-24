@@ -155,7 +155,16 @@ function createAdService() {
     return task;
   }
 
-  async function syncBanner() {
+  // Banner calls run one at a time, each against the latest wish. Without the queue a hide
+  // that arrives while the native banner is still being created (the map opening and a race
+  // starting a moment later) would run first, and the banner would then appear in the race.
+  let bannerQueue = Promise.resolve();
+  function syncBanner() {
+    bannerQueue = bannerQueue.then(applyBanner);
+    return bannerQueue;
+  }
+
+  async function applyBanner() {
     const want = bannerWanted && !noAds() && enabled('banner');
     if (want === bannerShown) return;
     bannerShown = want;
@@ -248,6 +257,8 @@ function createAdService() {
       if (a.racesFinished <= ADS.interstitialGraceRaces) return false;
       if (a.racesSinceInterstitial < a.nextInterstitialAt) return false;
       // The cooldown survives restarts: the last interstitial's time is saved.
+      // A saved time in the future (the device clock was moved back) does not block ads forever.
+      if (a.lastInterstitialAt > Date.now()) a.lastInterstitialAt = 0;
       if (Date.now() - Math.max(lastFullscreenAt, a.lastInterstitialAt) < ADS.interstitialMinGapMs) return false;
       const ok = await Promise.race([preload('interstitial'), wait(1200).then(() => false)]);
       if (!ok) return false; // not ready; try again after the next race
@@ -265,7 +276,7 @@ function createAdService() {
     // Plays a rewarded video. Resolves to 'rewarded', 'skipped' or 'unavailable'.
     async showRewarded() {
       await ready;
-      if (!enabled('rewarded')) return 'unavailable';
+      if (!enabled('rewarded') || offline()) return 'unavailable';
       let ok = false;
       try {
         ok = await timeout(preload('rewarded'), LOAD_TIMEOUT_MS);
@@ -282,3 +293,13 @@ function createAdService() {
 }
 
 export const ads = createAdService();
+
+const offline = () => typeof navigator !== 'undefined' && navigator.onLine === false;
+
+// What to tell the player when a rewarded ad paid nothing ('unavailable': offline or no fill;
+// 'skipped': closed early, with `skipped` as the text). Null after a reward.
+export function rewardedFallback(outcome, skipped) {
+  if (outcome === 'unavailable') return offline() ? "You're offline. Connect to the internet to watch an ad." : 'No ad available right now. Try again in a moment.';
+  if (outcome === 'skipped') return skipped;
+  return null;
+}

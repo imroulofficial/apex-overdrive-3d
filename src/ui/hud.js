@@ -4,7 +4,7 @@ import { PRODUCTS } from '../config.js';
 import { RELEASED_CARS, TIERS, carById } from '../data/cars.js';
 import { TAB_SHOTS } from '../garage/cameraRig.js';
 import { state, save, subscribe, spendCoins, activeCar } from '../core/store.js';
-import { buyUpgrade, buyRim, equipFx, carStats, equipPaint, unlockStatus, unlockCar, activeProducts } from '../core/inventory.js';
+import { buyUpgrade, buyRim, equipFx, carStats, equipPaint, unlockStatus, unlockCar, activeProducts, ownsPaint as ownsPaintIn } from '../core/inventory.js';
 import { sfx } from '../core/audio.js';
 import { billing } from '../monetization/billing.js';
 import { cloud } from '../core/cloud.js';
@@ -97,7 +97,7 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
   const grid = $('#paint-grid');
   const paintById = (id) => PAINTS.find((p) => p.id === id) ?? PAINTS[0];
   // Coin paints are bought once; purchase-exclusive paints follow the Play entitlement.
-  const ownsPaint = (p) => (p.product ? state.purchases.paints.includes(p.id) : state.ownedPaints.includes(p.id));
+  const ownsPaint = (p) => ownsPaintIn(state, p);
   grid.innerHTML = PAINTS.map(
     (p) => `<button class="swatch${p.product ? ' exclusive' : ''}${p.milestone ? ' chest-paint' : ''}" data-paint="${p.id}" style="--swatch:${p.color}" aria-label="${p.name}"></button>`
   ).join('');
@@ -406,7 +406,7 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
     renderFeel(car);
     statsEl.innerHTML = Object.entries(STAT_LABELS)
       .map(([key, label]) => {
-        const v = Math.min(100, values[key]);
+        const v = Math.round(Math.min(100, values[key]));
         return `<li class="stat"><span>${label}</span><div class="bar"><i style="--v:${v}%"></i></div><b>${v}</b></li>`;
       })
       .join('');

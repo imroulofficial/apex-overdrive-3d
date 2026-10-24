@@ -411,6 +411,7 @@ export class Race {
     this.topSpeed = 0;
     this.result = null;
     this.lastCountdown = null;
+    this.stuckTime = 0;
     this.hits = [];
     this.positions = [...this.racers];
     mode.start();
@@ -606,7 +607,10 @@ export class Race {
       for (let k = 0; k < steps; k++) this.simStep(h, playerInput, k === 0);
       this.updateProgress();
       this.onChain(this.chain.update(dt));
-      if (this.phase === 'racing') this.mode.update(dt);
+      if (this.phase === 'racing') {
+        this.mode.update(dt);
+        this.watchPlayer(dt, playerInput);
+      }
     }
 
     // Visuals.
@@ -640,6 +644,29 @@ export class Race {
       this.resultShown = true;
       this.hud.results(this.result);
     }
+  }
+
+  // Track boundary safety net for the player: pinned against a fence with the throttle open
+  // for 3 s, driving the wrong way for 4 s, or (should the physics ever fail) off the road or
+  // not a number. The car is put back on the road where it is, facing the right way.
+  watchPlayer(dt, input) {
+    const r = this.player;
+    const v = r.vehicle;
+    if (r.out || r.ai) return;
+    const p = v.proj;
+    const limit = p.trail ? p.trail.wallLimitAt(p.ls) : this.track.wallLimit;
+    const lost =
+      !Number.isFinite(v.pos.x + v.pos.y + v.pos.z + v.vel.x + v.vel.y) ||
+      (!v.zone && Math.abs(p.d) > limit + 12) ||
+      (!v.airborne && v.pos.y < v.groundY - 4);
+    const pushing = v.speed < 2 && (input.throttle ?? 1) > 0.5 && !(+input.brake > 0);
+    this.stuckTime = pushing ? this.stuckTime + dt : 0;
+    if (!lost && this.stuckTime < 3 && v.wrongWay < 4) return;
+    this.stuckTime = 0;
+    const s = Number.isFinite(p.s) ? p.s : 0;
+    v.recover(s, p.trail || !Number.isFinite(p.d) ? 0 : Math.max(-4, Math.min(4, p.d)));
+    this.chase.snap(v);
+    this.hud.callout('BACK ON TRACK', 'cam');
   }
 
   // Lightning and thunder, rain around the camera and on the lens, puddle ripples, the

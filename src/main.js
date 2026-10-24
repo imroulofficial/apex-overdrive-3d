@@ -14,7 +14,7 @@ import { EMERALD_COAST, TRACKS } from './data/tracks.js';
 import { STAGES, TRACK_SEGMENTS, stageById, chapterById } from './data/career.js';
 import { STAR_BONUS } from './data/economy.js';
 import { state, save, addCoins, activeCar } from './core/store.js';
-import { settleStage, nextStage, chapterStars, claimMilestone } from './core/career.js';
+import { settleStage, nextStage, chapterStars, claimMilestone, chapterLock } from './core/career.js';
 import { duePrologue, dueBefore, dueAfter, markSeen } from './core/story.js';
 import { sceneForStage } from './data/story.js';
 import { defaultStage, isPlayable, isPractice, stageLabel, stageTag, starIcons } from './ui/stageInfo.js';
@@ -24,7 +24,7 @@ import { createBriefing } from './ui/briefing.js';
 import { createDialogue } from './ui/dialogue.js';
 import { RELEASE } from './config.js';
 import { carStats, carLook } from './core/inventory.js';
-import { ads } from './monetization/ads.js';
+import { ads, rewardedFallback } from './monetization/ads.js';
 import { billing } from './monetization/billing.js';
 import { cloud } from './core/cloud.js';
 import { suspendAudio, resumeAudio } from './core/audio.js';
@@ -103,8 +103,10 @@ const mapHud = createMapHud(map, {
   },
   onLocked: (s) => {
     const prev = STAGES[s.index - 1];
-    if (prev && s.number > state.career.unlockedStage) toast(`Earn star 1 on Stage ${stageTag(prev)} to unlock`);
-    else toast(`${chapterById(s.chapterId).name} opens in a coming update`);
+    if (prev && s.number > state.career.unlockedStage) return toast(`Earn star 1 on Stage ${stageTag(prev)} to unlock`);
+    // Every chapter is built; a closed one is waiting on its star gate.
+    const { stars } = chapterLock(state, s.chapterId);
+    toast(`Collect ${stars} more ★ to open ${chapterById(s.chapterId).name}`);
   },
   onChest: (m, { ready, opened }) => {
     if (opened) return toast('Chest already opened');
@@ -128,7 +130,8 @@ const briefing = createBriefing({
   onStory: (s) => playScene(sceneForStage(s.stageId, 'before')),
   onNitroAd: async () => {
     const outcome = await ads.showRewarded();
-    if (outcome === 'unavailable') toast('No ad available right now. Try again in a moment.');
+    const note = rewardedFallback(outcome, 'Watch the whole ad to fill the tank.');
+    if (note) toast(note);
     return outcome;
   },
 });
@@ -207,6 +210,8 @@ createCloudBadge();
 // Cloud save milestones (see core/cloud.js). Play purchases and restores that paid out
 // upload shortly after; paint and upgrade purchases are wired in the garage HUD.
 billing.subscribe((e) => {
+  // A purchase that cleared later (pending payments), a restore or a refund changes No Ads.
+  if (e.type === 'purchase' || e.type === 'sync') ads.refreshEntitlements();
   if (e.type === 'purchase' || (e.type === 'sync' && (e.restored.length || e.coins))) cloud.syncSoon();
 });
 cloud.subscribe((_, { restored } = {}) => {
@@ -389,7 +394,8 @@ async function doubleCoins() {
   const outcome = await ads.showRewarded();
   if (outcome !== 'rewarded') {
     raceHud.setDoubleState('ready');
-    if (outcome === 'unavailable') toast('No ad available right now. Try again in a moment.');
+    const note = rewardedFallback(outcome, 'Watch the whole ad to double your coins.');
+    if (note) toast(note);
     return;
   }
   res.doubled = true;
@@ -431,6 +437,9 @@ async function restartRace() {
 async function exitToMap({ next = false } = {}) {
   if (mode !== 'race') return;
   mode = 'busy';
+  // Only a finished race (the results screen) leads to an interstitial; quitting from the
+  // pause menu never does.
+  const finished = raceHud.resultsOpen || race.phase === 'finished';
   raceHud.closePause();
   await wipe.cover('WORLD MAP');
   race.exit();
@@ -440,7 +449,7 @@ async function exitToMap({ next = false } = {}) {
   raceOpts = {};
   // After the first 3 races, every 2-3 finished races an interstitial plays here, behind the
   // wipe (never within 3 minutes of another full-screen ad).
-  await ads.maybeShowInterstitial();
+  if (finished) await ads.maybeShowInterstitial();
   const played = raceStage;
   const following = next ? nextStage(played) : null;
   map.start();
@@ -496,6 +505,7 @@ onAppStateChange((active) => {
   }
   if (active) {
     if (mode === 'garage') garage.start();
+    if (mode !== 'race') resumeAudio();
   } else {
     garage.stop();
     suspendAudio();
