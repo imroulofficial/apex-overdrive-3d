@@ -90,6 +90,7 @@ jobs:
         # Play Console's pre-launch checks flag Android 15 deprecated bar-colour / system-UI /
         # cutout calls and orientation locks. Fails if our code or a Capacitor plugin has any.
         run: |
+          set -o pipefail
           MANIFEST=$(find android/app/build/intermediates -path '*merged_manifest*release*' -name AndroidManifest.xml | head -1)
           python3 tools/android/scan_bundle.py android/app/build/outputs/bundle/release/app-release.aab "$MANIFEST" | tee dex-scan.log
           { echo '### Edge-to-edge bytecode scan'; echo '```'; cat dex-scan.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

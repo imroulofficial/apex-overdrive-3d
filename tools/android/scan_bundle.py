@@ -42,7 +42,7 @@ def dexdump_path():
 
 
 def scan_dex(dexdump, path, hits):
-    out = subprocess.run([dexdump, '-d', path], capture_output=True, text=True, check=True).stdout
+    out = subprocess.run([dexdump, '-d', path], capture_output=True, check=True).stdout.decode('utf-8', 'replace')
     cls = None
     consts = {}
     for line in out.splitlines():
