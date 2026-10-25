@@ -16,3 +16,7 @@ tools/audio/out/
 tools/assets/cache/
 # Audio sample cutter download cache (re-created by node tools/audio/samples.mjs)
 tools/audio/cache/
+
+# Store listing render frames (tools/store/render.mjs); only the finished set is committed
+store-listing-assets/.raw/
+store-listing-assets.zip
