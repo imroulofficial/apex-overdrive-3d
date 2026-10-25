@@ -533,16 +533,26 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .stat { grid-template-columns: 62px 1fr 22px; }
 }
 
-/* ---------- Portrait (browser preview; the Android build is landscape-locked) ---------- */
+/* ---------- Portrait and square windows: tablets held upright, unfolded foldables,
+   multi-window and desktop windows (phones stay landscape, see MainActivity) ---------- */
 @media (orientation: portrait) {
   .hud {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto 1fr auto auto auto;
+    /* minmax(0, 1fr): a plain 1fr track grows to its widest child and pushes the HUD off-screen. */
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr) auto auto auto;
     grid-template-areas: 'top' 'car' '.' 'cam' 'custom' 'race';
   }
+  .topbar { flex-wrap: wrap; gap: 8px; }
+  .top-left { min-width: 0; }
   .car-card { justify-self: end; width: min(240px, 100%); }
   .customizer { max-height: 34vh; }
+  .paint-grid { grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); }
   .race-btn { justify-self: stretch; }
+}
+@media (orientation: portrait) and (max-width: 520px) {
+  .cloud-badge span { display: none; }
+  .brand small { display: none; }
+  .car-card { display: none; }
 }
 
 /* =====================================================================
@@ -959,8 +969,29 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 }
 @media (orientation: portrait) {
   .rh-progress { display: none; }
-  .rh-speedo { position: fixed; left: 50%; bottom: calc(var(--pad-b) + 130px); transform: translateX(-50%); }
   .res-grid { grid-template-columns: 1fr; }
+}
+/* Clearly upright windows lift the speedo above the controls; square ones keep it in the row. */
+@media (max-aspect-ratio: 4/5) {
+  .rh-speedo { position: fixed; left: 50%; bottom: calc(var(--pad-b) + 130px); transform: translateX(-50%); }
+}
+/* Narrow upright windows (split screen, a tablet's side panel): touch controls scale with the
+   width so steering, drift and nitro always fit side by side. */
+@media (orientation: portrait) and (max-width: 520px) {
+  .rh-bottom, .rc-steer, .rc-actions { gap: 6px; }
+  .rc-half { width: 19vw; height: 19vw; }
+  .rc-half svg { width: 9vw; height: 9vw; }
+  .rc-btn.drift { width: 19vw; height: 16vw; }
+  .rc-btn.nitro { width: 21vw; height: 21vw; }
+  .rc-btn.gas { width: 15vw; height: 26vw; }
+  .rc-btn.brake { width: 16vw; height: 27vw; }
+  .rc-wheel { width: 36vw; height: 36vw; }
+  /* With manual throttle the GAS pedal joins the row: nitro moves above drift and gas. */
+  .race-hud.manual-throttle .rc-actions { display: grid; grid-template-areas: 'nitro nitro' 'drift gas'; justify-items: center; align-items: end; }
+  .race-hud.manual-throttle .rc-btn.drift { grid-area: drift; }
+  .race-hud.manual-throttle .rc-btn.nitro { grid-area: nitro; }
+  .race-hud.manual-throttle .rc-btn.gas { grid-area: gas; }
+  .race-hud.manual-throttle .rh-speedo { bottom: calc(var(--pad-b) + 54vw); }
 }
 
 /* =====================================================================
