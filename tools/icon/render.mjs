@@ -3,8 +3,9 @@
 //   node tools/icon/render.mjs [path/to/master.png]
 //
 // Output:
-//   public/assets/icon/play-store-512.png        Play Store listing icon (also the web splash logo)
-//   tools/icon/out/play-store-512.png            same, kept with the tooling
+//   tools/icon/out/play-store-512.png            Play Store listing icon (upload it in Play Console;
+//                                                kept out of public/ so it is not bundled in the AAB)
+//   public/assets/icon/splash.webp               in-game splash logo, 360 px (180 CSS px at 2x)
 //   android/app/src/main/res/mipmap-<density>/
 //     ic_launcher.png                            legacy icon, 48 dp, rounded corners
 //     ic_launcher_round.png                      legacy round icon, 48 dp
@@ -57,9 +58,10 @@ const masked = async (size, shape) =>
 
 // Play Store: a plain square (Play rounds the corners itself).
 const store = await resized(512);
-await sharp(store).toFile(path.join(root, 'public/assets/icon/play-store-512.png'));
 await mkdir(path.join(here, 'out'), { recursive: true });
 await sharp(store).toFile(path.join(here, 'out/play-store-512.png'));
+await mkdir(path.join(root, 'public/assets/icon'), { recursive: true });
+await sharp(await resized(360)).webp({ quality: 88 }).toFile(path.join(root, 'public/assets/icon/splash.webp'));
 
 for (const [density, k] of Object.entries(DENSITIES)) {
   const dir = path.join(res, `mipmap-${density}`);

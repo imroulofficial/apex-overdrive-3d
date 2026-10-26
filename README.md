@@ -11,6 +11,12 @@ Offline-first 3D arcade racer for Android by **Red Pen Studio**.
 
 ## 1.0.0 production release candidate (this release)
 
+### Back to the v64 window setup, lean bundle (versionCode 66)
+
+- versionCode 65 (fullscreen edge-to-edge, orientation unlocked on large screens, portrait and square layouts) is reverted. The manifest pins `sensorLandscape` again, `MainActivity` and the theme XMLs are the v64 immersive fullscreen ones, and the CSS is the v64 landscape layout. Play Console's edge-to-edge and large-screen recommendations come back with it; they are warnings, not upload blockers.
+- The AAB carries runtime files only. The Play Store icon lives in `tools/icon/out/play-store-512.png` (upload it in Play Console); the splash uses `public/assets/icon/splash.webp` (360 px). The `CREDITS.md` / `README.md` files beside the assets stay in the repo but are dropped from `dist/` by a Vite plugin. Store listing renders (`tools/store/`) are written to a git-ignored `store-listing-assets/`.
+- CI step "Check AAB web payload" (`tools/android/check_payload.mjs`) lists `android/app/src/main/assets/public` by folder and fails on docs, store art, preview or QA files.
+
 ### Real-time car mixer (versionCode 64)
 
 The race sound (engine, turbo, tyres, surfaces, wind, one-shots, rain and soundtrack) now plays from one AudioWorklet, `src/audio/worklet/carMixer.processor.js`. Nothing in the Web Audio graph is created, connected, disconnected or scheduled during a race.
@@ -57,7 +63,7 @@ A race used to stall graphics and sound together every second or two on phones. 
 - **Version**: `versionName` 1.0.0, `versionCode` 64 (`android/app/build.gradle`; 60-63 were the earlier 1.0.0 candidates), in step with `package.json` and the in-game About line. The version code now lives in `build.gradle` instead of the CI run number, so bump it by hand for every bundle you upload to Play (`test/release.test.js` keeps the three version strings aligned).
 - **Live AdMob**: the manifest carries the Red Pen Studio app id `ca-app-pub-1848535996024012~6089611565`, and `src/config.js` holds the live banner, interstitial and rewarded units. The Play bundle is built with `npm run build:release` (Vite mode `release`, `.env.release` sets `VITE_RELEASE=1`), which CI now always does, so it serves only the live units. The dev server, a plain `npm run build` and debug installs keep Google's test units, so nobody on the team ever clicks a live ad (AdMob invalid-traffic policy). No repository variables are needed any more.
 - **Real Google Play Billing only**: the sandbox store (the Settings toggle, its simulated purchases, "Reset purchases" / "Reset crate" and the SANDBOX badge) is gone. `remove_ads` ($2.99) and `supercar_bundle` ($6.99) unlock only through Google Play's payment sheet; in a desktop browser the Store says Google Play is unavailable. Old saves drop any simulated purchase together with its bonus record, so a later real purchase still pays its coins.
-- **Launcher icon**: every icon asset is generated from the studio's master icon, `tools/icon/master.png`, by `node tools/icon/render.mjs` (sharp): the 512 px Play Store icon (`public/assets/icon/play-store-512.png`, also the in-game splash logo), legacy rounded and round icons for mdpi to xxxhdpi, the adaptive foreground (art in the visible 72 dp centre, transparent margin) over a blurred enlargement of the art as the adaptive background, and the legacy launch splash. To change the icon, replace `master.png` and rerun the script.
+- **Launcher icon**: every icon asset is generated from the studio's master icon, `tools/icon/master.png`, by `node tools/icon/render.mjs` (sharp): the 512 px Play Store icon (`tools/icon/out/play-store-512.png`, not bundled), the 360 px in-game splash logo (`public/assets/icon/splash.webp`), legacy rounded and round icons for mdpi to xxxhdpi, the adaptive foreground (art in the visible 72 dp centre, transparent margin) over a blurred enlargement of the art as the adaptive background, and the legacy launch splash. To change the icon, replace `master.png` and rerun the script.
 
 ## Sampled car audio at the device's native rate
 
