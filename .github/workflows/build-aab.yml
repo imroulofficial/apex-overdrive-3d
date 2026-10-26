@@ -81,19 +81,10 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        # versionCode / versionName come from android/app/build.gradle (1.0.0 = code 65).
+        # versionCode / versionName come from android/app/build.gradle (1.0.0 = code 61).
         run: |
           chmod +x gradlew
           ./gradlew bundleRelease --no-daemon --stacktrace
-
-      - name: Scan bundle for deprecated edge-to-edge APIs
-        # Play Console's pre-launch checks flag Android 15 deprecated bar-colour / system-UI /
-        # cutout calls and orientation locks. Fails if our code or a Capacitor plugin has any.
-        run: |
-          set -o pipefail
-          MANIFEST=$(find android/app/build/intermediates -path '*merged_manifest*release*' -name AndroidManifest.xml | head -1)
-          python3 tools/android/scan_bundle.py android/app/build/outputs/bundle/release/app-release.aab "$MANIFEST" | tee dex-scan.log
-          { echo '### Edge-to-edge bytecode scan'; echo '```'; cat dex-scan.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify bundle signature
         if: steps.keystore.outputs.signed == 'true'

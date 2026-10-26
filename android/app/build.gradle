@@ -22,7 +22,7 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // Bump versionCode by hand for every bundle uploaded to Play (it must only go up);
         // keep versionName in step with package.json and GAME.version (test/release.test.js).
-        versionCode 65
+        versionCode 64
         versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
@@ -60,8 +60,6 @@ repositories {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
-    // EdgeToEdge.enable (androidx.activity 1.9+) is the edge-to-edge entry point Play checks for.
-    implementation "androidx.activity:activity:$androidxActivityVersion"
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"

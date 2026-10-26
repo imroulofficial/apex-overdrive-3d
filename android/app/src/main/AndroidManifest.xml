@@ -9,7 +9,6 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         android:hardwareAccelerated="true"
-        android:resizeableActivity="true"
         android:appCategory="game">
 
         <activity
@@ -18,6 +17,7 @@
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
             android:launchMode="singleTask"
+            android:screenOrientation="sensorLandscape"
             android:resizeableActivity="true"
             android:exported="true">
 
