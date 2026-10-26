@@ -17,6 +17,7 @@ tools/assets/cache/
 # Audio sample cutter download cache (re-created by node tools/audio/samples.mjs)
 tools/audio/cache/
 
-# Store listing render frames (tools/store/render.mjs); only the finished set is committed
-store-listing-assets/.raw/
+# Store listing renders (tools/store/render.mjs + package.mjs). Upload them to Play Console from
+# the project files; they are marketing art, not runtime assets, so they stay out of the repo.
+store-listing-assets/
 store-listing-assets.zip
