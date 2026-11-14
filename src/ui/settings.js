@@ -4,6 +4,7 @@ import { openExternal } from '../core/platform.js';
 import { GAME, LEGAL, PRODUCTS } from '../config.js';
 import { billing } from '../monetization/billing.js';
 import { ads } from '../monetization/ads.js';
+import { metaMeasurement } from '../monetization/metaMeasurement.js';
 import { cloud } from '../core/cloud.js';
 import { toast } from './hud.js';
 import { requestTiltPermission, probeTilt } from '../race/input.js';
@@ -53,7 +54,13 @@ export function createSettings(garage, { onFpsToggle, onEntitlementsChanged }) {
   });
 
   const privacyRow = dialog.querySelector('#row-ad-privacy');
-  dialog.querySelector('#btn-ad-privacy').addEventListener('click', () => ads.showPrivacyOptions());
+  // A changed choice also applies to Meta measurement (metaMeasurement.js).
+  dialog.querySelector('#btn-ad-privacy').addEventListener('click', () =>
+    ads
+      .showPrivacyOptions()
+      .catch((err) => console.warn('[ads] privacy options', err))
+      .then(() => metaMeasurement.sync(ads.consentStatus))
+  );
 
   function render() {
     renderAbout();

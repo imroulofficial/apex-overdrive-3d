@@ -22,7 +22,7 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // Bump versionCode by hand for every bundle uploaded to Play (it must only go up);
         // keep versionName in step with package.json and GAME.version (test/release.test.js).
-        versionCode 66
+        versionCode 67
         versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
@@ -64,6 +64,10 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // Meta (Facebook) SDK core: App Events only, for app-install / app-open measurement of
+    // Meta app ads. Pinned exactly; no Login, Share or other Meta modules. Started only after
+    // consent allows it (MetaMeasurementPlugin, src/monetization/metaConsent.js).
+    implementation "com.facebook.android:facebook-core:19.0.1"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

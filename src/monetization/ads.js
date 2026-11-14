@@ -52,6 +52,8 @@ function createAdMobBackend() {
         canRequestAds: info.canRequestAds !== false,
         // The plugin does not export this enum at runtime, so compare the raw value.
         privacyOptions: info.privacyOptionsRequirementStatus === 'REQUIRED',
+        // Read by the Meta measurement consent check (metaMeasurement.js); no effect on ads.
+        consentStatus: info.status,
       };
     },
     showPrivacyOptions: () => AdMob.showPrivacyOptionsForm(),
@@ -114,6 +116,7 @@ function createAdService() {
   let ready = null;
   let canRequestAds = false;
   let privacyOptions = false;
+  let consentStatus; // UMP status string, undefined until known
   let bannerWanted = false;
   let bannerShown = false;
   let bannerCreated = false;
@@ -205,7 +208,7 @@ function createAdService() {
     init() {
       ready ??= (async () => {
         try {
-          ({ canRequestAds, privacyOptions } = await backend.init());
+          ({ canRequestAds, privacyOptions, consentStatus } = await backend.init());
         } catch (err) {
           console.warn('[ads] AdMob failed to initialise; continuing without ads', err);
           canRequestAds = false;
@@ -223,6 +226,9 @@ function createAdService() {
 
     get privacyOptionsRequired() {
       return privacyOptions;
+    },
+    get consentStatus() {
+      return consentStatus;
     },
     async showPrivacyOptions() {
       await backend.showPrivacyOptions();

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <application
         android:allowBackup="true"
@@ -34,6 +35,38 @@
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-1848535996024012~6089611565" />
 
+        <!-- Meta (Facebook) SDK: app-install and app-open measurement for Meta app ads only.
+             Everything starts switched off. The SDK is not started at launch at all (its init
+             provider is removed below); MetaMeasurementPlugin starts it and turns on automatic
+             app events and advertiser ID collection only after the Google UMP consent result
+             allows it (src/monetization/metaConsent.js). Screen titles, AppLink URLs and
+             "product improvement" data stay off for everyone. -->
+        <meta-data
+            android:name="com.facebook.sdk.ApplicationId"
+            android:value="@string/facebook_app_id" />
+        <meta-data
+            android:name="com.facebook.sdk.ClientToken"
+            android:value="@string/facebook_client_token" />
+        <meta-data
+            android:name="com.facebook.sdk.AutoInitEnabled"
+            android:value="false" />
+        <meta-data
+            android:name="com.facebook.sdk.AutoLogAppEventsEnabled"
+            android:value="false" />
+        <meta-data
+            android:name="com.facebook.sdk.AdvertiserIDCollectionEnabled"
+            android:value="false" />
+        <meta-data
+            android:name="com.facebook.sdk.AutoLogMetaDataEnabled"
+            android:value="false" />
+        <meta-data
+            android:name="com.facebook.sdk.AutoLogProductImprovementEnabled"
+            android:value="false" />
+        <provider
+            android:name="com.facebook.internal.FacebookInitProvider"
+            android:authorities="${applicationId}.FacebookInitProvider"
+            tools:node="remove" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -49,6 +82,12 @@
 
     <!-- Required by the Capacitor WebView bridge; gameplay itself never touches the network. -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- The Meta SDK also asks for Privacy Sandbox custom audiences (remarketing). This app uses
+         Meta for install / app-open measurement only, so that permission is left out. -->
+    <uses-permission
+        android:name="android.permission.ACCESS_ADSERVICES_CUSTOM_AUDIENCE"
+        tools:node="remove" />
 
     <!-- OpenGL ES 3.0 (WebGL2) for the 3D renderer. -->
     <uses-feature android:glEsVersion="0x00030000" android:required="true" />

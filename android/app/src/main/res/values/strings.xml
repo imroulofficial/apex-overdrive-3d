@@ -4,4 +4,8 @@
     <string name="title_activity_main">Apex Overdrive</string>
     <string name="package_name">com.redpenstudio.apexoverdrive</string>
     <string name="custom_url_scheme">com.redpenstudio.apexoverdrive</string>
+    <!-- Meta (Facebook) SDK, install and app-open measurement only. The client token is the
+         public app token Meta documents for apps; the App Secret is never in the app. -->
+    <string name="facebook_app_id" translatable="false">1099961482668447</string>
+    <string name="facebook_client_token" translatable="false">39652a8780fcd17f7f7fd2bbd3f449e8</string>
 </resources>

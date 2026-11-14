@@ -19,6 +19,8 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Local plugin (Meta install measurement, consent-gated); must be registered before super.onCreate.
+        registerPlugin(MetaMeasurementPlugin.class);
         super.onCreate(savedInstanceState);
         Window window = getWindow();
         WindowCompat.setDecorFitsSystemWindows(window, false);
