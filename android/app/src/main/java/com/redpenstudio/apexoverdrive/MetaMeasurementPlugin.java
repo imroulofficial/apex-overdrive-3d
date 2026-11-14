@@ -17,7 +17,7 @@ import java.util.Map;
 
 // Local bridge between the game and the Meta (Facebook) SDK, used only for app-install and
 // app-open measurement of Meta app ads. It does two things:
-//   getConsentSignals  reads the IAB TCF values Google UMP stored on the device
+//   getConsentSignals  reads the IAB TCF (EU) and GPP (US states) values Google UMP stored
 //   setEnabled         starts the SDK with automatic app events + advertiser ID on, or turns
 //                      both off again
 // The decision itself is made in JavaScript (src/monetization/metaConsent.js, unit tested).
@@ -30,6 +30,9 @@ public class MetaMeasurementPlugin extends Plugin {
     private static final String KEY_GDPR_APPLIES = "IABTCF_gdprApplies";
     private static final String KEY_PURPOSE_CONSENTS = "IABTCF_PurposeConsents";
     private static final String KEY_ADDTL_CONSENT = "IABTCF_AddtlConsent";
+    // UMP's US states message writes only these two GPP keys (IAB GPP in-app spec).
+    private static final String KEY_GPP_SID = "IABGPP_GppSID";
+    private static final String KEY_GPP_STRING = "IABGPP_HDR_GppString";
 
     // Per process: the SDK can only be started once, even if the plugin is recreated.
     private static boolean started = false;
@@ -43,6 +46,9 @@ public class MetaMeasurementPlugin extends Plugin {
         result.put("gdprApplies", toGdprApplies(all.get(KEY_GDPR_APPLIES)));
         result.put("purposeConsents", toStringOrNull(all.get(KEY_PURPOSE_CONSENTS)));
         result.put("addtlConsent", toStringOrNull(all.get(KEY_ADDTL_CONSENT)));
+        Object sid = all.get(KEY_GPP_SID);
+        result.put("gppSid", sid instanceof Integer || sid instanceof Long ? String.valueOf(sid) : toStringOrNull(sid));
+        result.put("gppString", toStringOrNull(all.get(KEY_GPP_STRING)));
         call.resolve(result);
     }
 

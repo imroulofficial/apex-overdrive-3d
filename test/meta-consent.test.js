@@ -1,7 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
-import { decideMetaMeasurement, acConsentedIds, hasPurposeConsent, META_ATP_ID, META_TCF_PURPOSES } from '../src/monetization/metaConsent.js';
+import {
+  decideMetaMeasurement, acConsentedIds, hasPurposeConsent, META_ATP_ID, META_TCF_PURPOSES,
+  decodeGppHeader, decodeUsnat, gppSectionsInForce, decideUsOptOut,
+} from '../src/monetization/metaConsent.js';
 
 // Meta (Facebook) SDK for install / app-open measurement: the UMP consent → Meta mapping, and
 // the Android setup that keeps Meta switched off until that mapping says yes.
@@ -49,12 +52,73 @@ test('EEA/UK/CH: allowed only with purposes 1 + 7 and Meta (89) consented', () =
   assert.equal(decide({ umpStatus: 'NOT_REQUIRED', purposeConsents: '0', addtlConsent: '2~~dv.89' }).allowed, false);
 });
 
-test('outside GDPR regions: allowed when UMP says consent is not required or obtained', () => {
-  for (const umpStatus of ['NOT_REQUIRED', 'OBTAINED']) {
-    for (const gdprApplies of [0, '0', null, undefined]) {
-      assert.equal(decideMetaMeasurement({ umpStatus, gdprApplies }).allowed, true, `${umpStatus} ${gdprApplies}`);
+test('outside GDPR and US message areas: allowed when UMP says consent is not required', () => {
+  for (const gdprApplies of [0, '0', null, undefined]) {
+    for (const gppSid of [undefined, null, '', '-1', '0']) {
+      assert.equal(decideMetaMeasurement({ umpStatus: 'NOT_REQUIRED', gdprApplies, gppSid }).allowed, true, `${gdprApplies} ${gppSid}`);
     }
   }
+  // OBTAINED outside GDPR means the US message ran; with no readable US section, Meta stays off.
+  assert.equal(decideMetaMeasurement({ umpStatus: 'OBTAINED', gdprApplies: 0 }).allowed, false);
+});
+
+// Strings Google's AdMob team published for the UMP US states message (usnat, section 7).
+const US_ALLOW = 'DBABL~BVQqAAAAAg'; // "Allow data sharing"
+const US_OPTED_OUT = 'DBABL~BVQVAAAAAg'; // "Don't allow data sharing"
+const US_NO_CHOICE = 'DBABL~BAAAAAAAAg'; // reported for a fresh install, before any choice
+
+test('GPP header: section ids, including the spec examples', () => {
+  assert.deepEqual(decodeGppHeader('DBABM').sectionIds, [2]);
+  assert.deepEqual(decodeGppHeader('DBACNY').sectionIds, [2, 6]);
+  assert.deepEqual(decodeGppHeader('DBABjw').sectionIds, [5, 6]);
+  assert.deepEqual(decodeGppHeader('DBABL').sectionIds, [7]);
+  for (const bad of ['', null, 'D', 'AAAA', '!!!', 42]) assert.equal(decodeGppHeader(bad), null, String(bad));
+});
+
+test('usnat core: sale, sharing and targeted-advertising opt-outs and GPC', () => {
+  assert.deepEqual(decodeUsnat('BVQqAAAAAg'), { version: 1, saleOptOut: 2, sharingOptOut: 2, targetedAdvertisingOptOut: 2, gpc: false });
+  assert.deepEqual(decodeUsnat('BVQVAAAAAg'), { version: 1, saleOptOut: 1, sharingOptOut: 1, targetedAdvertisingOptOut: 1, gpc: false });
+  assert.deepEqual(decodeUsnat('BAAAAAAAAg'), { version: 1, saleOptOut: 0, sharingOptOut: 0, targetedAdvertisingOptOut: 0, gpc: false });
+  assert.equal(decodeUsnat('BVQqAAAAAg.YA').gpc, true); // GPC subsection: type 1, Gpc = 1
+  assert.equal(decodeUsnat('BVQqAAAAAg.QA').gpc, false); // GPC subsection: type 1, Gpc = 0
+  assert.equal(decodeUsnat('DVQqAAAAAg'), null); // usnat version 3: layout not known here
+  for (const bad of ['', null, 'B', 'BV?q']) assert.equal(decodeUsnat(bad), null, String(bad));
+});
+
+test('GPP sections in force', () => {
+  assert.deepEqual(gppSectionsInForce('7'), [7]);
+  assert.deepEqual(gppSectionsInForce('2_7'), [2, 7]);
+  assert.deepEqual(gppSectionsInForce(7), [7]);
+  for (const none of ['-1', '0', '', null, undefined]) assert.deepEqual(gppSectionsInForce(none), [], String(none));
+});
+
+test('US states message: Meta only when the player did not opt out', () => {
+  for (const umpStatus of ['NOT_REQUIRED', 'OBTAINED']) {
+    const us = (gppString, gppSid = '7') => decideMetaMeasurement({ umpStatus, gdprApplies: 0, gppSid, gppString });
+    assert.equal(us(US_ALLOW).allowed, true, umpStatus);
+    assert.equal(us(US_OPTED_OUT).allowed, false, umpStatus);
+    // No choice recorded, missing or broken signal: unknown, so off for this session.
+    assert.equal(us(US_NO_CHOICE).allowed, false, umpStatus);
+    assert.equal(us(undefined).allowed, false, umpStatus);
+    assert.equal(us('DBABL').allowed, false, umpStatus); // header only
+    assert.equal(us('DBABM~BVQqAAAAAg').allowed, false, umpStatus); // header says the part is TCF
+    assert.equal(us('garbage').allowed, false, umpStatus);
+    // GPC set, or a US section this code cannot read (a state section, old US Privacy).
+    assert.equal(us('DBABL~BVQqAAAAAg.YA').allowed, false, umpStatus);
+    assert.equal(us(US_ALLOW, '8').allowed, false, umpStatus);
+    assert.equal(us(US_ALLOW, '7_8').allowed, false, umpStatus);
+    assert.equal(us(US_ALLOW, '6').allowed, false, umpStatus);
+  }
+  // Only one of the three opt-outs is enough to keep Meta off.
+  const one = 'BVQmAAAAAg'; // sale 2, sharing 1, targeted 2
+  assert.deepEqual(decodeUsnat(one), { version: 1, saleOptOut: 2, sharingOptOut: 1, targetedAdvertisingOptOut: 2, gpc: false });
+  assert.equal(decideUsOptOut({ gppSid: '7', gppString: `DBABL~${one}` }).allowed, false);
+  // Not in a US message area: the US check does not apply.
+  assert.equal(decideUsOptOut({ gppSid: '-1', gppString: US_OPTED_OUT }), null);
+  // The EU rules win where GDPR applies, whatever a stale GPP string says.
+  assert.equal(decide({ gppSid: '7', gppString: US_ALLOW, addtlConsent: '2~~dv.89' }).allowed, false);
+  // UMP check failed: off, as before.
+  assert.equal(decideMetaMeasurement({ umpStatus: undefined, gppSid: '7', gppString: US_ALLOW }).allowed, false);
 });
 
 test('unknown region (UMP failed, offline, still required): Meta gets nothing', () => {
