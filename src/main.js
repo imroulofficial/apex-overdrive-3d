@@ -25,6 +25,7 @@ import { createDialogue } from './ui/dialogue.js';
 import { RELEASE } from './config.js';
 import { carStats, carLook } from './core/inventory.js';
 import { ads, rewardedFallback } from './monetization/ads.js';
+import { metaMeasurement } from './monetization/metaMeasurement.js';
 import { billing } from './monetization/billing.js';
 import { cloud } from './core/cloud.js';
 import { suspendAudio, resumeAudio, audioStats, audioLoaded } from './core/audio.js';
@@ -486,7 +487,8 @@ requestAnimationFrame(() =>
     // Monetization starts after the first frame so it never delays the garage reveal.
     billing.init().then(() => ads.refreshEntitlements());
     // The banner only shows while Settings is open (blueprint: never in the garage or a race).
-    ads.init();
+    // Meta install / app-open measurement starts only once the UMP consent result allows it.
+    ads.init().then(() => metaMeasurement.sync(ads.consentStatus));
     // Fetches the cloud save (adopted if newer than this device's), then uploads if needed.
     cloud.init();
   })
