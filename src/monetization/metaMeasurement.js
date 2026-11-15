@@ -1,25 +1,23 @@
 import { registerPlugin } from '@capacitor/core';
 import { isNative } from '../core/platform.js';
-import { decideMetaMeasurement } from './metaConsent.js';
 
 // Meta (Facebook) SDK for app-install and app-open measurement of Meta app ads, nothing else.
-// The SDK is not started at launch (android/app/src/main/AndroidManifest.xml). After the UMP
-// consent check in ads.init(), and again after the player changes their choice in
-// Settings → Ad privacy, sync() reads the consent the device holds (EU TCF and US GPP), decides with
-// metaConsent.js, and tells the local native plugin (MetaMeasurementPlugin.java) to start the
-// SDK with automatic app events and advertiser ID on, or to keep or turn them off.
+// The decision is made natively (android/.../meta/MetaConsentPolicy.java) from the consent
+// answer Google UMP stored on the device: at app start (ApexOverdriveApplication, before the
+// first screen) and again here, after the UMP check in ads.init() and after the player changes
+// their choice in Settings → Ad privacy, so a new or changed choice still applies this session.
+// The native side reads UMP itself, so the status passed in by the callers is not needed.
 // No purchase or custom event is ever logged from the game. Browser builds do nothing.
 
 const Native = isNative ? registerPlugin('MetaMeasurement') : null;
 
 let queue = Promise.resolve();
 
-async function apply(umpStatus) {
+async function apply() {
   if (!Native) return;
   try {
-    const signals = await Native.getConsentSignals();
-    const { allowed } = decideMetaMeasurement({ umpStatus, ...signals });
-    await Native.setEnabled({ enabled: allowed });
+    const { enabled, reason } = await Native.sync();
+    console.info(`[meta] measurement ${enabled ? 'on' : 'off'} (${reason})`);
   } catch (err) {
     console.warn('[meta] consent sync failed', err);
   }
@@ -27,8 +25,8 @@ async function apply(umpStatus) {
 
 export const metaMeasurement = {
   // Calls run one at a time, so a later choice always wins.
-  sync(umpStatus) {
-    queue = queue.then(() => apply(umpStatus));
+  sync() {
+    queue = queue.then(apply);
     return queue;
   },
 };

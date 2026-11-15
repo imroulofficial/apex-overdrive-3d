@@ -3,6 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <application
+        android:name=".ApexOverdriveApplication"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
@@ -36,11 +37,11 @@
             android:value="ca-app-pub-1848535996024012~6089611565" />
 
         <!-- Meta (Facebook) SDK: app-install and app-open measurement for Meta app ads only.
-             Everything starts switched off. The SDK is not started at launch at all (its init
-             provider is removed below); MetaMeasurementPlugin starts it and turns on automatic
-             app events and advertiser ID collection only after the Google UMP consent result
-             allows it (src/monetization/metaConsent.js). Screen titles, AppLink URLs and
-             "product improvement" data stay off for everyone. -->
+             Everything starts switched off and the SDK's own init provider is removed below.
+             ApexOverdriveApplication starts it at app start, and MetaMeasurementPlugin again after
+             each UMP check, only when the stored Google UMP consent answer allows it
+             (meta/MetaConsentPolicy.java). Screen titles, AppLink URLs, "product improvement"
+             data and SDK diagnostics stay off for everyone. -->
         <meta-data
             android:name="com.facebook.sdk.ApplicationId"
             android:value="@string/facebook_app_id" />
@@ -62,6 +63,9 @@
         <meta-data
             android:name="com.facebook.sdk.AutoLogProductImprovementEnabled"
             android:value="false" />
+        <meta-data
+            android:name="com.facebook.sdk.MonitorEnabled"
+            android:value="false" />
         <provider
             android:name="com.facebook.internal.FacebookInitProvider"
             android:authorities="${applicationId}.FacebookInitProvider"
@@ -82,6 +86,12 @@
 
     <!-- Required by the Capacitor WebView bridge; gameplay itself never touches the network. -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Meta SDK core (install attribution only): it may look up the Facebook app's attribution
+         ID provider, Meta's documented setup. No other app is queried. -->
+    <queries>
+        <package android:name="com.facebook.katana" />
+    </queries>
 
     <!-- The Meta SDK also asks for Privacy Sandbox custom audiences (remarketing). This app uses
          Meta for install / app-open measurement only, so that permission is left out. -->

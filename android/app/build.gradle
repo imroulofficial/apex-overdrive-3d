@@ -22,7 +22,7 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // Bump versionCode by hand for every bundle uploaded to Play (it must only go up);
         // keep versionName in step with package.json and GAME.version (test/release.test.js).
-        versionCode 67
+        versionCode 68
         versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
@@ -65,9 +65,12 @@ dependencies {
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
     // Meta (Facebook) SDK core: App Events only, for app-install / app-open measurement of
-    // Meta app ads. Pinned exactly; no Login, Share or other Meta modules. Started only after
-    // consent allows it (MetaMeasurementPlugin, src/monetization/metaConsent.js).
+    // Meta app ads. Pinned exactly; no Login, Share or other Meta modules. Started only when the
+    // stored consent answer allows it (meta/MetaConsentPolicy.java).
     implementation "com.facebook.android:facebook-core:19.0.1"
+    // Google UMP, compile-time only: the Meta start reads the consent status UMP stored. The
+    // runtime library is the one the AdMob plugin already ships, so the bundle does not change.
+    compileOnly "com.google.android.ump:user-messaging-platform:4.0.0"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
@@ -75,6 +78,10 @@ dependencies {
 }
 
 apply from: 'capacitor.build.gradle'
+
+// The Meta consent unit tests (src/test/.../meta) run with every release bundle, so CI, which
+// builds only bundleRelease, fails if the rules that switch Meta on are broken.
+tasks.matching { it.name == 'bundleRelease' }.configureEach { dependsOn 'testReleaseUnitTest' }
 
 // Firebase (anonymous Auth + Cloud Firestore cloud save). google-services.json is committed
 // for com.redpenstudio.apexoverdrive; without it the build still works but cloud sync is off.
