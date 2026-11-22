@@ -1,18 +1,18 @@
 import * as THREE from 'three';
 
-// Race camera with four views (settings.cameraView, cycled from the HUD camera button only):
+// Race camera with three views (settings.cameraView, cycled from the HUD camera button only):
 //   chase    Dynamic Chase Cam: a damped follow behind the car that lags a little in turns and
 //            widens with speed
 //   close    Close Follow Cam: the same follow, lower and tighter on the bumper
-//   hood     Hood / Bumper View: locked to the car's heading and pitch just above the bonnet
-//   cockpit  Driver View: the driver's eye inside the shared cockpit (race/cockpit.js)
+//   cockpit  Driver View: the driver's eye inside the shared cockpit (race/cockpit.js), always
+//            looking straight down the road, with a gentle head lean (HEAD)
 // The view never changes by itself: only setView() (the camera button) picks one. Every view
 // kicks the FOV on nitro and shakes on impacts. Also drives the pre-race fly-in (which ends
 // on the chosen view) and the post-finish orbit.
 //
-// Free look (race/freeLook.js): a finger dragged on empty screen orbits the follow views round
-// the car (or turns the driver's head in the cockpit) without touching the car's input; let go
-// and the view eases back behind the car in FREE_LOOK.returnTime seconds.
+// Free look (race/freeLook.js), Chase and Close only: a finger dragged on empty screen orbits
+// the camera round the car without touching the car's input; let go and the view eases back
+// behind the car in FREE_LOOK.returnTime seconds. In the cockpit a drag does nothing.
 //
 // Obstacles: in the follow views the camera is kept on the road side of the barriers. When a
 // wall, a cliff or a fence would come between the camera and the car, the camera slides in
@@ -32,18 +32,20 @@ const FOLLOW = {
 // sliding), and never more than `maxOffset` radians off the nose.
 // The follow yaw never turns faster than `maxRate` rad/s (a spinning car does not whip it).
 export const FOLLOW_YAW = { travelFrom: 3, travelTo: 12, travel: 0.5, drift: 0.65, driftRate: 3, maxOffset: 0.6, maxRate: 3.5 };
-// Hood view: `back` metres behind the nose and `lift` above the highest point of the bonnet
-// from there forward, aimed `ahead` metres down the road with a wider base FOV for the sense
-// of speed. Without a bonnet height it rides on the bumper, `bumper` of the roof line up.
-export const HOOD_SPAN = 1.4; // metres of bonnet Race measures, back from the nose
-const HOOD = { back: HOOD_SPAN, lift: 0.3, bumper: 0.55, ahead: 30, drop: 0.6, fov: 8, shake: 0.35 };
 // Driver view: the eye `back` metres behind the nose, `below` under the roof line (within
 // `minY`..`maxY` of the car's origin), `side` metres left of the centre line (left-hand drive).
-// A smaller FOV kick than the hood, so the cockpit stays put on screen.
+// A small FOV kick, so the cockpit stays put on screen.
 export const COCKPIT = { back: 2.2, minX: -0.7, below: 0.3, minY: 0.82, maxY: 1.25, side: -0.36, ahead: 30, drop: 0.9, fov: 6, speedFov: 6, shake: 0.25 };
-// Free look: radians per pixel of drag, the limits (orbit: any way round, a little tilt; the
-// driver's head: a limited turn), and the time it takes to ease back once released.
-export const FREE_LOOK = { yawPerPx: 0.009, pitchPerPx: 0.006, orbitPitch: [-0.25, 0.5], headYaw: 1.25, headPitch: [-0.3, 0.3], returnTime: 1.2 };
+// The driver's head in the cockpit, in metres in the car's frame, all of it small and eased
+// (no motion sickness): braking pitches it forward and down (`brake` m per m/s², up to
+// `maxFwd`), accelerating presses it back (`accel`, up to `maxBack`); cornering leans it to
+// the outside (`lean` m per m/s² of lateral acceleration, up to `maxLean`); `rate` is how fast
+// it follows (1/s). Above `buzzFrom` m/s a light road buzz grows to `buzz` m; nitro adds
+// `nitro` per tier; a landing drops the head by up to `land` m and springs back.
+export const HEAD = { brake: 0.0028, maxFwd: 0.045, accel: 0.0016, maxBack: 0.02, lean: 0.0022, maxLean: 0.035, rate: 5, buzzFrom: 40, buzz: 0.0025, nitro: 0.0025, land: 0.045 };
+// Free look: radians per pixel of drag, the orbit limits (any way round, a little tilt), and
+// the time it takes to ease back once released.
+export const FREE_LOOK = { yawPerPx: 0.009, pitchPerPx: 0.006, orbitPitch: [-0.25, 0.5], returnTime: 1.2 };
 // Obstacle avoidance: stay `margin` metres inside the barrier line; slide in at `pullIn`/s and
 // back out at `easeOut`/s; never closer than `minReach` of the full distance. Only the
 // horizontal range shrinks: the camera keeps its height, so close in it looks down over the
@@ -78,7 +80,7 @@ export class ChaseCamera {
     this.mode = 'chase';
     this.view = 'chase';
     // Player car bounds in its own frame (x forward, y up); Race sets it from the model.
-    this.size = { nose: 2.2, roof: 1.3, bonnet: null };
+    this.size = { nose: 2.2, roof: 1.3 };
     this.t = 0;
     this.track = null; // for keeping the camera off the barriers (setTrack)
     this.reach = 1; // fraction of the follow distance the camera is out at (obstacles)
@@ -87,6 +89,8 @@ export class ChaseCamera {
     // Free-look offsets: yaw (+ = look right) and pitch (+ = from higher up / look up).
     this.free = { yaw: 0, pitch: 0, held: false, fromYaw: 0, fromPitch: 0, t: 0 };
     this.eye = { x: 0, y: 0, z: 0 };
+    // Cockpit head motion (HEAD): offset from the eye, eased accelerations, landing spring.
+    this.head = { x: 0, y: 0, z: 0, lon: 0, lat: 0, fwd: 0, yaw: 0, land: 0, landV: 0, air: 0, wasAir: false, t: 0, primed: false };
     this._v = new THREE.Vector3();
     this._l = new THREE.Vector3();
     this._p = new THREE.Vector3();
@@ -111,16 +115,15 @@ export class ChaseCamera {
     this._proj.i = -1;
   }
 
-  // Nose (front-most x), roof (top y) and bonnet height (top y over the front HOOD_SPAN, or
-  // null) of the player's car, in metres from its origin.
-  setCarSize(nose, roof, bonnet = null) {
+  // Nose (front-most x) and roof (top y) of the player's car, in metres from its origin.
+  setCarSize(nose, roof) {
     if (nose > 0.5) this.size.nose = nose;
     if (roof > 0.5) this.size.roof = roof;
-    this.size.bonnet = bonnet > 0.2 && bonnet < this.size.roof ? bonnet : null;
   }
 
   snap(car) {
     this.yaw = car.heading;
+    this.resetHead();
     this.driftK = car.drifting ? 1 : 0;
     this.camSpeed = Math.min(car.speed, 70);
     this.reach = this.clearReach(car, this.idealFor(car, this.pos, this.look));
@@ -135,16 +138,15 @@ export class ChaseCamera {
   }
 
   // ---- Free look (race/freeLook.js) ----
-  // A drag of (dx, dy) pixels. Never touches the car: only the view offsets move.
+  // A drag of (dx, dy) pixels round the car (Chase and Close). Never touches the car: only the
+  // view offsets move. In the cockpit it does nothing: the driver looks straight ahead.
   freeLookDrag(dx, dy) {
+    if (this.view === 'cockpit') return;
     const f = this.free;
     f.held = true;
-    const cockpit = this.view === 'cockpit' || this.view === 'hood';
-    const yawMax = cockpit ? FREE_LOOK.headYaw : Math.PI;
-    const [p0, p1] = cockpit ? FREE_LOOK.headPitch : FREE_LOOK.orbitPitch;
-    f.yaw = clamp(f.yaw + dx * FREE_LOOK.yawPerPx, -yawMax, yawMax);
-    // Finger up looks up: in the cockpit the head tilts up; round the car the camera dips.
-    f.pitch = clamp(f.pitch + (cockpit ? -dy : dy) * FREE_LOOK.pitchPerPx, p0, p1);
+    const [p0, p1] = FREE_LOOK.orbitPitch;
+    f.yaw = clamp(f.yaw + dx * FREE_LOOK.yawPerPx, -Math.PI, Math.PI);
+    f.pitch = clamp(f.pitch + dy * FREE_LOOK.pitchPerPx, p0, p1);
   }
 
   // The finger lifted: ease back behind the car (or to straight ahead) from where it is.
@@ -181,10 +183,6 @@ export class ChaseCamera {
   // The follow pose for the current yaw (plus the free-look orbit). Returns the point the
   // camera looks at the car from (its roof line), for the obstacle check.
   idealFor(car, pos, look, view = this.view) {
-    if (view === 'hood') {
-      this.hoodFor(car, pos, look);
-      return null;
-    }
     if (view === 'cockpit') {
       this.cockpitFor(car, pos, look);
       return null;
@@ -209,20 +207,62 @@ export class ChaseCamera {
     return this._l2.set(car.pos.x, car.pos.y + F.lookY, car.pos.z);
   }
 
-  // On the nose, following heading and pitch rigidly (no roll, so the horizon stays level).
-  hoodFor(car, pos, look) {
-    const { nose, roof, bonnet } = this.size;
-    const x = bonnet === null ? nose + 0.05 : nose - HOOD.back;
-    const y = bonnet === null ? roof * HOOD.bumper : bonnet + HOOD.lift;
-    this.carPoint(car, x, y, 0, pos);
-    this.aim(car, pos, look, HOOD.ahead, HOOD.drop);
-  }
-
-  // The driver's eye, with the head turned by free look.
+  // The driver's eye (plus the head motion), looking straight down the car's nose; heading
+  // and pitch follow the car rigidly, no roll, so the horizon stays level.
   cockpitFor(car, pos, look) {
     const e = cockpitEye(this.size, this.eye);
-    this.carPoint(car, e.x, e.y, e.z, pos);
+    const h = this.head;
+    this.carPoint(car, e.x + h.x, e.y + h.y, e.z + h.z, pos);
     this.aim(car, pos, look, COCKPIT.ahead, COCKPIT.drop);
+  }
+
+  resetHead() {
+    const h = this.head;
+    h.x = h.y = h.z = h.lon = h.lat = h.land = h.landV = h.air = 0;
+    h.wasAir = false;
+    h.primed = false;
+  }
+
+  // Head motion from the car's own accelerations (measured here, so it needs nothing from the
+  // physics): lean forward under braking, back under power, out in the turns; a light buzz at
+  // high speed and on nitro; a dip and spring back on landing. All in metres, all small.
+  updateHead(car, dt, boostTier) {
+    const h = this.head;
+    const H = HEAD;
+    const fwd = car.forward ?? car.speed;
+    if (!h.primed || dt <= 0) {
+      h.fwd = fwd;
+      h.yaw = car.heading;
+      h.primed = true;
+      return;
+    }
+    const lonA = (fwd - h.fwd) / dt;
+    const latA = (fwd * wrapAngle(car.heading - h.yaw)) / dt; // + = turning left
+    h.fwd = fwd;
+    h.yaw = car.heading;
+    // Accelerations are noisy frame to frame (contacts, gear changes): ease them first.
+    const k = Math.min(1, dt * 8);
+    h.lon += (clamp(lonA, -40, 40) - h.lon) * k;
+    h.lat += (clamp(latA, -40, 40) - h.lat) * k;
+    const tx = h.lon < 0 ? Math.min(H.maxFwd, -h.lon * H.brake) : -Math.min(H.maxBack, h.lon * H.accel);
+    const tz = clamp(h.lat * H.lean, -H.maxLean, H.maxLean); // left turn throws the head right (+z)
+    const f = Math.min(1, dt * H.rate);
+    h.x += (tx - h.x) * f;
+    h.z += (tz - h.z) * f;
+    // Landing: a damped spring kicked by how long the car was in the air.
+    if (car.airborne) h.air += dt;
+    else if (h.wasAir) {
+      h.landV -= Math.min(1, h.air * 1.6) * H.land * 14;
+      h.air = 0;
+    }
+    h.wasAir = !!car.airborne;
+    h.landV += (-h.land * 120 - h.landV * 14) * dt;
+    h.land = clamp(h.land + h.landV * dt, -H.land, H.land * 0.5);
+    // Road buzz at speed and on nitro: smooth sines, not random jitter.
+    h.t += dt;
+    const buzz = H.buzz * smooth01(H.buzzFrom, 75, car.speed) + H.nitro * boostTier;
+    const n = Math.sin(h.t * 37.1) * 0.6 + Math.sin(h.t * 23.7 + 1.3) * 0.4;
+    h.y = h.land - Math.max(0, h.x) * 0.35 + n * buzz; // braking also dips the head a little
   }
 
   // Car frame (x forward, y up, z right) -> world, pitching about the car's right axis.
@@ -282,7 +322,7 @@ export class ChaseCamera {
 
   // Pulls `pos` in toward the car to `reach` of its horizontal range (height kept).
   applyReach(car, pos, reach) {
-    if (reach >= 1 || this.view === 'hood' || this.view === 'cockpit') return;
+    if (reach >= 1 || this.view === 'cockpit') return;
     pos.x = car.pos.x + (pos.x - car.pos.x) * reach;
     pos.z = car.pos.z + (pos.z - car.pos.z) * reach;
   }
@@ -335,19 +375,16 @@ export class ChaseCamera {
       cam.position.set(car.pos.x + Math.cos(a) * r, car.pos.y + 2.6, car.pos.z - Math.sin(a) * r);
       cam.lookAt(this._l.set(car.pos.x, car.pos.y + 0.8, car.pos.z));
       this.fov += (54 - this.fov) * Math.min(1, dt * 2);
-    } else if (this.view === 'hood' || this.view === 'cockpit') {
-      const hood = this.view === 'hood';
+    } else if (this.view === 'cockpit') {
       this.yaw = car.heading;
-      if (hood) this.hoodFor(car, this.pos, this.look);
-      else this.cockpitFor(car, this.pos, this.look);
+      this.updateHead(car, dt, boostTier);
+      this.cockpitFor(car, this.pos, this.look);
       cam.position.copy(this.pos);
       this.camY = this.pos.y;
       const speedK = Math.min(1, car.speed / 70);
-      const targetFov = hood
-        ? BASE_FOV + HOOD.fov + speedK * 12 + (boostTier === 2 ? 16 : boostTier === 1 ? 7 : 0)
-        : BASE_FOV + COCKPIT.fov + speedK * COCKPIT.speedFov + (boostTier === 2 ? 10 : boostTier === 1 ? 5 : 0);
+      const targetFov = BASE_FOV + COCKPIT.fov + speedK * COCKPIT.speedFov + (boostTier === 2 ? 10 : boostTier === 1 ? 5 : 0);
       this.fov += (targetFov - this.fov) * Math.min(1, dt * (targetFov > this.fov ? 6 : 2.5));
-      this.applyShake(cam, boostTier, hood ? HOOD.shake : COCKPIT.shake, dt);
+      this.applyShake(cam, boostTier, COCKPIT.shake, dt);
       cam.lookAt(this.look);
     } else {
       const F = FOLLOW[this.view] ?? FOLLOW.chase;

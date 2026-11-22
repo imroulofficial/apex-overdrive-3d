@@ -259,7 +259,7 @@ const freeLook = createFreeLook({
   onRelease: () => race?.freeLookRelease(),
 });
 
-// HUD camera toggle: chase -> close follow -> hood -> driver, remembered per device. Only this
+// HUD camera toggle: chase -> close follow -> driver (cockpit), remembered per device. Only this
 // button (or C, or Settings) changes the view.
 function applyCameraView(announce = false) {
   const view = state.settings.cameraView;

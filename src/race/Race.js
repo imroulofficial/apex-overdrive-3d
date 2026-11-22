@@ -12,8 +12,9 @@ import { AIDriver } from './ai.js';
 import { CarFactory, ContactShadows, FLAME, LIGHTS } from './raceCars.js';
 import { carById } from '../data/cars.js';
 import { loadCar } from '../assets/modelLoader.js';
-import { ChaseCamera, HOOD_SPAN } from './chaseCamera.js';
-import { Cockpit } from './cockpit.js';
+import { ChaseCamera } from './chaseCamera.js';
+import { Cockpit, gearGlyph } from './cockpit.js';
+import { tunnelShade } from './alpineSetPieces.js';
 import { Gearbox } from '../audio/gearbox.js';
 import { Particles, SkidMarks, SpeedLines, softDotTexture } from './effects.js';
 import { mulberry32 } from './noise.js';
@@ -94,6 +95,7 @@ export class Race {
     this.quality = quality;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(64, 1, 0.3, 3200);
+    this.camera.layers.enable(1); // the cockpit (race/cockpit.js) lives on layer 1
     this.scene.add(this.camera);
     this.track = new Track(this.def);
     // Route variations: the reversed road is built the first time a stage needs it.
@@ -147,10 +149,12 @@ export class Race {
     this.chase = new ChaseCamera(this.camera);
     this.chase.setTrack(this.track);
     // Driver view: one shared cabin, hidden until the camera sits in it. Its gearbox mirrors
-    // the engine sound's (audio/gearbox.js) to drive the rev counter.
+    // the engine sound's (audio/gearbox.js) to drive the rev counter and the gear readout.
     this.cockpit = new Cockpit({ lowEnd: this.lowEnd });
     this.scene.add(this.cockpit.group);
     this.cockpitShown = null;
+    this.cockpitProj = { i: -1 };
+    this.nightGlow = 0;
     this.gearbox = new Gearbox();
     this.gearIn = { dt: 0, speedNorm: 0, throttle: 0, neutral: true, airborne: false };
     this.fitCamera();
@@ -278,6 +282,8 @@ export class Race {
     this.bloom.setParams(w.bloom);
     // Lights on at dusk, at night and in fog, rain or snow.
     LIGHTS.on = w.sun.intensity < 1.25 || w.sun.elevation < 0.1;
+    // The cockpit's gauge backlight glows brighter as the light goes.
+    this.nightGlow = Math.min(1, Math.max(0, (1.3 - w.sun.intensity) / 0.9));
     // Cars, glass and puddles reflect the coast under this sky: bake it into the environment
     // cubemap from just above the start line (proxies only, so no car reflects itself).
     const f = fwd.frame(0, {});
@@ -306,41 +312,21 @@ export class Race {
     await this.renderer.compileAsync(this.scene, this.camera);
   }
 
-  // The hood view sits on the player's car, so it needs the model's nose and the height of its
-  // bonnet, centre line and both wings (cast down onto the opaque body: headlight beams, floor
-  // pools and flames reach well past the car).
+  // The follow views and the driver's eye need the model's nose and roof line.
   fitCamera() {
     const box = new THREE.Box3();
     const part = new THREE.Box3();
-    const solid = [];
     const group = this.factory.template.group;
     group.updateMatrixWorld(true);
     group.traverse((o) => {
       if (!o.isMesh || !o.visible || o.name === 'beam') return;
       const mats = Array.isArray(o.material) ? o.material : [o.material];
-      if (mats.some((m) => m.blending !== THREE.NormalBlending)) return;
-      solid.push(o); // bodywork can be alpha-blended on imported models
-      if (mats.some((m) => m.transparent)) return;
+      if (mats.some((m) => m.blending !== THREE.NormalBlending || m.transparent)) return;
       if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
       box.union(part.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld));
     });
     if (box.isEmpty()) return;
-    const ray = new THREE.Raycaster();
-    const down = new THREE.Vector3(0, -1, 0);
-    const surfaceAt = (x, z) => {
-      ray.set(new THREE.Vector3(x, box.max.y + 1, z), down);
-      const hit = ray.intersectObjects(solid, false)[0];
-      return hit ? hit.point.y : null;
-    };
-    const nose = box.max.x;
-    const bonnet = [];
-    for (let x = nose - HOOD_SPAN; x <= nose - 0.05; x += 0.1) bonnet.push(surfaceAt(x, 0));
-    // Raised wings either side (wide-body supercars) would fill the view from the centre line.
-    for (let x = nose - HOOD_SPAN; x <= nose - 0.3; x += 0.2) for (const z of [-0.45, 0.45]) {
-      const y = surfaceAt(x, z);
-      if (y !== null) bonnet.push(y);
-    }
-    this.chase.setCarSize(nose, box.max.y, bonnet.every((y) => y !== null) ? Math.max(...bonnet) : null);
+    this.chase.setCarSize(box.max.x, box.max.y);
   }
 
   // Camera view from settings or the HUD toggle (CAMERA_VIEWS); takes effect immediately.
@@ -352,7 +338,8 @@ export class Race {
   // Free look (race/freeLook.js): only while the race camera is following the car, during
   // the countdown and the race, not paused.
   get freeLookAllowed() {
-    return this.running && this.chase.mode === 'chase' && (this.phase === 'countdown' || this.phase === 'racing');
+    // Chase and Close only: the cockpit always looks straight ahead.
+    return this.running && this.chase.mode === 'chase' && this.chase.view !== 'cockpit' && (this.phase === 'countdown' || this.phase === 'racing');
   }
 
   freeLookDrag(dx, dy) {
@@ -481,6 +468,7 @@ export class Race {
     this.hud = hud;
     this.onFinish = onFinish;
     this.factory.setPlayerPaint(paint.color, paint.finish);
+    this.cockpit.setPaint(paint.color);
     this.player.color = paint.color;
     this.playerSmoke = fx?.smoke ? new THREE.Color(fx.smoke.color) : SMOKE;
     this.player.visual.setNitroFx(fx?.nitro ?? null);
@@ -551,6 +539,8 @@ export class Race {
     this.culling.update(this.camera);
     this.bloom.resize();
     this.bloom.render(scene, this.camera);
+    // The cockpit's live mirror target, allocated and drawn once (mid and high GPUs).
+    this.cockpit.renderMirror(r, scene, true);
   }
 
   start() {
@@ -633,6 +623,7 @@ export class Race {
     this.scenery?.disposeEnvironment();
     this.bloom?.destroy();
     this.warmTarget?.dispose();
+    this.cockpit?.dispose();
     this.scene?.environment?.dispose();
     this.scene = null;
     this.culling = null;
@@ -646,6 +637,12 @@ export class Race {
     this.last = nowMs;
     this.trackPerformance(dt);
     if (this.phase !== 'paused') this.update(dt);
+    this.render();
+  }
+
+  // One frame on screen: the cockpit's live mirror when it is due, then the scene through bloom.
+  render() {
+    if (this.cockpitShown) this.cockpit.renderMirror(this.renderer, this.scene);
     this.bloom.render(this.scene, this.camera);
   }
 
@@ -1252,6 +1249,11 @@ export class Race {
       this.cockpit.setVisible(shown);
       this.player.visual.root.visible = !shown;
       for (const m of this.factory.sharedMeshes) m.visible = !shown;
+      // Rain: drops run on the windscreen, and no falling streaks inside the cabin.
+      this.lens.setGlass(shown);
+      this.rain.setCabin(shown);
+      // Speed lines stay outside the cabin (they draw over everything in the follow views).
+      this.speedLines.material.depthTest = shown;
     }
     if (!shown) return;
     const v = this.player.vehicle;
@@ -1262,7 +1264,9 @@ export class Race {
     g.neutral = this.phase === 'intro' || this.phase === 'countdown';
     g.airborne = v.airborne;
     this.gearbox.run(g);
-    this.cockpit.update(v, chase, dt, this.player.visual.steerInput ?? 0, Math.abs(v.forward) * 3.6, this.gearbox.rpm);
+    const gear = gearGlyph(this.gearbox.gear, g.neutral, v.forward < -0.5);
+    const glow = Math.max(this.nightGlow, tunnelShade(this.track, this.camera.position, this.cockpitProj));
+    this.cockpit.update(v, chase, dt, this.player.visual.steerInput ?? 0, Math.abs(v.forward) * 3.6, this.gearbox.rpm, gear, glow);
   }
 
   updateEngine(input, dt) {

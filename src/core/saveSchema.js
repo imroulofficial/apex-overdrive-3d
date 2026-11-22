@@ -30,7 +30,7 @@ import { STARTING_COINS, UPGRADE_COSTS } from '../data/economy.js';
 import { CARS, RETIRED_CARS, STARTER_CAR } from '../data/cars.js';
 import { PAINTS, RIMS, UPGRADES, SPOILERS, FX_COLORS, DEFAULT_SMOKE, DEFAULT_NITRO } from '../data/catalog.js';
 import { STAGES, MILESTONES } from '../data/career.js';
-import { CONTROL_SCHEMES, DEFAULT_CONTROLS, CAMERA_VIEWS, DEFAULT_CAMERA } from '../data/controls.js';
+import { CONTROL_SCHEMES, DEFAULT_CONTROLS, CAMERA_VIEWS, DEFAULT_CAMERA, CAMERA_RENAMED } from '../data/controls.js';
 import { BLOOM_LEVELS, DEFAULT_BLOOM } from '../data/weather.js';
 import { SCENES } from '../data/story.js';
 
@@ -51,6 +51,7 @@ const int = (v, lo, hi, fallback) => (Number.isFinite(v) ? Math.min(hi, Math.max
 function normalizeSettings(st) {
   delete st.sandboxStore; // the pre-1.0 sandbox store toggle
   if (!CONTROL_SCHEMES.includes(st.controls)) st.controls = DEFAULT_CONTROLS;
+  if (Object.hasOwn(CAMERA_RENAMED, st.cameraView)) st.cameraView = CAMERA_RENAMED[st.cameraView]; // v72: hood / driver -> cockpit
   if (!CAMERA_VIEWS.includes(st.cameraView)) st.cameraView = DEFAULT_CAMERA;
   if (!BLOOM_LEVELS.includes(st.bloom)) st.bloom = DEFAULT_BLOOM;
   return st;
