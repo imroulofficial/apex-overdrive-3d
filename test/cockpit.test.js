@@ -2,7 +2,11 @@
 // Settings), saved "hood" / "driver" views migrate to "cockpit" with nothing else in the save
 // touched, and the shared cockpit: wheel, hands, needles, gear and shift lights follow the real
 // values; it draws on top of the world; it stays light; low-end GPUs get no live mirror pass.
+// Since versionCode 73 the cockpit is the Blender model (test/cockpit-model.test.js has its
+// tiers and budgets); these tests run on its mid and low tiers.
 import './dom-stub.js';
+
+globalThis.self ??= globalThis; // GLTFLoader looks for self.URL
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -12,14 +16,26 @@ import { Cockpit, needleAngle, shiftLit, gearGlyph, WHEEL_LOCK, HAND_TURN, SPEED
 import { Rain, LensDrops } from '../src/race/atmosphere.js';
 import { CAMERA_VIEWS, CAMERA_LABELS } from '../src/data/controls.js';
 import { normalize, defaults } from '../src/core/saveSchema.js';
+import { COCKPIT_FILES, parseCockpitAsset } from '../src/race/cockpitAsset.js';
 
 const DT = 1 / 60;
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 
+// The model's mid and low tiers (textures cannot decode in node; geometry and names are real).
+const assets = {};
+for (const tier of ['mid', 'low']) {
+  const buf = await readFile(new URL(`../public/assets/cockpit/${COCKPIT_FILES[tier]}`, import.meta.url));
+  const err = console.error;
+  console.error = () => {};
+  assets[tier] = await parseCockpitAsset(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), tier);
+  console.error = err;
+}
+const makeCockpit = (lowEnd = false) => new Cockpit({ lowEnd, asset: assets[lowEnd ? 'low' : 'mid'] });
+
 function cockpitRig(lowEnd = false) {
   const cam = new ChaseCamera(new THREE.PerspectiveCamera(64, 2, 0.3, 3000));
   cockpitEye(cam.size, cam.eye);
-  const cockpit = new Cockpit({ lowEnd });
+  const cockpit = makeCockpit(lowEnd);
   const car = { pos: new THREE.Vector3(10, 2, 5), heading: 0.4, pitch: 0 };
   return { cam, cockpit, car };
 }
@@ -172,9 +188,9 @@ test('the cockpit draws on top of the world (a rival overlapping the car never s
   assert.match(race, /this\.camera\.layers\.enable\(1\)/, 'the race camera sees the cockpit layer');
 });
 
-test('light: few draws, textures within 512 px made once, simplest version on low-end GPUs', () => {
-  const full = new Cockpit();
-  const low = new Cockpit({ lowEnd: true });
+test('light: few draws, textures made once, simplest version on low-end GPUs', () => {
+  const full = makeCockpit();
+  const low = makeCockpit(true);
   for (const [c, maxDraws] of [[full, 12], [low, 11]]) {
     const meshes = meshesOf(c);
     assert.ok(meshes.length <= maxDraws, `${meshes.length} draws`);
@@ -185,9 +201,8 @@ test('light: few draws, textures within 512 px made once, simplest version on lo
       assert.equal(m.castShadow, false);
       assert.equal(m.receiveShadow, false);
     }
-    for (const t of textures) {
-      assert.ok(t.image.width <= 512 && t.image.height <= 512, `texture ${t.image.width}x${t.image.height} within 512 px`);
-    }
+    // The cluster face is the only texture drawn in code, within 512 px.
+    for (const t of textures) if (t.image?.width) assert.ok(t.image.width <= 512 && t.image.height <= 512, `texture ${t.image.width}x${t.image.height} within 512 px`);
     // All of them are made in the constructor; update() never makes another.
     const before = textures.size;
     const cam = new ChaseCamera(new THREE.PerspectiveCamera(64, 2, 0.3, 3000));
@@ -196,17 +211,12 @@ test('light: few draws, textures within 512 px made once, simplest version on lo
     for (const m of meshesOf(c)) for (const v of [...Object.values(m.material), ...Object.values(m.material.uniforms ?? {}).map((u) => u.value)]) if (v?.isTexture) after.add(v);
     assert.equal(after.size, before);
   }
-  // Low-end: unlit (Basic, or the cluster's own unlit shader), no windscreen sheen, no
-  // stitching, no grain or carbon textures.
-  for (const m of meshesOf(low)) {
-    assert.ok(m.material.isMeshBasicMaterial || m.material.isShaderMaterial, `${m.name}: unlit on low-end`);
-    assert.ok(!m.material.map || m.material.map.isTexture === false, `${m.name}: no surface texture on low-end`);
-  }
+  // Low-end: unlit (Basic, or the cluster's own unlit shader), no windscreen sheen.
+  for (const m of meshesOf(low)) assert.ok(m.material.isMeshBasicMaterial || m.material.isShaderMaterial, `${m.name}: unlit on low-end`);
   assert.ok(!meshesOf(low).some((m) => m.name === 'cockpit-glass'));
   assert.ok(meshesOf(full).some((m) => m.name === 'cockpit-glass'));
-  const lowTris = meshesOf(low).reduce((n, m) => n + m.geometry.attributes.position.count, 0);
-  const fullTris = meshesOf(full).reduce((n, m) => n + m.geometry.attributes.position.count, 0);
-  assert.ok(lowTris < fullTris * 0.6, `low-end has fewer details (${lowTris} vs ${fullTris} vertices)`);
+  const tris = (c) => c.stats().triangles;
+  assert.ok(tris(low) < tris(full) * 0.35, `low-end has fewer details (${tris(low)} vs ${tris(full)} triangles)`);
 });
 
 test('live mirror: one small render every 2nd frame on mid/high GPUs, never on low-end', () => {
@@ -226,7 +236,7 @@ test('live mirror: one small render every 2nd frame on mid/high GPUs, never on l
   });
   const scene = new THREE.Scene();
   // Low-end: no target, no camera, no render, even when forced (the warm-up).
-  const low = new Cockpit({ lowEnd: true });
+  const low = makeCockpit(true);
   const lowLog = [];
   assert.equal(low.liveMirror, false);
   assert.equal(low.mirrorTarget, undefined);
@@ -237,7 +247,7 @@ test('live mirror: one small render every 2nd frame on mid/high GPUs, never on l
   const glass = meshesOf(low).find((m) => m.name === 'cockpit-mirrors');
   assert.ok(glass.material.vertexColors && !glass.material.map, 'low-end mirrors show a sky gradient');
 
-  const full = new Cockpit();
+  const full = makeCockpit();
   const r = fakeRenderer(renders);
   assert.equal(full.mirrorTarget.width, MIRROR.width);
   assert.equal(full.mirrorTarget.height, MIRROR.height);

@@ -22,3 +22,5 @@ tools/audio/cache/
 store-listing-assets/
 store-listing-assets.zip
 qa-shots/
+# Cockpit model build output (re-created by tools/cockpit/build_cockpit.py; pack.mjs ships public/assets/cockpit/)
+tools/cockpit/build/

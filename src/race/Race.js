@@ -14,6 +14,7 @@ import { carById } from '../data/cars.js';
 import { loadCar } from '../assets/modelLoader.js';
 import { ChaseCamera } from './chaseCamera.js';
 import { Cockpit, gearGlyph } from './cockpit.js';
+import { cockpitTier, loadCockpitAsset } from './cockpitAsset.js';
 import { tunnelShade } from './alpineSetPieces.js';
 import { Gearbox } from '../audio/gearbox.js';
 import { Particles, SkidMarks, SpeedLines, softDotTexture } from './effects.js';
@@ -73,7 +74,7 @@ const puff = (color, size, life, grow, alpha) => {
 const SCENERY = { coast: buildScenery, alpine: buildAlpineScenery, neon: buildNeonScenery };
 
 export class Race {
-  // lowEnd: a low-end GPU (render/gpuTier.js), which gets the simple cockpit.
+  // lowEnd: a low-end GPU (render/gpuTier.js), which gets the low cockpit tier.
   constructor(renderer, def, { onFps, lowEnd = false } = {}) {
     this.renderer = renderer;
     this.def = def;
@@ -98,6 +99,11 @@ export class Race {
     this.camera.layers.enable(1); // the cockpit (race/cockpit.js) lives on layer 1
     this.scene.add(this.camera);
     this.track = new Track(this.def);
+    // The cockpit model for this GPU and graphics level (race/cockpitAsset.js), fetched while the
+    // world builds; the warm-up uploads it with everything else, so switching to the cockpit
+    // mid-race never compiles or uploads anything.
+    this.cockpitTier = cockpitTier({ lowEnd: this.lowEnd, quality });
+    const cockpitJob = loadCockpitAsset(this.cockpitTier);
     // Route variations: the reversed road is built the first time a stage needs it.
     this.tracks = { forward: this.track, reverse: null };
     // Bundled CC0 scans (road, ground, bark, fronds, rocks); loaded once per session.
@@ -150,7 +156,7 @@ export class Race {
     this.chase.setTrack(this.track);
     // Driver view: one shared cabin, hidden until the camera sits in it. Its gearbox mirrors
     // the engine sound's (audio/gearbox.js) to drive the rev counter and the gear readout.
-    this.cockpit = new Cockpit({ lowEnd: this.lowEnd });
+    this.cockpit = new Cockpit({ lowEnd: this.lowEnd, tier: this.cockpitTier, asset: await cockpitJob });
     this.scene.add(this.cockpit.group);
     this.cockpitShown = null;
     this.cockpitProj = { i: -1 };

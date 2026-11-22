@@ -1,4 +1,4 @@
-// Headless race camera screenshots (SwiftShader), versionCode 72: the cockpit going straight,
+// Headless race camera screenshots (SwiftShader), versionCodes 72-73: the cockpit going straight,
 // steering hard left / right, at night, in the rain, with a rival car overlapping the player's,
 // on a low-end GPU, on a small phone and a tablet; and Chase and Close for comparison.
 //
@@ -39,6 +39,10 @@ const SHOTS = [
   { name: '10-chase', size: 'phone', view: 'chase', at: 6 },
   { name: '11-close', size: 'phone', view: 'close', at: 9 },
   { name: '12-chase-free-look-mid-drag', size: 'phone', view: 'chase', at: 6, drag: true },
+  // versionCode 73: close-ups of the model (the camera narrowed onto a part after the frame).
+  { name: '13-wheel-and-hands-closeup', size: 'phone', view: 'cockpit', at: 6, steer: 0.35, zoom: 'wheel' },
+  { name: '14-instrument-cluster-closeup', size: 'phone', view: 'cockpit', at: 6, zoom: 'cluster' },
+  { name: '15-cockpit-mid-tier', size: 'phone', view: 'cockpit', at: 6, quality: 'medium' },
 ].filter((s) => !ONLY || ONLY.includes(s.name));
 
 const pw = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
@@ -65,16 +69,16 @@ for (const shot of SHOTS) {
   }
   await page.goto(url);
   await page.waitForFunction(() => window.__app && window.__garage, null, { timeout: 120000 });
-  await page.evaluate(async ({ stage, view, lowend }) => {
+  await page.evaluate(async ({ stage, view, lowend, quality }) => {
     const app = window.__app;
     app.ads.maybeShowInterstitial = async () => false;
     app.ads.setBanner = () => {};
     if (app.dialogue) app.dialogue.play = async () => {};
-    if (!lowend) window.__garage.setQuality('high');
+    if (!lowend) window.__garage.setQuality(quality ?? 'high');
     app.state.settings.cameraView = view;
     app.state.settings.showFps = false;
     await app.startRace(app.pickStage(stage));
-  }, { stage: shot.stage ?? STAGE, view: shot.view, lowend });
+  }, { stage: shot.stage ?? STAGE, view: shot.view, lowend, quality: shot.quality });
   // The race HUD clock and the wipe use wall time: wait for the wipe to leave.
   await page.waitForTimeout(1200);
   await page.evaluate(async ({ at, nitro, steer, rival }) => {
@@ -147,13 +151,23 @@ for (const shot of SHOTS) {
       });
     }
   }
-  const info = await page.evaluate(() => {
+  const info = await page.evaluate((zoom) => {
     const r = window.__app.race;
+    if (zoom) {
+      // Narrow the driver's camera onto the wheel or the cluster (the eye stays where it is).
+      const c = r.cockpit;
+      const THREE_V = r.camera.position.constructor;
+      const target = new THREE_V();
+      (zoom === 'wheel' ? c.wheelPivot : c.display).getWorldPosition(target);
+      r.camera.lookAt(target);
+      r.camera.fov = zoom === 'wheel' ? 30 : 17;
+      r.camera.updateProjectionMatrix();
+    }
     r.render();
     const v = r.player.vehicle;
     const c = r.cockpit;
-    return { view: r.chase.view, freeYaw: +r.chase.free.yaw.toFixed(3), kmh: Math.round(Math.abs(v.forward) * 3.6), steer: +(r.player.visual.steerInput ?? 0).toFixed(2), rpm: Math.round(r.gearbox.rpm), gear: c.gear, lit: +c.lit.toFixed(1), glow: +c.glow.toFixed(2), cockpit: r.cockpitShown, lowEnd: c.lowEnd, liveMirror: c.liveMirror, rain: r.weather.rain, quality: window.__garage.qualityLevel };
-  });
+    return { view: r.chase.view, freeYaw: +r.chase.free.yaw.toFixed(3), kmh: Math.round(Math.abs(v.forward) * 3.6), steer: +(r.player.visual.steerInput ?? 0).toFixed(2), rpm: Math.round(r.gearbox.rpm), gear: c.gear, lit: +c.lit.toFixed(1), glow: +c.glow.toFixed(2), cockpit: r.cockpitShown, lowEnd: c.lowEnd, liveMirror: c.liveMirror, rain: r.weather.rain, quality: window.__garage.qualityLevel, tier: c.tier };
+  }, shot.zoom ?? null);
   await page.screenshot({ path: path.join(OUT, `${shot.name}.png`) });
   if (shot.drag) await page.mouse.up();
   console.log(shot.name, JSON.stringify(info));
