@@ -1,34 +1,40 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-// Driver view cabin (camera view 'cockpit'): one generic cockpit shared by every car. Built
-// round the driver's eye (x forward, y up, z right, in metres from the eye), so it fits any
-// car the eye is placed in (race/chaseCamera.js cockpitEye). The car's centre line is 0.36 m
-// to the driver's right.
+// Driver view cabin (camera view 'cockpit'): one cockpit shared by every car. Built round the
+// driver's eye (x forward, y up, z right, in metres from the eye), so it fits any car the eye
+// is placed in (race/chaseCamera.js cockpitEye). The car's centre line is 0.36 m to the
+// driver's right.
 //
-//   shell     sculpted dashboard with a hood over the instruments, A-pillars, roof lining,
-//             door tops and panels, steering column, mirror housings: one merged,
-//             vertex-coloured mesh with a soft-touch grain (one 256 px texture)
-//   trim      carbon-weave accents tinted with the car's paint (setPaint): dash and door strips,
-//             air vents, dash stitching
-//   wheel     3-spoke sports wheel with leather grip and two gloved hands on it (one mesh that
-//             turns with the steering), its tinted inserts, badge and paddle shifters (one mesh)
+// Since versionCode 73 the cabin is a real model made in Blender (tools/cockpit/
+// build_cockpit.py): sculpted dash and instrument hood, binnacle with chrome dial bezels, air
+// vents, centre stack and console, door cards with handles, A-pillars, roof lining, mirror
+// housings; a stitched leather 3-spoke wheel with a generic hex badge and carbon paddles;
+// gloved hands wrapped round the rim and racing-suit sleeves. Its textures (colour, normal,
+// roughness and metalness, with ambient occlusion and soft interior light baked in) come in
+// three tiers (race/cockpitAsset.js): high, mid and low (low-end GPUs: low-detail mesh, the
+// light baked into one unlit colour atlas). This file places the parts and drives them:
+//
+//   shell     the whole cabin in one mesh (cabin atlas)
+//   trim      carbon accents tinted with the car's paint (setPaint): dash and door strips,
+//             air-vent bezels, the rim's marker stripe and spoke inserts (two meshes)
+//   wheel     the wheel, turning about its column with the steering; the hands on it turn
+//             with it up to HAND_TURN, then the rim slides through their grip
 //   forearms  two sleeves from the elbows to the gloves, re-aimed every frame
 //   display   the instrument cluster in one draw: backlit speedometer and rev counter faces,
 //             a digital speed readout, the gear and a row of shift lights (one 512x320 texture,
 //             drawn once; the digits and lights change through uniforms only)
 //   needles   speedometer and rev counter needles, glowing
-//   mirrors   rear-view and left wing mirror. Mid and high GPUs see a live rear view: one
+//   mirrors   rear-view and both wing mirrors. Mid and high tiers see a live rear view: one
 //             256x96 render, every 2nd frame, no post-processing, 120 m draw distance (the
-//             only extra pass, and only while the cockpit shows). A low-end GPU gets a sky
+//             only extra pass, and only while the cockpit shows). The low tier gets a sky
 //             gradient instead, and no extra pass.
-//   glass     a very faint sheen low on the windscreen (not on a low-end GPU)
+//   glass     a very faint sheen low on the windscreen (not on the low tier)
 //
 // Drawn on top: every cockpit material squeezes its depth into the front tenth of the depth
 // range (DEPTH_FRONT), so a rival car that touches or overlaps the player's car can never
 // show inside the cabin, at no cost (no extra pass, no depth clear). Everything stays in the
 // lower quarter of the screen (dash ~72% down) or at its edges (pillars, mirrors), so the road
-// ahead stays open. 11 draws (10 on a low-end GPU, all unlit), no shadows, no fog.
+// ahead stays open. 12 draws (11 on the low tier), no shadows, no fog.
 
 export const WHEEL_LOCK = 1.9; // radians the wheel turns at full steering lock
 export const WHEEL_RATE = 14; // 1/s: how fast the drawn wheel follows the steering input
@@ -69,358 +75,6 @@ function inFront(material) {
 }
 function drawOnTop(shader) {
   shader.vertexShader = shader.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>\n${DEPTH_FRONT}`);
-}
-
-const COLORS = {
-  dash: 0x26282d,
-  dashTop: 0x1c1e22,
-  dashLow: 0x202226,
-  fabric: 0x3b3d43,
-  roof: 0x44464c,
-  door: 0x2a2c31,
-  doorTop: 0x313338,
-  column: 0x1d1f23,
-  housing: 0x1e2024,
-  leather: 0x1b1a19,
-  spoke: 0x2c2e33,
-  hub: 0x202226,
-  glove: 0x222428,
-  knuckle: 0x3d4149,
-  cuff: 0x5a5f69,
-  sleeve: 0x41454e,
-  vent: 0x141519,
-  slat: 0x0d0e10,
-  white: 0xffffff,
-};
-
-const _m = new THREE.Matrix4();
-const _q = new THREE.Quaternion();
-const _s = new THREE.Vector3(1, 1, 1);
-const _p = new THREE.Vector3();
-const _a = new THREE.Vector3();
-const _b = new THREE.Vector3();
-const _c = new THREE.Color();
-const UP = new THREE.Vector3(0, 1, 0);
-const v3 = (x, y, z) => new THREE.Vector3(x, y, z);
-
-// Every part carries position, normal, uv and colour, so the parts of a mesh merge into one.
-function paint(geo, hex) {
-  const g = geo.index ? geo.toNonIndexed() : geo;
-  const c = _c.set(hex);
-  const n = g.attributes.position.count;
-  const col = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) col.set([c.r, c.g, c.b], i * 3);
-  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  if (!g.attributes.uv) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(n * 2), 2));
-  if (!g.attributes.normal) g.computeVertexNormals();
-  return g;
-}
-
-// Texture coordinates in metres (divided by `scale`) from the two axes across each face, so a
-// weave keeps one size on every part whatever its shape.
-function metricUv(geo, scale) {
-  const p = geo.attributes.position;
-  const n = geo.attributes.normal;
-  const uv = geo.attributes.uv;
-  for (let i = 0; i < p.count; i++) {
-    const ax = Math.abs(n.getX(i));
-    const ay = Math.abs(n.getY(i));
-    const az = Math.abs(n.getZ(i));
-    const [a, b] = ax >= ay && ax >= az ? [p.getZ(i), p.getY(i)] : ay >= az ? [p.getZ(i), p.getX(i)] : [p.getX(i), p.getY(i)];
-    uv.setXY(i, a / scale, b / scale);
-  }
-  return geo;
-}
-
-// A box of size (sx, sy, sz) centred at (x, y, z), turned `rz` about z (nose down when < 0).
-function box(sx, sy, sz, x, y, z, hex, rz = 0) {
-  const g = new THREE.BoxGeometry(sx, sy, sz);
-  if (rz) g.rotateZ(rz);
-  return paint(g.translate(x, y, z), hex);
-}
-
-// A tapered round bar from a (radius r0) to b (radius r1).
-function limb(a, b, r0, r1, segs, hex) {
-  const dir = _p.subVectors(b, a);
-  const len = dir.length();
-  const g = new THREE.CylinderGeometry(r1, r0, len, segs, 1);
-  _q.setFromUnitVectors(UP, dir.normalize());
-  g.applyMatrix4(_m.compose(_a.addVectors(a, b).multiplyScalar(0.5), _q, _s));
-  return paint(g, hex);
-}
-
-function ball(r, x, y, z, hex, segs = 8, sx = 1, sy = 1, sz = 1) {
-  return paint(new THREE.SphereGeometry(r, segs, Math.max(4, segs >> 1)).scale(sx, sy, sz).translate(x, y, z), hex);
-}
-
-// A grid surface: point(u, v, out) for u, v in 0..1, nu x nv quads, uv in metres / `uvScale`.
-function surface(nu, nv, point, hex, uvScale = 0.25) {
-  const pos = [];
-  const uv = [];
-  const p = new THREE.Vector3();
-  for (let j = 0; j <= nv; j++) {
-    for (let i = 0; i <= nu; i++) {
-      point(i / nu, j / nv, p);
-      pos.push(p.x, p.y, p.z);
-      uv.push(p.z / uvScale, (p.x + p.y) / uvScale);
-    }
-  }
-  const index = [];
-  for (let j = 0; j < nv; j++) {
-    for (let i = 0; i < nu; i++) {
-      const a = j * (nu + 1) + i;
-      index.push(a, a + nu + 1, a + 1, a + 1, a + nu + 1, a + nu + 2);
-    }
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  g.setIndex(index);
-  g.computeVertexNormals();
-  return paint(g, hex);
-}
-
-// An elliptical tube along a quadratic curve a -> c (bent toward `ctrl`): radii `across`
-// (in the x-y plane) and `deep` (along z), each tapering from the first value to the second.
-function curvedBar(a, ctrl, c, across, deep, steps, segs, hex) {
-  const curve = new THREE.QuadraticBezierCurve3(a, ctrl, c);
-  const t0 = new THREE.Vector3();
-  const n = new THREE.Vector3();
-  const b = new THREE.Vector3();
-  const zAxis = new THREE.Vector3(0, 0, 1);
-  return surface(
-    segs,
-    steps,
-    (u, v, out) => {
-      curve.getPoint(v, out);
-      curve.getTangent(v, t0);
-      n.crossVectors(t0, zAxis).normalize();
-      b.crossVectors(t0, n).normalize();
-      const ang = u * Math.PI * 2;
-      const ra = across[0] + (across[1] - across[0]) * v;
-      const rb = deep[0] + (deep[1] - deep[0]) * v;
-      out.addScaledVector(n, Math.cos(ang) * ra).addScaledVector(b, Math.sin(ang) * rb);
-    },
-    hex
-  );
-}
-
-// ---- Shell: dashboard, instrument hood, pillars, roof, doors, column ----
-
-const DASH_Z = [-0.84, 1.54]; // cabin width, door to door
-const HOOD_Z = 0.24; // half-width of the hood over the instruments
-
-// Dashboard cross-section (x forward, y up), from the windscreen to below the screen.
-const DASH_PROFILE = new THREE.CatmullRomCurve3(
-  [v3(1.16, -0.315, 0), v3(1.02, -0.305, 0), v3(0.9, -0.318, 0), v3(0.845, -0.345, 0), v3(0.815, -0.4, 0), v3(0.805, -0.6, 0), v3(0.8, -1.05, 0)],
-  false,
-  'centripetal'
-);
-const DASH_LIP = 3 / 6; // where the lip (and its stitching) sits along the profile
-const VENTS = [0.25, 0.47, -0.62]; // air vents on the dash face: centre pair and driver's left
-
-function buildShell(lowEnd) {
-  const nu = lowEnd ? 18 : 40;
-  const nv = lowEnd ? 8 : 16;
-  const parts = [];
-  // Dashboard: a soft rolled top falling over a lip into the dash face.
-  parts.push(
-    surface(nu, nv, (u, v, out) => {
-      DASH_PROFILE.getPoint(v, out);
-      out.z = DASH_Z[0] + (DASH_Z[1] - DASH_Z[0]) * u;
-    }, COLORS.dash)
-  );
-  // Darker top near the glass (cuts the windscreen reflection on real cars).
-  parts.push(
-    surface(nu, 2, (u, v, out) => {
-      DASH_PROFILE.getPoint(v * 0.22, out);
-      out.y += 0.002;
-      out.z = DASH_Z[0] + (DASH_Z[1] - DASH_Z[0]) * u;
-    }, COLORS.dashTop)
-  );
-  // Hood over the instruments: rises out of the dash top, rounded at the sides, its brow lip
-  // just above the top of the dials.
-  const hood = new THREE.CatmullRomCurve3([v3(0.98, -0.306, 0), v3(0.9, -0.255, 0), v3(0.84, -0.231, 0), v3(0.808, -0.229, 0), v3(0.796, -0.239, 0)], false, 'centripetal');
-  const flat = new THREE.Vector3();
-  parts.push(
-    surface(lowEnd ? 10 : 22, lowEnd ? 5 : 10, (u, v, out) => {
-      const z = (u * 2 - 1) * HOOD_Z;
-      const h = Math.sqrt(Math.max(0, 1 - (z / HOOD_Z) ** 4)); // flat top, rounded sides
-      hood.getPoint(v, out);
-      flat.set(0.98 - 0.12 * v, -0.309, 0);
-      out.lerpVectors(flat, out, h);
-      out.z = z;
-    }, COLORS.dash)
-  );
-  // Lower dash under the face and both door panels, closing the cabin past the screen edges.
-  parts.push(box(0.04, 0.6, DASH_Z[1] - DASH_Z[0], 0.81, -1.2, (DASH_Z[0] + DASH_Z[1]) / 2, COLORS.dashLow));
-  for (const z of [DASH_Z[0] + 0.02, DASH_Z[1] - 0.02]) {
-    const inward = z < 0 ? 1 : -1;
-    parts.push(box(1.75, 1.25, 0.03, 0.25, -0.95, z, COLORS.door));
-    // Rounded door top (the window sill) and the armrest bulge below it.
-    parts.push(limb(v3(-0.6, -0.315, z + inward * 0.01), v3(1.12, -0.335, z + inward * 0.01), 0.045, 0.045, lowEnd ? 6 : 10, COLORS.doorTop));
-    parts.push(limb(v3(-0.5, -0.56, z + inward * 0.035), v3(0.55, -0.56, z + inward * 0.035), 0.05, 0.05, lowEnd ? 6 : 10, COLORS.fabric));
-  }
-  // A-pillars: tapered and gently bowed, wider at the dash.
-  const pillar = (z0, z1, out) =>
-    curvedBar(v3(1.14, -0.32, z0), v3(0.9, 0.07, z0 + out), v3(0.53, 0.36, z1), [0.06, 0.04], [0.04, 0.03], lowEnd ? 6 : 12, lowEnd ? 6 : 10, COLORS.fabric);
-  parts.push(pillar(-0.71, -0.74, -0.02), pillar(1.37, 1.4, 0.02));
-  // Roof header across the top of the windscreen and the roof lining behind it.
-  parts.push(limb(v3(0.52, 0.37, -0.76), v3(0.52, 0.37, 1.42), 0.06, 0.06, lowEnd ? 6 : 12, COLORS.roof));
-  parts.push(
-    surface(4, 3, (u, v, out) => {
-      out.set(0.52 - 1.3 * v, 0.42 + 0.05 * Math.sin(v * Math.PI), DASH_Z[0] + (DASH_Z[1] - DASH_Z[0]) * u);
-    }, COLORS.roof)
-  );
-  // Air vents: a dark recess with three slats each.
-  for (const z of VENTS) {
-    parts.push(box(0.012, 0.052, 0.094, 0.806, -0.402, z, COLORS.vent));
-    for (let i = -1; i <= 1; i++) parts.push(box(0.03, 0.005, 0.09, 0.796, -0.402 + i * 0.015, z, COLORS.slat, -0.25));
-  }
-  // Steering column and its shroud.
-  parts.push(limb(v3(0.82, -0.56, 0), v3(0.6, -0.455, 0), 0.04, 0.032, lowEnd ? 6 : 10, COLORS.column));
-  parts.push(box(0.1, 0.07, 0.11, 0.75, -0.52, 0, COLORS.column, 0.48));
-  // Rear-view mirror housing and stalk; left wing mirror housing on its arm.
-  parts.push(box(0.03, 0.08, 0.26, 0.565, 0.235, 0.33, COLORS.housing));
-  parts.push(ball(0.04, 0.578, 0.235, 0.2, COLORS.housing, 8, 0.4, 1, 0.5), ball(0.04, 0.578, 0.235, 0.46, COLORS.housing, 8, 0.4, 1, 0.5));
-  parts.push(limb(v3(0.56, 0.28, 0.33), v3(0.53, 0.36, 0.33), 0.012, 0.012, 6, COLORS.housing));
-  parts.push(box(0.07, 0.12, 0.25, 1.07, -0.2, -0.93, COLORS.housing));
-  parts.push(limb(v3(1.06, -0.25, -0.82), v3(1.08, -0.26, -0.86), 0.02, 0.02, 6, COLORS.housing));
-  return mergeGeometries(parts);
-}
-
-// ---- Trim: tinted carbon accents ----
-
-function buildTrim(lowEnd) {
-  const parts = [];
-  // Strip across the dash face under the instruments.
-  parts.push(box(0.01, 0.022, DASH_Z[1] - DASH_Z[0] - 0.08, 0.807, -0.475, (DASH_Z[0] + DASH_Z[1]) / 2, COLORS.white));
-  // Door strips.
-  for (const z of [DASH_Z[0] + 0.045, DASH_Z[1] - 0.045]) parts.push(box(1.3, 0.02, 0.01, 0.3, -0.43, z, COLORS.white));
-  // Thin tinted rings round the air vents.
-  for (const z of VENTS) {
-    parts.push(box(0.006, 0.006, 0.1, 0.8, -0.375, z, COLORS.white), box(0.006, 0.006, 0.1, 0.8, -0.429, z, COLORS.white));
-    parts.push(box(0.006, 0.06, 0.006, 0.8, -0.402, z - 0.05, COLORS.white), box(0.006, 0.06, 0.006, 0.8, -0.402, z + 0.05, COLORS.white));
-  }
-  // Stitching along the dash lip (not on a low-end GPU).
-  if (!lowEnd) {
-    const lip = DASH_PROFILE.getPoint(DASH_LIP, new THREE.Vector3());
-    for (let z = DASH_Z[0] + 0.05; z < DASH_Z[1] - 0.05; z += 0.03) {
-      if (Math.abs(z) < HOOD_Z + 0.02) continue; // under the hood
-      parts.push(box(0.004, 0.004, 0.014, lip.x - 0.004, lip.y + 0.003, z, COLORS.white));
-    }
-  }
-  return metricUv(mergeGeometries(parts), 0.025);
-}
-
-// ---- Wheel, its trim and the gloved hands ----
-
-const RIM_R = 0.165;
-const GRIP_Y = 0.07; // hands at ten to two
-
-// Gloved hand gripping the rim at 9 o'clock (side -1) or 3 o'clock (side 1), wheel frame.
-function hand(side, lowEnd) {
-  const z = side * Math.sqrt(RIM_R * RIM_R - GRIP_Y * GRIP_Y);
-  const parts = [];
-  // The fist wrapped round the rim, a little toward the driver.
-  parts.push(paint(new THREE.CapsuleGeometry(0.033, 0.045, lowEnd ? 2 : 4, lowEnd ? 6 : 10).scale(1, 1, 0.92).translate(-0.006, GRIP_Y, z + side * 0.004), COLORS.glove));
-  if (!lowEnd) {
-    // Knuckles on the outside of the rim.
-    for (let i = 0; i < 4; i++) parts.push(ball(0.012, -0.012, GRIP_Y + 0.027 - i * 0.018, z + side * 0.026, COLORS.knuckle, 6));
-    // Thumb lying along the rim toward the spoke.
-    parts.push(paint(new THREE.CapsuleGeometry(0.011, 0.035, 2, 6).rotateX(Math.PI / 2).translate(-0.024, GRIP_Y - 0.006, z - side * 0.035), COLORS.glove));
-  }
-  // Back of the hand and the cuff, toward the driver.
-  parts.push(limb(v3(-0.02, GRIP_Y - 0.005, z + side * 0.008), v3(-0.07, GRIP_Y - 0.03, z + side * 0.03), 0.03, 0.033, lowEnd ? 6 : 10, COLORS.glove));
-  parts.push(limb(v3(-0.07, GRIP_Y - 0.03, z + side * 0.03), v3(-0.12, GRIP_Y - 0.05, z + side * 0.042), 0.036, 0.038, lowEnd ? 6 : 10, COLORS.cuff));
-  return parts;
-}
-// Where each forearm meets its cuff, in the wheel's frame.
-const WRIST = [-1, 1].map((side) => v3(-0.12, GRIP_Y - 0.05, side * (Math.sqrt(RIM_R * RIM_R - GRIP_Y * GRIP_Y) + 0.042)));
-
-function buildWheel(lowEnd) {
-  const rim = new THREE.TorusGeometry(RIM_R, 0.024, lowEnd ? 6 : 12, lowEnd ? 28 : 56);
-  rim.rotateY(Math.PI / 2); // into the wheel's plane (y up, z right), facing the driver
-  const parts = [paint(rim, COLORS.leather)];
-  // Three spokes: 3, 9 and 6 o'clock.
-  parts.push(box(0.022, 0.042, 0.12, 0.004, -0.008, -0.09, COLORS.spoke), box(0.022, 0.042, 0.12, 0.004, -0.008, 0.09, COLORS.spoke));
-  parts.push(box(0.022, 0.11, 0.05, 0.004, -0.105, 0, COLORS.spoke));
-  parts.push(paint(new THREE.CylinderGeometry(0.052, 0.058, 0.045, lowEnd ? 10 : 20).rotateZ(Math.PI / 2), COLORS.hub));
-  return mergeGeometries(parts);
-}
-
-const buildHands = (lowEnd) => mergeGeometries([...hand(-1, lowEnd), ...hand(1, lowEnd)]);
-
-function buildWheelTrim(lowEnd) {
-  const parts = [];
-  // Top-centre stripe on the rim.
-  const arc = 0.22;
-  const stripe = new THREE.TorusGeometry(RIM_R, 0.0248, lowEnd ? 6 : 10, 8, arc);
-  stripe.rotateZ(Math.PI / 2 - arc / 2).rotateY(Math.PI / 2);
-  parts.push(paint(stripe, COLORS.white));
-  // Spoke inserts.
-  parts.push(box(0.004, 0.014, 0.09, -0.009, -0.004, -0.095, COLORS.white), box(0.004, 0.014, 0.09, -0.009, -0.004, 0.095, COLORS.white));
-  parts.push(box(0.004, 0.07, 0.012, -0.009, -0.11, 0, COLORS.white));
-  // Generic hexagonal badge on the hub.
-  parts.push(paint(new THREE.CylinderGeometry(0.02, 0.02, 0.006, 6).rotateZ(Math.PI / 2).rotateX(Math.PI / 6).translate(-0.024, 0, 0), COLORS.white));
-  // Paddle shifters behind the wheel, either side of the hub.
-  for (const side of [-1, 1]) parts.push(box(0.006, 0.085, 0.07, 0.035, 0.02, side * 0.12, COLORS.white, 0));
-  return metricUv(mergeGeometries(parts), 0.025);
-}
-
-// ---- Textures, created once ----
-
-// Soft-touch grain for the shell: fine mottled noise round white, multiplied by the vertex
-// colours.
-function grainTexture() {
-  const S = 256;
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = S;
-  const g = canvas.getContext('2d');
-  g.fillStyle = '#f0f0f0';
-  g.fillRect(0, 0, S, S);
-  const img = g.getImageData?.(0, 0, S, S);
-  if (img?.data) {
-    let seed = 7;
-    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    for (let i = 0; i < img.data.length; i += 4) {
-      const v = 214 + rnd() * 41;
-      img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
-      img.data[i + 3] = 255;
-    }
-    g.putImageData(img, 0, 0);
-  }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
-// Carbon weave for the trim: 2x2 twill of light and dark diagonal tows, tinted by the paint.
-function carbonTexture() {
-  const S = 128;
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = S;
-  const g = canvas.getContext('2d');
-  const n = 8;
-  const c = S / n;
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) {
-      const k = (i + j) % 2;
-      const grad = g.createLinearGradient?.(i * c, j * c, (i + 1) * c, (j + 1) * c);
-      if (grad) {
-        grad.addColorStop(0, k ? '#6a6a6a' : '#3c3c3c');
-        grad.addColorStop(0.5, k ? '#b4b4b4' : '#5a5a5a');
-        grad.addColorStop(1, k ? '#6a6a6a' : '#3c3c3c');
-        g.fillStyle = grad;
-      }
-      g.fillRect(i * c, j * c, c, c);
-    }
-  }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
 }
 
 // Cluster layout in face pixels (the face is 512 x 256 of the texture, 0.34 m x 0.17 m).
@@ -653,39 +307,6 @@ function displayMaterial(map) {
   });
 }
 
-// Mirror glass quads (rear-view, then left wing). uv: the rear-view shows the whole live view,
-// mirrored; the wing mirror its left-rear part (the right of the rearward camera's image).
-function buildMirrorGlass(lowEnd) {
-  const rear = new THREE.PlaneGeometry(0.235, 0.068).rotateY(-Math.PI / 2).translate(0.548, 0.235, 0.33);
-  const wing = new THREE.PlaneGeometry(0.21, 0.1).rotateY(-Math.PI / 2).translate(1.033, -0.2, -0.93);
-  // PlaneGeometry turned to face -x: uv.x 0 is on the driver's left. The rearward camera sees
-  // the car's left on the right of its image, so each glass reads its image right to left.
-  const setU = (g, u0, u1) => {
-    const uv = g.attributes.uv;
-    for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) < 0.5 ? u0 : u1);
-  };
-  setU(rear, 1, 0);
-  setU(wing, 1, 0.62);
-  const parts = [rear, wing];
-  if (lowEnd) {
-    // Sky gradient: light at the top of each glass, road grey at the bottom.
-    for (const g of parts) {
-      const p = g.attributes.position;
-      const col = new Float32Array(p.count * 3);
-      const top = new THREE.Color(0xa9bfd3);
-      const low = new THREE.Color(0x4b545e);
-      g.computeBoundingBox();
-      const { min, max } = g.boundingBox;
-      for (let i = 0; i < p.count; i++) {
-        _c.copy(low).lerp(top, (p.getY(i) - min.y) / Math.max(1e-6, max.y - min.y));
-        col.set([_c.r, _c.g, _c.b], i * 3);
-      }
-      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    }
-  }
-  return mergeGeometries(parts);
-}
-
 // Windscreen sheen: transparent, brightest along the bottom of the glass, gone by halfway up.
 function buildGlass() {
   const g = new THREE.BufferGeometry();
@@ -709,13 +330,131 @@ function buildGlass() {
   g.setIndex([0, 2, 1, 1, 2, 3, 2, 4, 3, 3, 4, 5]);
   return g;
 }
+// The baked shading (the ORM texture's red channel: ambient occlusion times the soft light that
+// reaches each spot through the glass) also dims the sun and lamps there, not only the ambient
+// light as three.js does with an aoMap, so the footwell and the hood's underside stay dark.
+const BAKED_SHADE = `#include <aomap_fragment>
+#ifdef USE_AOMAP
+  reflectedLight.directDiffuse *= mix(1.0, ambientOcclusion, 0.8);
+  reflectedLight.directSpecular *= ambientOcclusion;
+#endif`;
+function drawOnTopShaded(shader) {
+  drawOnTop(shader);
+  if (shader.fragmentShader) shader.fragmentShader = shader.fragmentShader.replace('#include <aomap_fragment>', BAKED_SHADE);
+}
+
+// Runtime material for an atlas part, from the material the file brought (its textures).
+//   high: physically based (normal and ORM maps), the race's environment reflected
+//   mid:  Lambert with the same colour, normal and baked-shading maps (no roughness or
+//         reflections): about a third cheaper per pixel, and the cabin covers a third of the
+//         screen
+//   low:  unlit, the colour atlas has the light baked in
+// Front faces only: every surface of the model faces the driver or outward.
+function atlasMaterial(src, tier) {
+  if (tier === 'low' || !src?.isMeshStandardMaterial) {
+    return inFront(new THREE.MeshBasicMaterial({ map: src?.map ?? null, color: src?.map ? 0xffffff : 0x26282d }));
+  }
+  const shared = {
+    map: src.map,
+    normalMap: src.normalMap,
+    normalScale: src.normalScale.clone(),
+    aoMap: src.aoMap,
+    // A faint self-light keeps the cabin's shapes readable at night and in tunnels.
+    emissive: 0x08090b,
+  };
+  const m =
+    tier === 'high'
+      ? new THREE.MeshStandardMaterial({ ...shared, roughnessMap: src.roughnessMap, metalnessMap: src.metalnessMap, roughness: 1, metalness: 1, envMapIntensity: 0.6 })
+      : new THREE.MeshLambertMaterial(shared);
+  m.onBeforeCompile = drawOnTopShaded;
+  m.fog = false;
+  return m;
+}
+
+// Tinted carbon trim: the paint colour times a tiling carbon weave (none on the low tier).
+function trimMaterial(src, tier) {
+  if (tier === 'low' || !src?.map) return inFront(new THREE.MeshBasicMaterial({ color: 0x888888 }));
+  if (tier === 'mid') return inFront(new THREE.MeshLambertMaterial({ color: 0x888888, map: src.map, normalMap: src.normalMap ?? null, normalScale: src.normalScale?.clone() }));
+  return inFront(
+    new THREE.MeshStandardMaterial({
+      color: 0x888888,
+      map: src.map,
+      normalMap: src.normalMap ?? null,
+      normalScale: src.normalScale?.clone(),
+      metalness: 0.45,
+      roughness: 0.34,
+      envMapIntensity: 0.8,
+    })
+  );
+}
+
+// A part of the model as a mesh of our own: its geometry (shared, from the file), our
+// material, and the node's transform (meshopt quantisation keeps positions as integers with
+// a scale and offset on the node). Parents move it; the mesh itself is never turned.
+function partMesh(asset, name, material, parent, label = name) {
+  const src = asset?.parts[name];
+  if (!src) return null;
+  const m = new THREE.Mesh(src.geometry, material);
+  m.name = label;
+  m.position.copy(src.position);
+  m.quaternion.copy(src.quaternion);
+  m.scale.copy(src.scale);
+  parent.add(m);
+  return m;
+}
+
+// Low tier mirrors: a sky gradient (light at the top of each glass, road grey at the bottom)
+// instead of the live rear view; from each glass's uv.y, which runs bottom to top.
+function skyGradient(geometry) {
+  const g = geometry.clone();
+  const uv = g.attributes.uv;
+  const col = new Float32Array(uv.count * 3);
+  const top = new THREE.Color(0xa9bfd3);
+  const low = new THREE.Color(0x4b545e);
+  for (let i = 0; i < uv.count; i++) {
+    _c.copy(low).lerp(top, Math.min(1, Math.max(0, uv.getY(i))));
+    col.set([_c.r, _c.g, _c.b], i * 3);
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return g;
+}
+
+// A plain needle if the model is missing.
+const fallbackNeedle = () => new THREE.BoxGeometry(0.0028, 0.062, 0.004).translate(0, 0.022, 0);
+
+const _p = new THREE.Vector3();
+const _a = new THREE.Vector3();
+const _b = new THREE.Vector3();
+const _c = new THREE.Color();
+const UP = new THREE.Vector3(0, 1, 0);
+const v3 = (x, y, z) => new THREE.Vector3(x, y, z);
+
+// Where each forearm meets its glove's gauntlet, in the wheel's frame (the model is built
+// round the same points: tools/cockpit/build_cockpit.py hand_wrist).
+const RIM_R = 0.165;
+const GRIP_Y = 0.07; // hands at ten to two
+const WRIST = [-1, 1].map((side) => v3(-0.12, GRIP_Y - 0.05, side * (Math.sqrt(RIM_R * RIM_R - GRIP_Y * GRIP_Y) + 0.042)));
+// Placement of the moving parts in the cabin (same numbers in build_cockpit.py).
+export const RIG = {
+  wheelPivot: [0.56, -0.44, 0],
+  wheelTilt: -0.35,
+  cluster: [0.785, -0.32, 0],
+  clusterTilt: -0.42,
+  elbows: [
+    [0.16, -0.64, -0.44],
+    [0.16, -0.64, 0.44],
+  ],
+};
 
 export class Cockpit {
-  // lowEnd: the simple version (render/gpuTier.js): unlit, fewer segments, no stitching, no
-  // windscreen sheen, a sky gradient in the mirrors instead of the live rear view.
-  constructor({ lowEnd = false } = {}) {
-    this.lowEnd = lowEnd;
-    this.liveMirror = !lowEnd;
+  //   tier   'high' | 'mid' | 'low' (race/cockpitAsset.js cockpitTier); lowEnd alone means low
+  //   asset  the loaded model (loadCockpitAsset); without it only the instruments show
+  constructor({ lowEnd = false, tier = lowEnd ? 'low' : 'mid', asset = null } = {}) {
+    this.tier = tier;
+    this.lowEnd = tier === 'low';
+    this.liveMirror = !this.lowEnd;
+    this.asset = asset;
+    const low = this.lowEnd;
     const group = (this.group = new THREE.Group());
     group.name = 'cockpit';
     group.rotation.order = 'YZX';
@@ -723,63 +462,60 @@ export class Cockpit {
     group.userData.noCull = true;
 
     this.textures = [];
-    const grain = lowEnd ? null : this.keep(grainTexture());
-    const solid = inFront(
-      lowEnd
-        ? new THREE.MeshBasicMaterial({ vertexColors: true })
-        : // A faint self-light keeps the cabin's shapes readable at night and in tunnels.
-          new THREE.MeshLambertMaterial({ vertexColors: true, map: grain, side: THREE.DoubleSide, emissive: 0x0d0f13 })
-    );
-    this.trimMaterial = inFront(
-      lowEnd
-        ? new THREE.MeshBasicMaterial({ color: 0x888888 })
-        : new THREE.MeshStandardMaterial({ color: 0x888888, map: this.keep(carbonTexture()), metalness: 0.45, roughness: 0.38 })
-    );
-    const add = (parent, geo, mat, name) => {
-      const m = new THREE.Mesh(geo, mat);
-      m.name = name;
-      parent.add(m);
-      return m;
-    };
-    add(group, buildShell(lowEnd), solid, 'cockpit-shell');
-    add(group, buildTrim(lowEnd), this.trimMaterial, 'cockpit-trim');
+    const parts = asset?.parts ?? {};
+    const cabin = atlasMaterial(parts.cockpit_shell?.material, tier);
+    const wheelMat = atlasMaterial(parts.cockpit_wheel?.material, tier);
+    this.trimMaterial = trimMaterial(parts.cockpit_trim?.material, tier);
+    partMesh(asset, 'cockpit_shell', cabin, group, 'cockpit-shell');
+    partMesh(asset, 'cockpit_trim', this.trimMaterial, group, 'cockpit-trim');
 
-    // Steering wheel: tilted back like a real column, turning about its own axis with the
-    // hands on it.
+    // Steering wheel: tilted back like a real column, turning about its own axis.
     this.wheelPivot = new THREE.Group();
-    this.wheelPivot.position.set(0.56, -0.44, 0);
-    this.wheelPivot.rotation.z = -0.35;
+    this.wheelPivot.position.fromArray(RIG.wheelPivot);
+    this.wheelPivot.rotation.z = RIG.wheelTilt;
     this.wheel = new THREE.Group();
     this.wheel.name = 'cockpit-wheel';
-    add(this.wheel, buildWheel(lowEnd), solid, 'cockpit-wheel-grip');
-    add(this.wheel, buildWheelTrim(lowEnd), this.trimMaterial, 'cockpit-wheel-trim');
+    partMesh(asset, 'cockpit_wheel', wheelMat, this.wheel, 'cockpit-wheel-grip');
+    partMesh(asset, 'cockpit_wheel_trim', this.trimMaterial, this.wheel, 'cockpit-wheel-trim');
     this.wheelPivot.add(this.wheel);
     // The hands turn with the rim up to HAND_TURN, then let it slide through their grip (so
     // an arm never swings across the instruments at full lock).
-    this.hands = add(this.wheelPivot, buildHands(lowEnd), solid, 'cockpit-hands');
+    this.hands = new THREE.Group();
+    this.hands.name = 'cockpit-hands';
+    partMesh(asset, 'cockpit_hands', wheelMat, this.hands, 'cockpit-hands');
+    this.wheelPivot.add(this.hands);
     group.add(this.wheelPivot);
-    // Forearms: from fixed elbows to the cuffs on the turning wheel.
-    const arm = new THREE.CylinderGeometry(0.033, 0.042, 1, lowEnd ? 6 : 10, 1).translate(0, 0.5, 0);
-    this.elbows = [v3(0.16, -0.64, -0.44), v3(0.16, -0.64, 0.44)];
+    // Forearms: unit-length sleeves from fixed elbows, stretched to the cuffs on the wheel.
+    this.elbows = RIG.elbows.map((e) => v3(...e));
     this.forearms = this.elbows.map((e, i) => {
-      const m = add(group, paint(arm.clone(), COLORS.sleeve), solid, `cockpit-forearm-${i ? 'right' : 'left'}`);
-      m.position.copy(e);
-      return m;
+      const arm = new THREE.Group();
+      arm.name = `cockpit-forearm-${i ? 'right' : 'left'}`;
+      arm.position.copy(e);
+      partMesh(asset, i ? 'cockpit_forearm_r' : 'cockpit_forearm_l', wheelMat, arm, arm.name);
+      group.add(arm);
+      return arm;
     });
 
     // Instrument cluster: the face turned toward the eye under the hood, needles in front.
     const cluster = new THREE.Group();
-    cluster.position.set(0.785, -0.32, 0);
-    cluster.rotation.z = -0.42;
-    this.display = add(cluster, buildDisplay(), displayMaterial(this.keep(clusterTexture(lowEnd))), 'cockpit-display');
+    cluster.position.fromArray(RIG.cluster);
+    cluster.rotation.z = RIG.clusterTilt;
+    this.display = new THREE.Mesh(buildDisplay(), displayMaterial(this.keep(clusterTexture(low))));
+    this.display.name = 'cockpit-display';
+    cluster.add(this.display);
     this.displayUniforms = this.display.material.uniforms;
     this.needleMaterial = inFront(new THREE.MeshBasicMaterial({ color: 0xff4a1a, toneMapped: false }));
-    const needleGeo = new THREE.BoxGeometry(0.0028, 0.062, 0.004).translate(0, 0.022, 0);
     const k = FACE_W / 512;
     const needle = (px) => {
-      const m = add(cluster, needleGeo, this.needleMaterial, 'cockpit-needle');
-      m.position.set(-0.004, (128 - DIAL_Y) * k, (px - 256) * k);
-      return m;
+      const pivot = new THREE.Group();
+      pivot.position.set(-0.004, (128 - DIAL_Y) * k, (px - 256) * k);
+      if (!partMesh(asset, 'cockpit_needle', this.needleMaterial, pivot, 'cockpit-needle')) {
+        const m = new THREE.Mesh(fallbackNeedle(), this.needleMaterial);
+        m.name = 'cockpit-needle';
+        pivot.add(m);
+      }
+      cluster.add(pivot);
+      return pivot;
     };
     this.speedNeedle = needle(DIAL_L);
     this.rpmNeedle = needle(DIAL_R_X);
@@ -794,10 +530,14 @@ export class Cockpit {
       this.mirrorFrame = 0;
     }
     const glassMat = inFront(this.liveMirror ? new THREE.MeshBasicMaterial({ map: this.mirrorTarget.texture }) : new THREE.MeshBasicMaterial({ vertexColors: true }));
-    add(group, buildMirrorGlass(lowEnd), glassMat, 'cockpit-mirrors');
-    if (!lowEnd) {
+    const mirrors = partMesh(asset, 'cockpit_mirror_glass', glassMat, group, 'cockpit-mirrors');
+    if (mirrors && !this.liveMirror) mirrors.geometry = skyGradient(mirrors.geometry);
+    if (!low) {
       const sheen = inFront(new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
-      add(group, buildGlass(), sheen, 'cockpit-glass').renderOrder = 1;
+      const glass = new THREE.Mesh(buildGlass(), sheen);
+      glass.name = 'cockpit-glass';
+      glass.renderOrder = 1;
+      group.add(glass);
     }
 
     group.traverse((o) => {
@@ -821,6 +561,19 @@ export class Cockpit {
   keep(tex) {
     this.textures.push(tex);
     return tex;
+  }
+
+  // Meshes and triangles drawn while the cockpit shows (tests, tools).
+  stats() {
+    let draws = 0;
+    let triangles = 0;
+    this.group.traverse((o) => {
+      if (!o.isMesh) return;
+      draws++;
+      const g = o.geometry;
+      triangles += (g.index ? g.index.count : g.attributes.position.count) / 3;
+    });
+    return { draws, triangles };
   }
 
   setVisible(on) {
@@ -882,7 +635,7 @@ export class Cockpit {
     }
   }
 
-  // The live rear view (mid and high GPUs, cockpit showing): one low-resolution render of the
+  // The live rear view (mid and high tiers, cockpit showing): one low-resolution render of the
   // world behind the car every MIRROR.every frames, no post-processing, a short draw
   // distance, reusing the sun's shadow map. `force` renders now (the warm-up).
   renderMirror(renderer, scene, force = false) {

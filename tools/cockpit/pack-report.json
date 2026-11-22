@@ -1,0 +1,38 @@
+{
+ "high": {
+  "bytes": 982280,
+  "triangles": 54550,
+  "textures": [
+   "cabin_albedo",
+   "cabin_normal",
+   "cabin_orm",
+   "wheel_albedo",
+   "wheel_normal",
+   "wheel_orm",
+   "carbon_albedo",
+   "carbon_normal"
+  ]
+ },
+ "mid": {
+  "bytes": 659788,
+  "triangles": 54550,
+  "textures": [
+   "cabin_albedo",
+   "cabin_normal",
+   "cabin_orm",
+   "wheel_albedo",
+   "wheel_normal",
+   "wheel_orm",
+   "carbon_albedo",
+   "carbon_normal"
+  ]
+ },
+ "low": {
+  "bytes": 161792,
+  "triangles": 14428,
+  "textures": [
+   "cabin_lit",
+   "wheel_lit"
+  ]
+ }
+}
