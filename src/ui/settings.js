@@ -8,6 +8,7 @@ import { metaMeasurement } from '../monetization/metaMeasurement.js';
 import { cloud } from '../core/cloud.js';
 import { toast } from './hud.js';
 import { requestTiltPermission, probeTilt } from '../race/input.js';
+import { markBloomChosen } from '../render/gpuTier.js';
 
 const CONTROL_HINTS = {
   touch: 'Touch Drive: press left / right to steer, further out for more lock',
@@ -90,6 +91,7 @@ export function createSettings(garage, { onFpsToggle, onEntitlementsChanged }) {
   bloomButtons.forEach((btn) =>
     btn.addEventListener('click', () => {
       state.settings.bloom = btn.dataset.bloom;
+      markBloomChosen();
       save();
       render();
       sfx.tap();

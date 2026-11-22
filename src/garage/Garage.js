@@ -4,6 +4,7 @@ import { loadCar, evictModel } from '../assets/modelLoader.js';
 import { createCameraRig, SHOTS } from './cameraRig.js';
 import { createCarPaint, PaintTransition } from './carPaint.js';
 import { isNative } from '../core/platform.js';
+import { autoStartLevel, rememberedAutoLevel, rememberAutoLevel } from '../render/gpuTier.js';
 
 // Resolution: High and Medium match the screen's pixel density up to 2x, so road markings,
 // textures and edges stay sharp on 1080p-1440p phones; the race adds FXAA on top (see
@@ -18,6 +19,8 @@ export const QUALITY = {
 };
 const MOBILE = isNative || matchMedia('(pointer: coarse)').matches;
 // Auto starts at Medium on phones and tablets, High on desktop; it steps down if FPS sags.
+// A low-end GPU (render/gpuTier.js) starts at Low, and a level Auto stepped down to on an
+// earlier launch is remembered on the device (both only while Graphics is on Auto).
 const AUTO_START = MOBILE ? 'medium' : 'high';
 const AUTO_ORDER = ['high', 'medium', 'low'];
 const TAP_SLOP_PX = 8;
@@ -60,17 +63,19 @@ function emptyRig(paintColor, finish) {
 }
 
 export class Garage {
-  constructor(canvas, { car, paintColor, finish, look = {}, quality, onTap, onFps, onHotspot, onShowcase }) {
+  constructor(canvas, { car, paintColor, finish, look = {}, quality, lowEndGpu = false, onTap, onFps, onHotspot, onShowcase }) {
     this.canvas = canvas;
     this.onTap = onTap;
     this.onFps = onFps;
     // Door hotspot screen position each frame: { x, y, visible, open }.
     this.onHotspot = onHotspot;
     this.onShowcase = onShowcase;
+    this.autoStart = autoStartLevel({ start: AUTO_START, remembered: rememberedAutoLevel(), lowEnd: lowEndGpu });
 
     this.renderer = new THREE.WebGLRenderer({
       canvas,
-      antialias: true,
+      // No MSAA on low-end GPUs: the multisampled canvas costs a resolve every frame.
+      antialias: !lowEndGpu,
       powerPreference: 'high-performance',
       stencil: false,
     });
@@ -104,7 +109,7 @@ export class Garage {
     this.raycaster = new THREE.Raycaster();
 
     this.qualityMode = quality;
-    this.qualityLevel = quality === 'auto' ? AUTO_START : quality;
+    this.qualityLevel = quality === 'auto' ? this.autoStart : quality;
     this.fpsSamples = [];
     this.fpsTimer = 0;
     this.autoSettle = quality === 'auto' ? 0 : Infinity;
@@ -162,7 +167,7 @@ export class Garage {
   setQuality(mode) {
     this.qualityMode = mode;
     this.autoSettle = mode === 'auto' ? 0 : Infinity;
-    this.qualityLevel = mode === 'auto' ? AUTO_START : mode;
+    this.qualityLevel = mode === 'auto' ? this.autoStart : mode;
     this.applyQuality();
   }
 
@@ -293,6 +298,8 @@ export class Garage {
       const next = AUTO_ORDER[AUTO_ORDER.indexOf(this.qualityLevel) + 1];
       if (next) {
         this.qualityLevel = next;
+        rememberAutoLevel(next);
+        this.autoStart = next;
         this.applyQuality();
         this.autoSettle = 0;
         return;
