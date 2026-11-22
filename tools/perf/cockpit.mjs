@@ -6,6 +6,8 @@
 //
 //   npm run build && node tools/perf/cockpit.mjs [--view cockpit|chase] [--lowend] [--frames 40]
 //     [--stage ec-01] [--quality high] [--root dir]   (--root: another checkout's built dist)
+//     [--switch]   start in Chase, then switch to the cockpit mid-race and report what that
+//                  switch made the GPU do (new shader programs, textures, geometries)
 import { preview } from 'vite';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -21,6 +23,7 @@ const LOWEND = process.argv.includes('--lowend');
 const FRAMES = Number(arg('frames', 40));
 const STAGE = arg('stage', 'ec-01');
 const QUALITY = arg('quality', 'high');
+const SWITCH = process.argv.includes('--switch');
 
 const pw = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
 const chromium = pw.chromium ?? pw.default.chromium;
@@ -38,7 +41,7 @@ if (LOWEND) {
 await page.goto(`${server.resolvedUrls.local[0]}?debug`);
 await page.waitForFunction(() => window.__app && window.__garage, null, { timeout: 120000 });
 const result = await page.evaluate(
-  async ({ view, lowend, frames, stage, quality }) => {
+  async ({ view, lowend, frames, stage, quality, doSwitch }) => {
     const app = window.__app;
     app.ads.maybeShowInterstitial = async () => false;
     app.ads.setBanner = () => {};
@@ -56,6 +59,21 @@ const result = await page.evaluate(
     while (r.phase !== 'racing' && guard++ < 900) r.update(1 / 30);
     for (let i = 0; i < 60; i++) r.update(1 / 30);
     const renderer = r.renderer;
+    let switched = null;
+    if (doSwitch) {
+      for (let i = 0; i < 3; i++) {
+        r.update(1 / 30);
+        r.render();
+      }
+      const before = { programs: renderer.info.programs.length, textures: renderer.info.memory.textures, geometries: renderer.info.memory.geometries };
+      r.chase.setView('cockpit');
+      for (let i = 0; i < 20; i++) {
+        r.update(1 / 30);
+        r.render();
+      }
+      const after = { programs: renderer.info.programs.length, textures: renderer.info.memory.textures, geometries: renderer.info.memory.geometries };
+      switched = { cockpitShown: r.cockpitShown, newPrograms: after.programs - before.programs, newTextures: after.textures - before.textures, newGeometries: after.geometries - before.geometries };
+    }
     const gl = renderer.getContext();
     const px = new Uint8Array(4);
     renderer.info.autoReset = false;
@@ -98,6 +116,7 @@ const result = await page.evaluate(
     return {
       view,
       lowend,
+      switched,
       tier: c.tier ?? (c.lowEnd ? 'low(v72)' : 'v72'),
       cockpitShown: r.cockpitShown,
       prepareMs: Math.round(prepareMs),
@@ -113,7 +132,7 @@ const result = await page.evaluate(
       programs: renderer.info.programs?.length,
     };
   },
-  { view: VIEW, lowend: LOWEND, frames: FRAMES, stage: STAGE, quality: QUALITY }
+  { view: SWITCH ? 'chase' : VIEW, lowend: LOWEND, frames: FRAMES, stage: STAGE, quality: QUALITY, doSwitch: SWITCH }
 );
 console.log(JSON.stringify(result));
 await browser.close();

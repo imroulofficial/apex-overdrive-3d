@@ -7,7 +7,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 // so the garage never pays for it; the chase and close views keep it hidden.
 //
 //   high  full-detail mesh, 1024 px colour and normal atlases, ORM, env-map reflections
-//   mid   the same mesh with every atlas at half size, no reflections
+//   mid   the same mesh with every atlas at half size, cheaper (Lambert) shading, no reflections
 //   low   low-detail mesh, one 512 px colour atlas per material with the cabin light baked in,
 //         unlit (and no live mirror: race/cockpit.js)
 

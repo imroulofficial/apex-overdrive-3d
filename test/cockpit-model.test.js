@@ -94,10 +94,10 @@ test('quality tier from the GPU tier: low-end GPU -> low, High -> high, otherwis
   assert.equal(low.mirrorTarget, undefined);
   assert.equal(mid.liveMirror, true);
   assert.equal(high.liveMirror, true);
-  // Materials per tier: unlit on low, lit without reflections on mid, with them on high.
+  // Materials per tier: unlit on low, Lambert without reflections on mid, PBR with them on high.
   const shell = (c) => meshesOf(c).find((m) => m.name === 'cockpit-shell').material;
   assert.ok(shell(low).isMeshBasicMaterial);
-  assert.ok(shell(mid).isMeshStandardMaterial && shell(mid).envMapIntensity === 0);
+  assert.ok(shell(mid).isMeshLambertMaterial && shell(mid).normalMap !== undefined, 'mid: Lambert, no reflections');
   assert.ok(shell(high).isMeshStandardMaterial && shell(high).envMapIntensity > 0);
   // The low tier's mirrors show a sky gradient (vertex colours), never a render target.
   const glass = meshesOf(low).find((m) => m.name === 'cockpit-mirrors');

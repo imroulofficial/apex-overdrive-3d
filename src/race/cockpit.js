@@ -344,27 +344,28 @@ function drawOnTopShaded(shader) {
 }
 
 // Runtime material for an atlas part, from the material the file brought (its textures).
-//   high: lit, normal and ORM maps, the race's environment reflected
-//   mid:  the same without reflections
+//   high: physically based (normal and ORM maps), the race's environment reflected
+//   mid:  Lambert with the same colour, normal and baked-shading maps (no roughness or
+//         reflections): about a third cheaper per pixel, and the cabin covers a third of the
+//         screen
 //   low:  unlit, the colour atlas has the light baked in
+// Front faces only: every surface of the model faces the driver or outward.
 function atlasMaterial(src, tier) {
   if (tier === 'low' || !src?.isMeshStandardMaterial) {
-    return inFront(new THREE.MeshBasicMaterial({ map: src?.map ?? null, color: src?.map ? 0xffffff : 0x26282d, side: THREE.DoubleSide }));
+    return inFront(new THREE.MeshBasicMaterial({ map: src?.map ?? null, color: src?.map ? 0xffffff : 0x26282d }));
   }
-  const m = new THREE.MeshStandardMaterial({
+  const shared = {
     map: src.map,
     normalMap: src.normalMap,
     normalScale: src.normalScale.clone(),
     aoMap: src.aoMap,
-    roughnessMap: src.roughnessMap,
-    metalnessMap: src.metalnessMap,
-    roughness: 1,
-    metalness: 1,
-    envMapIntensity: tier === 'high' ? 0.6 : 0,
     // A faint self-light keeps the cabin's shapes readable at night and in tunnels.
     emissive: 0x08090b,
-    side: THREE.DoubleSide,
-  });
+  };
+  const m =
+    tier === 'high'
+      ? new THREE.MeshStandardMaterial({ ...shared, roughnessMap: src.roughnessMap, metalnessMap: src.metalnessMap, roughness: 1, metalness: 1, envMapIntensity: 0.6 })
+      : new THREE.MeshLambertMaterial(shared);
   m.onBeforeCompile = drawOnTopShaded;
   m.fog = false;
   return m;
@@ -373,6 +374,7 @@ function atlasMaterial(src, tier) {
 // Tinted carbon trim: the paint colour times a tiling carbon weave (none on the low tier).
 function trimMaterial(src, tier) {
   if (tier === 'low' || !src?.map) return inFront(new THREE.MeshBasicMaterial({ color: 0x888888 }));
+  if (tier === 'mid') return inFront(new THREE.MeshLambertMaterial({ color: 0x888888, map: src.map, normalMap: src.normalMap ?? null, normalScale: src.normalScale?.clone() }));
   return inFront(
     new THREE.MeshStandardMaterial({
       color: 0x888888,
@@ -381,7 +383,7 @@ function trimMaterial(src, tier) {
       normalScale: src.normalScale?.clone(),
       metalness: 0.45,
       roughness: 0.34,
-      envMapIntensity: tier === 'high' ? 0.8 : 0,
+      envMapIntensity: 0.8,
     })
   );
 }
