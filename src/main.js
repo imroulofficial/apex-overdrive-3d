@@ -26,6 +26,7 @@ import { RELEASE } from './config.js';
 import { carStats, carLook } from './core/inventory.js';
 import { ads, rewardedFallback } from './monetization/ads.js';
 import { metaMeasurement } from './monetization/metaMeasurement.js';
+import { startAds } from './monetization/startAds.js';
 import { billing } from './monetization/billing.js';
 import { cloud } from './core/cloud.js';
 import { suspendAudio, resumeAudio, audioStats, audioLoaded } from './core/audio.js';
@@ -496,11 +497,12 @@ requestAnimationFrame(() =>
     // Monetization starts after the first frame so it never delays the garage reveal.
     billing.init().then(() => ads.refreshEntitlements());
     // The banner only shows while Settings is open (blueprint: never in the garage or a race).
-    // Meta install / app-open measurement starts only once the UMP consent result allows it.
-    // Ads (UMP consent, MobileAds.initialize on the UI thread, the Meta re-sync) start once the
-    // garage has settled, so they do not land on the UI thread while the GPU is still busy
-    // with the first frames' shader compiles. When and where ads show is unchanged.
-    setTimeout(() => whenIdle(() => ads.init().then(() => metaMeasurement.sync(ads.consentStatus))), ADS_START_DELAY_MS);
+    // UMP consent and then the Meta re-sync run now, as in v68 (Meta install / app-open
+    // measurement starts once the consent answer allows it). MobileAds.initialize and the first
+    // ad loads start once the garage has settled, so they do not land on the UI thread while
+    // the GPU is still busy with the first frames' shader compiles. When and where ads show is
+    // unchanged (monetization/startAds.js).
+    startAds({ ads, metaMeasurement, delayMs: ADS_START_DELAY_MS, whenIdle });
     // Fetches the cloud save (adopted if newer than this device's), then uploads if needed.
     cloud.init();
   })

@@ -30,8 +30,10 @@ const timeout = (p, ms) => Promise.race([p, wait(ms).then(() => Promise.reject(n
 function createAdMobBackend() {
   const listeners = new Map();
   return {
-    async init() {
-      // UMP consent (GDPR / US state privacy). Ads load only once Google says we may.
+    // UMP consent (GDPR / US state privacy): the consent request, and the form when one is
+    // required. Light, so it runs right after the splash; its stored answer is what Meta
+    // measurement reads (metaMeasurement.js). Never rejects.
+    async consent() {
       let info = { canRequestAds: true, privacyOptionsRequirementStatus: 'NOT_REQUIRED' };
       try {
         info = await AdMob.requestConsentInfo({ tagForUnderAgeOfConsent: false });
@@ -41,6 +43,10 @@ function createAdMobBackend() {
       } catch (err) {
         console.warn('[ads] consent check failed', err);
       }
+      return info;
+    },
+    // MobileAds.initialize (UI-thread work), after consent(). Ads load only once Google says we may.
+    async init(info) {
       await AdMob.initialize({
         initializeForTesting: ADS.testing,
         // Audience is 13+ and not child-directed; cap ad content at Teen.
@@ -113,6 +119,8 @@ function listenOnce(registry, event, fn) {
 
 function createAdService() {
   const backend = isNative ? createAdMobBackend() : createAdSimulator();
+  let consented = null; // the UMP consent step, started by consent() or init()
+  const startConsent = () => (consented ??= Promise.resolve().then(() => backend.consent()));
   let ready = null;
   let canRequestAds = false;
   let privacyOptions = false;
@@ -205,10 +213,20 @@ function createAdService() {
   }
 
   return {
+    // UMP consent request (and form) only, so the stored answer is there for Meta measurement.
+    // Resolves once it is stored on the device; never rejects. Ads stay off until init().
+    consent() {
+      return startConsent().then(
+        () => undefined,
+        () => undefined
+      );
+    },
+
+    // Consent (reused if already done), then MobileAds.initialize and the first ad loads.
     init() {
       ready ??= (async () => {
         try {
-          ({ canRequestAds, privacyOptions, consentStatus } = await backend.init());
+          ({ canRequestAds, privacyOptions, consentStatus } = await backend.init(await startConsent()));
         } catch (err) {
           console.warn('[ads] AdMob failed to initialise; continuing without ads', err);
           canRequestAds = false;

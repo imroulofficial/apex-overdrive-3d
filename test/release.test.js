@@ -8,13 +8,13 @@ import { GAME, ADMOB_APP_ID, PRODUCTION_AD_UNITS, TEST_AD_UNITS, ADS, PRODUCTS, 
 const read = (p) => readFile(new URL(`../${p}`, import.meta.url), 'utf8');
 const RES = 'android/app/src/main/res';
 
-test('package.json, build.gradle and the About line agree on 1.0.0 (code 69)', async () => {
+test('package.json, build.gradle and the About line agree on 1.0.0 (code 70)', async () => {
   const pkg = JSON.parse(await read('package.json'));
   const gradle = await read('android/app/build.gradle');
   assert.equal(pkg.version, '1.0.0');
   assert.equal(GAME.version, pkg.version);
   assert.match(gradle, /versionName "1\.0\.0"/);
-  assert.match(gradle, /versionCode 69\b/);
+  assert.match(gradle, /versionCode 70\b/);
   assert.doesNotMatch(await read('.github/workflows/build-aab.yml'), /-PversionCode/);
 });
 
