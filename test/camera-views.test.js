@@ -1,16 +1,17 @@
-// Race camera (versionCode 71): free look never touches the car, the camera eases back behind
-// the car within 2 s, touches that start on a control never turn the camera, the chosen view
-// persists and nothing but the camera button changes it, the follow never jumps, walls pull it
-// in smoothly, and the shared driver-view cockpit.
+// Race camera (versionCodes 71-72): free look never touches the car, the camera eases back
+// behind the car within 2 s, touches that start on a control never turn the camera, the chosen
+// view persists and nothing but the camera button changes it, the follow never jumps, walls
+// pull it in smoothly. v72: three views (Chase, Close, Cockpit), saved hood / driver views
+// become cockpit, no free look in the cockpit, and the shared cockpit's wheel, hands, needles,
+// gear and shift lights follow the real values (test/cockpit.test.js has the rest).
 import './dom-stub.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import * as THREE from 'three';
-import { ChaseCamera, FREE_LOOK, cockpitEye } from '../src/race/chaseCamera.js';
+import { ChaseCamera, FREE_LOOK } from '../src/race/chaseCamera.js';
 import { createFreeLook } from '../src/race/freeLook.js';
 import { createRaceInput } from '../src/race/input.js';
-import { Cockpit, needleAngle, WHEEL_LOCK, SPEEDO_MAX } from '../src/race/cockpit.js';
 import { CAMERA_VIEWS, CAMERA_LABELS } from '../src/data/controls.js';
 import { normalize, defaults } from '../src/core/saveSchema.js';
 import { Track } from '../src/race/track.js';
@@ -104,7 +105,7 @@ test('free look never changes the car input, even with fingers on steering and n
   assert.ok(a.camera.free.yaw !== 0 || a.camera.free.fromYaw !== 0, 'the drag did turn the camera');
 });
 
-test('free look rotates only the camera: orbit for follow views, a limited head turn in the cockpit', () => {
+test('free look rotates only the camera round the car in Chase and Close; a drag in the cockpit does nothing', () => {
   const { surface, camera } = rig();
   surface.fire('pointerdown', { pointerId: 4, clientX: 300, clientY: 100 });
   surface.fire('pointermove', { pointerId: 4, clientX: 360, clientY: 130 });
@@ -113,11 +114,59 @@ test('free look rotates only the camera: orbit for follow views, a limited head 
   surface.fire('pointermove', { pointerId: 4, clientX: 3000, clientY: 2000 });
   assert.ok(camera.free.yaw <= Math.PI && camera.free.pitch <= FREE_LOOK.orbitPitch[1]);
   surface.fire('pointerup', { pointerId: 4 });
+  for (const view of ['close', 'chase']) {
+    camera.setView(view);
+    surface.fire('pointerdown', { pointerId: 6, clientX: 300, clientY: 100 });
+    surface.fire('pointermove', { pointerId: 6, clientX: 420, clientY: 100 });
+    assert.ok(camera.free.yaw > 0, `${view}: free look still works`);
+    surface.fire('pointerup', { pointerId: 6 });
+  }
   camera.setView('cockpit');
   surface.fire('pointerdown', { pointerId: 5, clientX: 300, clientY: 100 });
-  surface.fire('pointermove', { pointerId: 5, clientX: 5000, clientY: 100 });
-  assert.equal(camera.free.yaw, FREE_LOOK.headYaw, 'the driver turns their head a limited amount');
+  surface.fire('pointermove', { pointerId: 5, clientX: 5000, clientY: 900 });
+  assert.equal(camera.free.yaw, 0, 'no head turn in the cockpit');
+  assert.equal(camera.free.pitch, 0);
+  assert.equal(camera.freeLooking, false);
+  surface.fire('pointerup', { pointerId: 5 });
   assert.equal(camera.view, 'cockpit');
+});
+
+test('dragging in the cockpit changes nothing: camera pose, car and input are untouched', () => {
+  const track = new Track(EMERALD_COAST);
+  const poses = [];
+  const inputs = [];
+  const cars = [];
+  for (const drag of [false, true]) {
+    const { surface, camera, input, pad, gas } = rig();
+    const car = carAt(track);
+    camera.setTrack(track);
+    camera.setView('cockpit', car);
+    gas.fire('pointerdown', { pointerId: 1, clientX: 50, clientY: 50 });
+    pad.fire('pointerdown', { pointerId: 2, clientX: 150, clientY: 100 });
+    let t = 0;
+    for (let i = 0; i < 90; i++) {
+      if (drag && i === 10) surface.fire('pointerdown', { pointerId: 9, clientX: 400, clientY: 200 });
+      if (drag && i > 10 && i < 70) surface.fire('pointermove', { pointerId: 9, clientX: 400 + i * 25, clientY: 200 - i * 4 });
+      if (drag && i === 70) surface.fire('pointerup', { pointerId: 9 });
+      const inp = input.read(DT);
+      inputs.push(snapshot(inp));
+      t += DT;
+      car.step(DT, inp, t);
+      camera.update(DT, car);
+      poses.push(camera.camera.position.toArray().map((v) => v.toFixed(6)).join(',') + camera.look.toArray().map((v) => v.toFixed(6)).join(','));
+    }
+    cars.push([car.pos.x, car.pos.z, car.heading, car.speed].map((v) => v.toFixed(9)).join(','));
+  }
+  const half = poses.length / 2;
+  assert.deepEqual(poses.slice(half), poses.slice(0, half), 'the camera did not move');
+  assert.deepEqual(inputs.slice(half), inputs.slice(0, half), 'the input did not change');
+  assert.equal(cars[1], cars[0], 'the car did not change');
+});
+
+test('Race only allows free look in Chase and Close', async () => {
+  const src = await readFile(new URL('../src/race/Race.js', import.meta.url), 'utf8');
+  const allowed = src.slice(src.indexOf('  get freeLookAllowed() {'), src.indexOf('  freeLookDrag(dx, dy) {'));
+  assert.match(allowed, /this\.chase\.view !== 'cockpit'/);
 });
 
 test('touches that start on a control never rotate the camera', () => {
@@ -147,7 +196,7 @@ test('touches that start on a control never rotate the camera', () => {
 
 test('the camera eases back behind the car within 2 s of the finger lifting', () => {
   const track = new Track(EMERALD_COAST);
-  for (const view of ['chase', 'close', 'cockpit']) {
+  for (const view of ['chase', 'close']) {
     const { surface, camera } = rig();
     const car = carAt(track);
     car.forward = 30;
@@ -161,7 +210,7 @@ test('the camera eases back behind the car within 2 s of the finger lifting', ()
     surface.fire('pointermove', { pointerId: 2, clientX: 700, clientY: 60 });
     for (let i = 0; i < 30; i++) camera.update(DT, car);
     const away = camera.camera.position.distanceTo(behind);
-    if (view !== 'cockpit') assert.ok(away > 2, `${view}: the camera orbited (${away.toFixed(2)} m)`);
+    assert.ok(away > 2, `${view}: the camera orbited (${away.toFixed(2)} m)`);
     surface.fire('pointerup', { pointerId: 2 });
     const start = Math.abs(camera.free.yaw);
     let t = 0;
@@ -182,8 +231,8 @@ test('the camera eases back behind the car within 2 s of the finger lifting', ()
 });
 
 test('the chosen view persists in the save and never changes by itself', async () => {
-  assert.deepEqual(CAMERA_VIEWS, ['chase', 'close', 'hood', 'cockpit']);
-  assert.equal(CAMERA_LABELS.cockpit, 'Driver view');
+  assert.deepEqual(CAMERA_VIEWS, ['chase', 'close', 'cockpit']);
+  assert.equal(CAMERA_LABELS.cockpit, 'Cockpit view');
   const s = defaults();
   s.settings.cameraView = 'cockpit';
   assert.equal(normalize(JSON.parse(JSON.stringify(s))).settings.cameraView, 'cockpit', 'remembered across launches');
@@ -301,48 +350,4 @@ test('a wall between the camera and the car pulls the camera in smoothly, never 
   assert.ok(r1 < 0.98, 'eases out rather than popping back');
   for (let i = 0; i < 240; i++) camera.update(DT, car);
   assert.ok(camera.reach > 0.97, 'back out to full distance');
-});
-
-test('driver-view cockpit: one shared light cabin, wheel follows steering, needles follow speed and RPM', () => {
-  const full = new Cockpit();
-  const low = new Cockpit({ lowEnd: true });
-  for (const c of [full, low]) {
-    const meshes = [];
-    const materials = new Set();
-    const textures = new Set();
-    c.group.traverse((o) => {
-      if (!o.isMesh) return;
-      meshes.push(o);
-      materials.add(o.material);
-      for (const v of Object.values(o.material)) if (v?.isTexture) textures.add(v);
-    });
-    assert.ok(meshes.length <= 6, `${meshes.length} draws`);
-    assert.ok(materials.size <= 4, `${materials.size} materials`);
-    for (const t of textures) assert.ok(t.image.width <= 512 && t.image.height <= 512, 'texture within 512 px');
-    for (const m of meshes) assert.equal(m.castShadow, false);
-  }
-  const lowMats = [];
-  low.group.traverse((o) => o.isMesh && lowMats.push(o.material));
-  assert.ok(lowMats.every((m) => m.isMeshBasicMaterial), 'low-end: unlit, no mirror reflections');
-
-  const cam = new ChaseCamera(new THREE.PerspectiveCamera(64, 2, 0.3, 3000));
-  cockpitEye(cam.size, cam.eye);
-  const car = { pos: new THREE.Vector3(10, 2, 5), heading: 0.4, pitch: 0 };
-  // The wheel turns smoothly toward the lock, never instantly.
-  full.update(car, cam, DT, 1, 0, 1000);
-  assert.ok(full.wheel.rotation.x > 0 && full.wheel.rotation.x < WHEEL_LOCK * 0.5, 'eases toward the lock');
-  for (let i = 0; i < 60; i++) full.update(car, cam, DT, 1, 0, 1000);
-  assert.ok(Math.abs(full.wheel.rotation.x - WHEEL_LOCK) < 0.01, 'full right lock');
-  for (let i = 0; i < 60; i++) full.update(car, cam, DT, -1, 0, 1000);
-  assert.ok(Math.abs(full.wheel.rotation.x + WHEEL_LOCK) < 0.01, 'full left lock');
-  // Needles: zero at the bottom left, rising with the real values.
-  full.update(car, cam, DT, 0, 0, 0);
-  assert.equal(full.speedNeedle.rotation.x, needleAngle(0));
-  full.update(car, cam, DT, 0, 160, 4000);
-  assert.ok(Math.abs(full.speedNeedle.rotation.x - needleAngle(160 / SPEEDO_MAX)) < 1e-9);
-  assert.ok(Math.abs(full.speedNeedle.rotation.x) < 0.01, 'half the dial points straight up');
-  assert.ok(full.rpmNeedle.rotation.x > needleAngle(0.45) && full.rpmNeedle.rotation.x < needleAngle(0.55));
-  // The cabin sits at the driver's eye in the car's frame.
-  const eye = cam.carPoint(car, cam.eye.x, cam.eye.y, cam.eye.z, new THREE.Vector3());
-  assert.ok(full.group.position.distanceTo(eye) < 1e-9);
 });

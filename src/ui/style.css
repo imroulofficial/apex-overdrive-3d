@@ -614,15 +614,14 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rh-dot:not(.me) { top: -9px; width: 8px; height: 8px; margin: 0 0 0 -4px; border-radius: 2px; transform: rotate(45deg); }
 .rh-dot.me { z-index: 2; width: 14px; height: 14px; margin: -7px 0 0 -7px; box-shadow: 0 0 0 2px #fff, 0 0 12px var(--accent); }
 #rh-pause { flex-shrink: 0; }
-/* Camera view toggle: three pips show which of chase / close / hood is live. */
+/* Camera view toggle: three pips show which of chase / close / cockpit is live. */
 .rh-cam { position: relative; flex-shrink: 0; }
 .rh-cam svg { stroke-width: 2.4; }
 .rh-cam-pips { position: absolute; left: 50%; bottom: 5px; display: flex; gap: 3px; transform: translateX(-50%); }
 .rh-cam-pips b { width: 4px; height: 4px; border-radius: 50%; background: rgba(255, 255, 255, 0.3); }
 .rh-cam[data-view='chase'] .rh-cam-pips b:nth-child(1),
 .rh-cam[data-view='close'] .rh-cam-pips b:nth-child(2),
-.rh-cam[data-view='hood'] .rh-cam-pips b:nth-child(3),
-.rh-cam[data-view='cockpit'] .rh-cam-pips b:nth-child(4) { background: var(--accent); }
+.rh-cam[data-view='cockpit'] .rh-cam-pips b:nth-child(3) { background: var(--accent); }
 #rh-pause svg { stroke-width: 3; }
 
 /* ---- Bottom: steering, speedometer, actions ---- */

@@ -40,6 +40,7 @@ export class Rain {
       density: { value: 0 },
       color: { value: new THREE.Color(0xc8d4dc) },
       flash: { value: 0 },
+      near: { value: new THREE.Vector2(1.2, 3) }, // streaks fade in between these distances
     };
     this.material = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
@@ -49,7 +50,7 @@ export class Rain {
         attribute float tip;
         uniform vec3 origin, box;
         uniform float time, fall, density;
-        uniform vec2 wind, carVel;
+        uniform vec2 wind, carVel, near;
         varying float vAlpha;
         void main() {
           vec3 vel = vec3(wind.x, -fall, wind.y);
@@ -62,7 +63,7 @@ export class Rain {
           vec4 mv = modelViewMatrix * vec4(p, 1.0);
           // Thin out with distance and drop the streaks a sparse shower does not need.
           float d = length(mv.xyz);
-          vAlpha = smoothstep(34.0, 6.0, d) * smoothstep(1.2, 3.0, d) * step(position.x, density + 0.001);
+          vAlpha = smoothstep(34.0, 6.0, d) * smoothstep(near.x, near.y, d) * step(position.x, density + 0.001);
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: /* glsl */ `
@@ -84,6 +85,11 @@ export class Rain {
   set(amount) {
     this.uniforms.density.value = Math.min(1, amount);
     this.mesh.visible = amount > 0;
+  }
+
+  // In the cockpit no streak falls inside the cabin: they start past the windscreen.
+  setCabin(on) {
+    this.uniforms.near.value.set(on ? 2.4 : 1.2, on ? 4.5 : 3);
   }
 
   update(time, camera, car, flash = 0) {
@@ -163,6 +169,14 @@ export class LensDrops {
     if (amount <= 0) this.clear();
   }
 
+  // Cockpit view: the drops sit on the windscreen (its area of the screen) and the airflow
+  // pushes them up and outward at speed instead of running down.
+  setGlass(on) {
+    this.glass = on;
+    this.el.classList.toggle('windscreen', on);
+    this.clear();
+  }
+
   clear() {
     for (const d of this.drops) d.el.remove();
     this.drops.length = 0;
@@ -178,7 +192,11 @@ export class LensDrops {
       const size = 6 + Math.random() * 16;
       el.style.cssText = `left:${Math.random() * 100}%;top:${Math.random() * 85}%;width:${size}px;height:${size * 1.15}px`;
       this.el.appendChild(el);
-      this.drops.push({ el, life: 0, max: 0.8 + Math.random() * 1.6, run: 0 });
+      // On the windscreen: only between the roof line and the dash.
+      const left = this.glass ? 4 + Math.random() * 92 : Math.random() * 100;
+      el.style.left = `${left}%`;
+      if (this.glass) el.style.top = `${10 + Math.random() * 52}%`;
+      this.drops.push({ el, life: 0, max: 0.8 + Math.random() * 1.6, run: 0, side: left < 50 ? -1 : 1 });
     }
     if (this.acc >= 1) this.acc = 0;
     for (let i = this.drops.length - 1; i >= 0; i--) {
@@ -192,7 +210,11 @@ export class LensDrops {
         continue;
       }
       d.el.style.opacity = String((1 - k) * 0.85);
-      d.el.style.transform = `translate(${-d.run * 0.35}px, ${d.run}px)`;
+      if (this.glass) {
+        // Up the glass at speed (slowly down when nearly stopped), drifting away from centre.
+        const up = speed > 8 ? -d.run * 0.6 : d.run * 0.25;
+        d.el.style.transform = `translate(${d.side * d.run * 0.25}px, ${up}px)`;
+      } else d.el.style.transform = `translate(${-d.run * 0.35}px, ${d.run}px)`;
     }
   }
 

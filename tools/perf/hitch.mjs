@@ -9,7 +9,7 @@
 //   - the frame's own JS time (Race.update) and render time.
 //
 //   npm run build && node tools/perf/hitch.mjs [--stage ec-01] [--seconds 60] [--quality high]
-//     [--out file.json] [--realtime] [--lowend] [--view chase|close|hood|cockpit]
+//     [--out file.json] [--realtime] [--lowend] [--view chase|close|cockpit]
 //
 // --lowend reports a PowerVR GPU to the game (render/gpuTier.js) and leaves Graphics on Auto,
 // so the race runs the low-end path (Low quality, no bloom, the simple cockpit). --view picks
@@ -229,7 +229,9 @@ async function profile(id) {
       while (r.raceTime < seconds && !r.result && guard++ < seconds * fps + 600) {
         sample(() => {
           r.update(1 / fps);
-          r.bloom.render(r.scene, r.camera);
+          // Race.render() draws the cockpit's live mirror too (v72); older builds draw bloom only.
+          if (r.render) r.render();
+          else r.bloom.render(r.scene, r.camera);
         });
       }
     }
