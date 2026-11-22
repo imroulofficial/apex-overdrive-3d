@@ -37,7 +37,7 @@ const SHOTS = [
   { name: '08-cockpit-small-phone-720x1600', size: 'small', view: 'cockpit', at: 6 },
   { name: '09-cockpit-tablet', size: 'tablet', view: 'cockpit', at: 6 },
   { name: '10-chase', size: 'phone', view: 'chase', at: 6 },
-  { name: '11-close', size: 'phone', view: 'close', at: 6 },
+  { name: '11-close', size: 'phone', view: 'close', at: 9 },
   { name: '12-chase-free-look-mid-drag', size: 'phone', view: 'chase', at: 6, drag: true },
 ].filter((s) => !ONLY || ONLY.includes(s.name));
 

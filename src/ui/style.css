@@ -808,8 +808,6 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Rain on the lens (race/atmosphere.js LensDrops): above the 3D view, below the race HUD. */
 .rain-lens { position: fixed; inset: 0; pointer-events: none; z-index: 4; overflow: hidden; }
-/* Cockpit view: the drops sit on the windscreen, between the roof line and the dash. */
-.rain-lens.glass { inset: 9% 3% 30% 3%; }
 .rain-lens i {
   position: absolute;
   border-radius: 50% 50% 46% 46%;

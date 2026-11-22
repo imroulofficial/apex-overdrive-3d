@@ -19,7 +19,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 //             drawn once; the digits and lights change through uniforms only)
 //   needles   speedometer and rev counter needles, glowing
 //   mirrors   rear-view and left wing mirror. Mid and high GPUs see a live rear view: one
-//             256x96 render, every 2nd frame, no post-processing, 160 m draw distance (the
+//             256x96 render, every 2nd frame, no post-processing, 120 m draw distance (the
 //             only extra pass, and only while the cockpit shows). A low-end GPU gets a sky
 //             gradient instead, and no extra pass.
 //   glass     a very faint sheen low on the windscreen (not on a low-end GPU)
@@ -44,7 +44,7 @@ export const SHIFT_FLASH = 7500;
 // Glyphs in the cluster texture's digit strip: 0-9, then N, R and a blank.
 export const GLYPH = { N: 10, R: 11, BLANK: 12 };
 // The live mirror's render target and how often it renders (every Nth frame).
-export const MIRROR = { width: 256, height: 96, every: 2, far: 160, fov: 22 };
+export const MIRROR = { width: 256, height: 96, every: 2, far: 120, fov: 22 };
 const GLYPHS = '0123456789NR ';
 const SWEEP = (240 * Math.PI) / 180; // dial sweep, needle from lower-left to lower-right
 
@@ -727,7 +727,8 @@ export class Cockpit {
     const solid = inFront(
       lowEnd
         ? new THREE.MeshBasicMaterial({ vertexColors: true })
-        : new THREE.MeshLambertMaterial({ vertexColors: true, map: grain, side: THREE.DoubleSide })
+        : // A faint self-light keeps the cabin's shapes readable at night and in tunnels.
+          new THREE.MeshLambertMaterial({ vertexColors: true, map: grain, side: THREE.DoubleSide, emissive: 0x0d0f13 })
     );
     this.trimMaterial = inFront(
       lowEnd
@@ -829,6 +830,7 @@ export class Cockpit {
   // Trim accents take the car's paint, a little toned down so dark and loud paints both work.
   setPaint(color) {
     this.trimMaterial.color.set(color).lerp(_c.set(0x8a8f99), 0.4);
+    if (this.lowEnd) this.trimMaterial.color.multiplyScalar(0.5); // unlit: keep it from glaring
   }
 
   // Places the cabin at the driver's eye (from the camera rig, `chase.carPoint` + `eye`), turns

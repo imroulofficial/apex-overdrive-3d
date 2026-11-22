@@ -173,7 +173,7 @@ export class LensDrops {
   // pushes them up and outward at speed instead of running down.
   setGlass(on) {
     this.glass = on;
-    this.el.classList.toggle('glass', on);
+    this.el.classList.toggle('windscreen', on);
     this.clear();
   }
 
@@ -192,8 +192,10 @@ export class LensDrops {
       const size = 6 + Math.random() * 16;
       el.style.cssText = `left:${Math.random() * 100}%;top:${Math.random() * 85}%;width:${size}px;height:${size * 1.15}px`;
       this.el.appendChild(el);
-      const left = Math.random() * 100;
+      // On the windscreen: only between the roof line and the dash.
+      const left = this.glass ? 4 + Math.random() * 92 : Math.random() * 100;
       el.style.left = `${left}%`;
+      if (this.glass) el.style.top = `${10 + Math.random() * 52}%`;
       this.drops.push({ el, life: 0, max: 0.8 + Math.random() * 1.6, run: 0, side: left < 50 ? -1 : 1 });
     }
     if (this.acc >= 1) this.acc = 0;

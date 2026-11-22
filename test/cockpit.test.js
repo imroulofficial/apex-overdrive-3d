@@ -285,9 +285,9 @@ test('rain in the cockpit: drops on the windscreen, no streaks falling inside th
   const lens = new LensDrops(parent);
   lens.el.classList = { toggle: (c, on) => (on ? classes.add(c) : classes.delete(c)) };
   lens.setGlass(true);
-  assert.ok(classes.has('glass'));
+  assert.ok(classes.has('windscreen'));
   lens.setGlass(false);
-  assert.ok(!classes.has('glass'));
+  assert.ok(!classes.has('windscreen'));
 });
 
 test('cockpit head motion is gentle: braking, cornering, landing and nitro stay within a few cm', () => {
