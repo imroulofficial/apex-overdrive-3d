@@ -21,3 +21,4 @@ tools/audio/cache/
 # the project files; they are marketing art, not runtime assets, so they stay out of the repo.
 store-listing-assets/
 store-listing-assets.zip
+qa-shots/

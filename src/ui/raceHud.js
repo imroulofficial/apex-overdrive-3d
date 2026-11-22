@@ -7,7 +7,9 @@ import { objectiveProgress } from '../core/career.js';
 // In-race HUD: standing, lap, timer, progress strip, the game mode's panel (Time Trial clock,
 // drift target, knock-out timer, boss gap), speedometer, nitro gauge with the double-tap
 // sweet-spot ring, drift score with the combo multiplier and link timer, the apex "release"
-// hint, callouts, pause menu and the 3-star results screen.
+// hint, callouts, pause menu and the 3-star results screen. The speed read-out is built round
+// the NITRO button (speed arc outside its nitro ring, the number inside), so nothing sits over
+// the road in front of the car.
 
 const $ = (sel) => document.querySelector(sel);
 const fmt = (n) => n.toLocaleString('en-US');
@@ -40,7 +42,6 @@ export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, 
     lapmarks: $('#rh-lapmarks'),
     speed: $('#rh-speed'),
     dial: $('#rh-dial-fill'),
-    nitroFill: $('#rh-nitro-fill'),
     nitroBtn: $('#rc-nitro'),
     ring: $('#rc-nitro-ring'),
     sweet: $('#rc-sweet'),
@@ -167,6 +168,7 @@ export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, 
     // The live camera view; `announce` flashes its name (on a toggle, not at race start).
     setCameraView(view, label, announce = false) {
       camBtn.dataset.view = view;
+      root.dataset.view = view;
       camBtn.setAttribute('aria-label', `Camera view: ${label}`);
       if (announce) this.callout(label.toUpperCase(), 'cam');
     },
@@ -219,7 +221,6 @@ export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, 
 
       const n = Math.round(s.nitro * 100);
       set('nitro', n, (v) => {
-        el.nitroFill.style.width = `${v}%`;
         el.ring.style.strokeDashoffset = `${100 - v}`;
         el.nitroBtn.classList.toggle('ready', v >= NITRO.blueCost);
         el.nitroBtn.classList.toggle('pulse-ready', v >= NITRO.blueCost + NITRO.pulseExtra);

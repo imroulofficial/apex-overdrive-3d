@@ -5,6 +5,7 @@ import { createSettings } from './ui/settings.js';
 import { createRaceHud } from './ui/raceHud.js';
 import { Race } from './race/Race.js';
 import { createRaceInput } from './race/input.js';
+import { createFreeLook } from './race/freeLook.js';
 import { CAMERA_VIEWS, CAMERA_LABELS } from './data/controls.js';
 import { createStore } from './ui/store.js';
 import { createCloudBadge } from './ui/cloudBadge.js';
@@ -250,11 +251,21 @@ const raceHud = createRaceHud({
   onCameraView: () => cycleCameraView(),
 });
 
-// HUD camera toggle: chase -> close follow -> hood, remembered per device.
+// Finger-drag free look on empty screen (the canvas): turns only the camera, never the car.
+const freeLook = createFreeLook({
+  surface: canvas,
+  isActive: () => mode === 'race' && !!race?.freeLookAllowed,
+  onDrag: (dx, dy) => race?.freeLookDrag(dx, dy),
+  onRelease: () => race?.freeLookRelease(),
+});
+
+// HUD camera toggle: chase -> close follow -> hood -> driver, remembered per device. Only this
+// button (or C, or Settings) changes the view.
 function applyCameraView(announce = false) {
   const view = state.settings.cameraView;
   race?.setCameraView(view);
   raceHud.setCameraView(view, CAMERA_LABELS[view], announce);
+  freeLook.release();
 }
 function cycleCameraView() {
   if (mode !== 'race' || !race) return;
@@ -329,7 +340,7 @@ async function startRace(s = stage, { startNitro = false } = {}) {
     if (!race || race.def !== track) {
       race?.dispose();
       race = null;
-      race = new Race(garage.renderer, track, { onFps: showFps });
+      race = new Race(garage.renderer, track, { onFps: showFps, lowEnd: gpu.lowEnd });
       await race.prepare({ quality: garage.qualityLevel, paint: currentPaint(), car: carById(state.car), look: carLook(state, state.car), stage: s });
     } else {
       await race.setPlayerCar(carById(state.car), currentPaint(), carLook(state, state.car));

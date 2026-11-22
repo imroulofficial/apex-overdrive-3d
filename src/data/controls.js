@@ -9,6 +9,7 @@ export const DEFAULT_CONTROLS = 'touch';
 //   chase  Dynamic Chase Cam: trails the direction of travel, widens with speed (default)
 //   close  Close Follow Cam: low and tight behind the bumper
 //   hood   Hood / Bumper View: on the nose, locked to the car
-export const CAMERA_VIEWS = ['chase', 'close', 'hood'];
+//   cockpit  Driver View: inside the shared cockpit, wheel and gauges live (race/cockpit.js)
+export const CAMERA_VIEWS = ['chase', 'close', 'hood', 'cockpit'];
 export const DEFAULT_CAMERA = 'chase';
-export const CAMERA_LABELS = { chase: 'Chase cam', close: 'Close follow', hood: 'Hood view' };
+export const CAMERA_LABELS = { chase: 'Chase cam', close: 'Close follow', hood: 'Hood view', cockpit: 'Driver view' };
