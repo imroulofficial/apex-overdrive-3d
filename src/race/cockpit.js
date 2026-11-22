@@ -83,6 +83,9 @@ function buildShell() {
     box(0.08, 0.3, 0.5, 0.84, -0.6, 0, COLORS.dash),
     // Lower dash across the whole cabin, down past the bottom of the screen.
     box(0.06, 0.8, 4, 0.98, -0.86, -0.2, COLORS.dash),
+    // Door panels below the side windows, so a car alongside never shows through the cabin.
+    box(1.6, 1.6, 0.05, 0.2, -1.1, -0.78, COLORS.dash),
+    box(1.6, 1.6, 0.05, 0.2, -1.1, 1.42, COLORS.dash),
     // Instrument cowl just above the gauges, with its two cheeks.
     box(0.13, 0.025, 0.4, 0.77, -0.232, 0, COLORS.trim, -0.1),
     box(0.1, 0.13, 0.02, 0.79, -0.31, -0.19, COLORS.trim),
