@@ -77,6 +77,7 @@ for (const shot of SHOTS) {
   await page.evaluate(async ({ at, nitro, steer }) => {
     const r = window.__app.race;
     r.stop();
+    r.running = true; // stepped by hand from here, but still a live race (free look allowed)
     r.autopilot();
     // Rendering is what costs on SwiftShader: only the frames just before the shot are drawn.
     const step = (draw = false) => {
