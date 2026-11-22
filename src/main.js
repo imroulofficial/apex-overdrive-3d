@@ -31,6 +31,8 @@ import { cloud } from './core/cloud.js';
 import { suspendAudio, resumeAudio, audioStats, audioLoaded } from './core/audio.js';
 import { chestDialog } from './ui/chest.js';
 import { onAppStateChange, onBackButton } from './core/platform.js';
+import { detectGpu, raceBloom, bloomChosen } from './render/gpuTier.js';
+import { DEFAULT_BLOOM } from './data/weather.js';
 
 const $ = (sel) => document.querySelector(sel);
 const canvas = $('#scene');
@@ -57,12 +59,16 @@ const showFps = (fps) => {
   if (!fpsEl.hidden) fpsEl.textContent = `${Math.round(fps)} FPS`;
 };
 
+// Read before the renderer exists: a low-end GPU gets a context without MSAA (render/gpuTier.js).
+const gpu = detectGpu();
+
 const garage = new Garage(canvas, {
   car: carById(state.car),
   paintColor: currentPaint().color,
   finish: currentPaint().finish,
   look: carLook(state, state.car),
   quality: state.settings.quality,
+  lowEndGpu: gpu.lowEnd,
   onFps: showFps,
 });
 
@@ -299,7 +305,7 @@ function beginRace() {
     input: raceInput,
     hud: raceHud,
     autoQuality: state.settings.quality === 'auto',
-    bloom: state.settings.bloom,
+    bloom: raceBloom({ bloom: state.settings.bloom, quality: state.settings.quality, lowEnd: gpu.lowEnd, chosen: bloomChosen(), defaultBloom: DEFAULT_BLOOM }),
     onFinish: bankResult,
     startNitro: Boolean(raceOpts.startNitro),
   });
@@ -478,6 +484,9 @@ async function exitToMap({ next = false } = {}) {
 
 garage.start();
 
+const ADS_START_DELAY_MS = 4500;
+const whenIdle = (fn) => (window.requestIdleCallback ? window.requestIdleCallback(fn, { timeout: 1500 }) : fn());
+
 // Reveal once the first frames (and shader compiles) are done.
 requestAnimationFrame(() =>
   requestAnimationFrame(() => {
@@ -488,7 +497,10 @@ requestAnimationFrame(() =>
     billing.init().then(() => ads.refreshEntitlements());
     // The banner only shows while Settings is open (blueprint: never in the garage or a race).
     // Meta install / app-open measurement starts only once the UMP consent result allows it.
-    ads.init().then(() => metaMeasurement.sync(ads.consentStatus));
+    // Ads (UMP consent, MobileAds.initialize on the UI thread, the Meta re-sync) start once the
+    // garage has settled, so they do not land on the UI thread while the GPU is still busy
+    // with the first frames' shader compiles. When and where ads show is unchanged.
+    setTimeout(() => whenIdle(() => ads.init().then(() => metaMeasurement.sync(ads.consentStatus))), ADS_START_DELAY_MS);
     // Fetches the cloud save (adopted if newer than this device's), then uploads if needed.
     cloud.init();
   })
