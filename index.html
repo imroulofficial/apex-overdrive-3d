@@ -127,7 +127,7 @@
         </div>
         <button id="rh-cam" class="icon-btn glass angled rh-cam" aria-label="Camera view: Chase cam" data-view="chase">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8.5A1.5 1.5 0 0 1 4.5 7h2L8 5h8l1.5 2h2A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z" /><circle cx="12" cy="13" r="3.5" /></svg>
-          <i class="rh-cam-pips" aria-hidden="true"><b></b><b></b><b></b></i>
+          <i class="rh-cam-pips" aria-hidden="true"><b></b><b></b><b></b><b></b></i>
         </button>
         <button id="rh-pause" class="icon-btn glass angled" aria-label="Pause">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14" /></svg>
@@ -169,30 +169,26 @@
           <button id="rc-brake" class="rc-btn pedal brake" aria-label="Brake"><span>BRAKE</span></button>
         </div>
 
-        <div class="rh-speedo glass angled">
-          <svg class="rh-dial" viewBox="0 0 120 70" aria-hidden="true">
-            <path class="rh-dial-bg" d="M10 62 A50 50 0 0 1 110 62" />
-            <path id="rh-dial-fill" class="rh-dial-fill" d="M10 62 A50 50 0 0 1 110 62" pathLength="100" />
-          </svg>
-          <div class="rh-speed"><b id="rh-speed">0</b><small>KM/H</small></div>
-          <span id="rh-surface" class="rh-surface" hidden></span>
-          <div class="rh-nitro" aria-label="Nitro">
-            <i id="rh-nitro-fill"></i>
-            <span class="mark" style="--at: 25%"></span><span class="mark" style="--at: 50%"></span>
-          </div>
-        </div>
-
         <div class="rc-actions">
           <button id="rc-drift" class="rc-btn drift" aria-label="Drift and brake"><span>DRIFT</span></button>
-          <button id="rc-nitro" class="rc-btn nitro" aria-label="Nitro, double tap for pulse">
-            <svg class="rc-ring" viewBox="0 0 100 100" aria-hidden="true">
-              <circle class="ring-bg" cx="50" cy="50" r="44" />
-              <circle id="rc-nitro-ring" class="ring-fill" cx="50" cy="50" r="44" pathLength="100" />
-              <circle id="rc-sweet" class="ring-sweet" cx="50" cy="50" r="49" pathLength="100" />
-              <circle id="rc-needle" class="ring-needle" cx="50" cy="50" r="49" pathLength="100" />
+          <!-- Speed readout round NITRO: the speed arc outside the nitro ring, the number inside. -->
+          <div class="rc-nitro-gauge" id="rh-speedo">
+            <svg class="rh-dial" viewBox="0 0 100 100" aria-hidden="true">
+              <path class="rh-dial-bg" d="M18.2 81.8 A45 45 0 1 1 81.8 81.8" pathLength="100" />
+              <path id="rh-dial-fill" class="rh-dial-fill" d="M18.2 81.8 A45 45 0 1 1 81.8 81.8" pathLength="100" />
             </svg>
-            <span>NITRO</span>
-          </button>
+            <button id="rc-nitro" class="rc-btn nitro" aria-label="Nitro, double tap for pulse">
+              <svg class="rc-ring" viewBox="0 0 100 100" aria-hidden="true">
+                <circle class="ring-bg" cx="50" cy="50" r="44" />
+                <circle id="rc-nitro-ring" class="ring-fill" cx="50" cy="50" r="44" pathLength="100" />
+                <circle id="rc-sweet" class="ring-sweet" cx="50" cy="50" r="49" pathLength="100" />
+                <circle id="rc-needle" class="ring-needle" cx="50" cy="50" r="49" pathLength="100" />
+              </svg>
+              <span class="rc-speed" aria-live="off"><b id="rh-speed">0</b><small>KM/H</small></span>
+              <span class="rc-nitro-label">NITRO</span>
+            </button>
+            <span id="rh-surface" class="rh-surface" hidden></span>
+          </div>
           <button id="rc-gas" class="rc-btn pedal gas" aria-label="Accelerate"><span>GAS</span></button>
         </div>
       </div>
@@ -301,6 +297,7 @@
             <button data-camera="chase" role="radio">Chase</button>
             <button data-camera="close" role="radio">Close</button>
             <button data-camera="hood" role="radio">Hood</button>
+            <button data-camera="cockpit" role="radio">Driver</button>
           </div>
         </div>
         <label class="setting">

@@ -9,7 +9,11 @@
 //   - the frame's own JS time (Race.update) and render time.
 //
 //   npm run build && node tools/perf/hitch.mjs [--stage ec-01] [--seconds 60] [--quality high]
-//     [--out file.json] [--realtime]
+//     [--out file.json] [--realtime] [--lowend] [--view chase|close|hood|cockpit]
+//
+// --lowend reports a PowerVR GPU to the game (render/gpuTier.js) and leaves Graphics on Auto,
+// so the race runs the low-end path (Low quality, no bloom, the simple cockpit). --view picks
+// the race camera view (settings.cameraView) before the race starts.
 //
 // --realtime drives the race with the browser's own requestAnimationFrame loop (wall-clock dt,
 // the auto-quality checks, the audio metronome) instead of fixed 1/60 s steps.
@@ -29,6 +33,8 @@ const SECONDS = Number(arg('seconds', 60));
 const QUALITY = arg('quality', 'high');
 const OUT = arg('out', null);
 const REALTIME = process.argv.includes('--realtime');
+const LOWEND = process.argv.includes('--lowend');
+const VIEW = arg('view', null);
 // SwiftShader renders every pixel on the CPU: a small buffer keeps a 60 s run to minutes. What
 // a frame asks of the driver (compiles, uploads, allocations) does not depend on its size.
 const WIDTH = Number(arg('width', 480));
@@ -93,6 +99,18 @@ await page.addInitScript(() => {
     };
   }
 });
+if (LOWEND) {
+  // The unmasked renderer name of a low-end GPU (WEBGL_debug_renderer_info, 0x9246).
+  await page.addInitScript(() => {
+    for (const C of [window.WebGLRenderingContext, window.WebGL2RenderingContext]) {
+      const get = C?.prototype.getParameter;
+      if (!get) continue;
+      C.prototype.getParameter = function (p) {
+        return p === 0x9246 ? 'PowerVR Rogue GE8320' : get.call(this, p);
+      };
+    }
+  });
+}
 await page.goto(`${server.resolvedUrls.local[0]}?debug`);
 await page.waitForFunction(() => window.__app && window.__garage, null, { timeout: 120000 });
 
@@ -101,7 +119,7 @@ await page.evaluate((q) => {
   window.__app.ads.maybeShowInterstitial = async () => false;
   window.__app.ads.setBanner = () => {};
   window.__app.dialogue && (window.__app.dialogue.play = async () => {});
-  window.__garage.setQuality(q);
+  if (q) window.__garage.setQuality(q);
   const gl = window.__garage.renderer.getContext();
   const c = { compile: 0, link: 0, uploadBytes: 0, uploads: 0, texUploads: 0, rtAlloc: 0 };
   window.__gl = c;
@@ -134,18 +152,19 @@ await page.evaluate((q) => {
   });
   for (const n of ['texImage2D', 'texSubImage2D', 'texImage3D', 'texSubImage3D', 'compressedTexImage2D']) wrap(n, () => c.texUploads++);
   for (const n of ['renderbufferStorage', 'renderbufferStorageMultisample', 'texStorage2D']) wrap(n, () => c.rtAlloc++);
-}, QUALITY);
+}, LOWEND ? null : QUALITY);
 
 async function profile(id) {
-  await page.evaluate(async (id) => {
+  await page.evaluate(async ({ id, view }) => {
     const app = window.__app;
     if (app.mode === 'race') await app.exitToMap();
     if (app.mode === 'map') await app.backToGarage();
     // A player has heard the garage long before a race: the car mixer is loaded by then.
     const audio = await app.audioLoaded();
     console.log(`[hitch] audio ${JSON.stringify(audio?.carMixer ?? null)}`);
+    if (view) app.state.settings.cameraView = view;
     await app.startRace(app.pickStage(id));
-  }, id);
+  }, { id, view: VIEW });
   return page.evaluate(async ({ seconds, realtime, fps }) => {
     const r = window.__app.race;
     const gl = r.renderer.getContext();
@@ -153,6 +172,8 @@ async function profile(id) {
     const c = window.__gl;
     const heap = () => performance.memory.usedJSHeapSize;
     r.autopilot();
+    const info = r.renderer.info;
+    info.autoReset = false;
     const frames = [];
     let prevHeap = heap();
     let gcs = 0;
@@ -169,6 +190,7 @@ async function profile(id) {
       if (!racingNames && (r.phase === 'racing')) racingNames = { ...wa.byName };
       const h0 = heap();
       if (h0 < prevHeap) gcs++;
+      info.reset();
       const t0 = performance.now();
       fn();
       const t1 = performance.now();
@@ -177,7 +199,7 @@ async function profile(id) {
       const h1 = heap();
       prevHeap = h1;
       lastCalls = calls();
-      const f = { t: +r.raceTime.toFixed(3), phase: r.phase, ms: +(t2 - t0).toFixed(2), js: +(t1 - t0).toFixed(2), alloc: h1 >= h0 ? h1 - h0 : 0, gc: h1 < h0 };
+      const f = { t: +r.raceTime.toFixed(3), phase: r.phase, ms: +(t2 - t0).toFixed(2), js: +(t1 - t0).toFixed(2), alloc: h1 >= h0 ? h1 - h0 : 0, gc: h1 < h0, draws: info.render.calls, tris: info.render.triangles };
       if (lastCalls - a0) f.audio = lastCalls - a0;
       if (between) f.audioBetween = between;
       if (wa.worklet - w0) f.port = wa.worklet - w0;
@@ -215,8 +237,12 @@ async function profile(id) {
     const sum = (k, list = racing) => list.reduce((a, f) => a + (f[k] ?? 0), 0);
     const ms = racing.map((f) => f.ms).sort((a, b) => a - b);
     const pct = (p) => ms[Math.min(ms.length - 1, Math.floor(p * ms.length))];
+    info.autoReset = true;
     return {
       stage: window.__app.stage.stageId,
+      view: window.__app.state.settings.cameraView,
+      quality: window.__garage.qualityLevel,
+      bloom: r.bloom.enabled,
       frames: frames.length,
       racingFrames: racing.length,
       raceSeconds: +r.raceTime.toFixed(1),
@@ -233,6 +259,9 @@ async function profile(id) {
         allocKBPerFrame: +(sum('alloc') / 1024 / Math.max(1, racing.length)).toFixed(1),
         gcs: racing.filter((f) => f.gc).length,
         msP50: pct(0.5), msP95: pct(0.95), msP99: pct(0.99), msMax: ms[ms.length - 1],
+        msAvg: +(sum('ms') / Math.max(1, racing.length)).toFixed(2),
+        drawsAvg: +(sum('draws') / Math.max(1, racing.length)).toFixed(1),
+        trisAvg: Math.round(sum('tris') / Math.max(1, racing.length)),
         jsAvg: +(sum('js') / Math.max(1, racing.length)).toFixed(2),
         jsMax: Math.max(...racing.map((f) => f.js)),
         // Main-thread Web Audio graph calls while racing: inside the frame, and from timers

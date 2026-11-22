@@ -13,6 +13,8 @@ import { CarFactory, ContactShadows, FLAME, LIGHTS } from './raceCars.js';
 import { carById } from '../data/cars.js';
 import { loadCar } from '../assets/modelLoader.js';
 import { ChaseCamera, HOOD_SPAN } from './chaseCamera.js';
+import { Cockpit } from './cockpit.js';
+import { Gearbox } from '../audio/gearbox.js';
 import { Particles, SkidMarks, SpeedLines, softDotTexture } from './effects.js';
 import { mulberry32 } from './noise.js';
 import { ModeProps } from './modeProps.js';
@@ -70,10 +72,12 @@ const puff = (color, size, life, grow, alpha) => {
 const SCENERY = { coast: buildScenery, alpine: buildAlpineScenery, neon: buildNeonScenery };
 
 export class Race {
-  constructor(renderer, def, { onFps } = {}) {
+  // lowEnd: a low-end GPU (render/gpuTier.js), which gets the simple cockpit.
+  constructor(renderer, def, { onFps, lowEnd = false } = {}) {
     this.renderer = renderer;
     this.def = def;
     this.onFps = onFps;
+    this.lowEnd = lowEnd;
     this.hud = null;
     this.ready = false;
     this.running = false;
@@ -141,6 +145,14 @@ export class Race {
     this.sparks = new Particles(this.scene, { count: 160, additive: true, texture: dot });
     this.speedLines = new SpeedLines(this.camera);
     this.chase = new ChaseCamera(this.camera);
+    this.chase.setTrack(this.track);
+    // Driver view: one shared cabin, hidden until the camera sits in it. Its gearbox mirrors
+    // the engine sound's (audio/gearbox.js) to drive the rev counter.
+    this.cockpit = new Cockpit({ lowEnd: this.lowEnd });
+    this.scene.add(this.cockpit.group);
+    this.cockpitShown = null;
+    this.gearbox = new Gearbox();
+    this.gearIn = { dt: 0, speedNorm: 0, throttle: 0, neutral: true, airborne: false };
     this.fitCamera();
 
     const player = this.factory.build({ player: true });
@@ -236,6 +248,7 @@ export class Race {
     }
     this.props = this.propSets[key];
     this.modeProps.track = this.track;
+    this.chase?.setTrack(this.track);
     for (const r of this.pool?.values() ?? []) if (r.vehicle) r.vehicle.track = this.track;
     if (this.player?.vehicle) this.player.vehicle.track = this.track;
     if (this.trailBarriers) this.trailBarriers.visible = forced;
@@ -288,6 +301,7 @@ export class Race {
     oldFactory.dispose();
     if (this.player.vehicle) this.player.visual.update(this.player.vehicle, 0, 0);
     this.factory.syncWheels();
+    this.cockpitShown = null; // the new car's body is shown or hidden on the next frame
     this.fitCamera();
     await this.renderer.compileAsync(this.scene, this.camera);
   }
@@ -330,8 +344,23 @@ export class Race {
   }
 
   // Camera view from settings or the HUD toggle (CAMERA_VIEWS); takes effect immediately.
+  // Nothing else ever changes the view.
   setCameraView(view) {
     this.chase.setView(view, this.player?.vehicle);
+  }
+
+  // Free look (race/freeLook.js): only while the race camera is following the car, during
+  // the countdown and the race, not paused.
+  get freeLookAllowed() {
+    return this.running && this.chase.mode === 'chase' && (this.phase === 'countdown' || this.phase === 'racing');
+  }
+
+  freeLookDrag(dx, dy) {
+    if (this.freeLookAllowed) this.chase.freeLookDrag(dx, dy);
+  }
+
+  freeLookRelease() {
+    this.chase?.freeLookRelease();
   }
 
   resize() {
@@ -462,6 +491,8 @@ export class Race {
     this.scenery.sun.castShadow = this.renderer.shadowMap.enabled;
     this.reset({ stats });
     if (startNitro) this.player.vehicle.nitro = NITRO.max;
+    this.gearbox.reset();
+    this.chase.resetFreeLook();
     this.chase.snap(this.player.vehicle);
     this.warmUp();
     input.setEnabled(false);
@@ -541,6 +572,7 @@ export class Race {
     this.resumePhase = this.phase;
     this.phase = 'paused';
     this.input.setEnabled(false);
+    this.chase.freeLookRelease();
     this.engine?.update({ dt: 0, throttle: 0, volume: 0 });
     this.rainSound?.set(0);
     raceMusic.setPaused(true);
@@ -691,6 +723,7 @@ export class Race {
     const chaseOpts = (this.chaseOpts ??= { boostTier: 0 });
     chaseOpts.boostTier = player.tier;
     this.chase.update(dt, player, chaseOpts);
+    this.updateCockpit(dt, playerInput);
     this.culling.update(this.camera);
     const lineLevel = player.tier === 2 ? 1 : player.tier === 1 ? 0.5 : 0;
     this.speedLines.update(dt, simulate ? lineLevel : 0, Math.max(20, player.speed), player.tier);
@@ -724,7 +757,7 @@ export class Race {
     this.stuckTime = 0;
     const s = Number.isFinite(p.s) ? p.s : 0;
     v.recover(s, p.trail || !Number.isFinite(p.d) ? 0 : Math.max(-4, Math.min(4, p.d)));
-    this.chase.snap(v);
+    // No camera cut: the follow views glide after the car to its new spot.
     this.hud.callout('BACK ON TRACK', 'cam');
   }
 
@@ -1197,18 +1230,46 @@ export class Race {
     }
   }
 
+  // The throttle the engine hears (and the cockpit's rev counter shows).
+  engineThrottle(input) {
+    const v = this.player.vehicle;
+    if (this.phase === 'intro' || this.phase === 'countdown') {
+      // Blipping the throttle on the grid during the countdown.
+      return this.phase === 'countdown' && Math.sin(this.time * 7.3) > 0.4 ? 0.62 : this.phase === 'countdown' ? 0.16 : 0;
+    }
+    const drv = this.player.ai ? this.player.ai.input : input;
+    return drv.brake && !v.drifting ? 0 : drv.throttle ?? 1;
+  }
+
+  // Driver view: show the cabin (and hide the player's own car round it) only while the
+  // camera sits at the driver's eye; turn its wheel with the steering and its needles with
+  // the real speed and the gearbox's RPM.
+  updateCockpit(dt, input) {
+    const chase = this.chase;
+    const shown = chase.view === 'cockpit' && chase.mode !== 'orbit' && this.camera.position.distanceToSquared(chase.pos) < 0.36;
+    if (shown !== this.cockpitShown) {
+      this.cockpitShown = shown;
+      this.cockpit.setVisible(shown);
+      this.player.visual.root.visible = !shown;
+      for (const m of this.factory.sharedMeshes) m.visible = !shown;
+    }
+    if (!shown) return;
+    const v = this.player.vehicle;
+    const g = this.gearIn;
+    g.dt = dt;
+    g.speedNorm = Math.max(0, v.forward) / v.params.topSpeed;
+    g.throttle = this.engineThrottle(input);
+    g.neutral = this.phase === 'intro' || this.phase === 'countdown';
+    g.airborne = v.airborne;
+    this.gearbox.run(g);
+    this.cockpit.update(v, chase, dt, this.player.visual.steerInput ?? 0, Math.abs(v.forward) * 3.6, this.gearbox.rpm);
+  }
+
   updateEngine(input, dt) {
     if (!this.engine) return;
     const v = this.player.vehicle;
     const grid = this.phase === 'intro' || this.phase === 'countdown';
-    let throttle;
-    if (grid) {
-      // Blipping the throttle on the grid during the countdown.
-      throttle = this.phase === 'countdown' && Math.sin(this.time * 7.3) > 0.4 ? 0.62 : this.phase === 'countdown' ? 0.16 : 0;
-    } else {
-      const drv = this.player.ai ? this.player.ai.input : input;
-      throttle = drv.brake && !v.drifting ? 0 : drv.throttle ?? 1;
-    }
+    const throttle = this.engineThrottle(input);
     const c = (this.engineCtl ??= {});
     c.dt = dt;
     c.speedNorm = Math.max(0, v.forward) / v.params.topSpeed;

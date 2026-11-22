@@ -560,12 +560,21 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 }
 .rh-top,
 .rh-bottom { display: flex; gap: 12px; transition: opacity 0.4s, transform 0.4s; }
-.rh-top > *,
-.rh-bottom > * { pointer-events: auto; }
+.rh-top > * { pointer-events: auto; }
+/* Only the controls themselves take touches: the gaps between them (and the read-outs) fall
+   through to the 3D canvas, where a drag is free look (race/freeLook.js). */
+.rh-top > .rh-standing,
+.rh-top > .rh-progress,
+.rh-bottom > *,
+.rc-nitro-gauge { pointer-events: none; }
+.rc-left > *,
+.rc-actions > .rc-btn,
+.rc-nitro-gauge > .rc-btn { pointer-events: auto; }
 .race-hud.is-intro .rh-top { opacity: 0; transform: translateY(-12px); }
 .race-hud.is-intro .rh-bottom,
 .race-hud.is-done .rh-bottom { opacity: 0; transform: translateY(16px); pointer-events: none; }
-.race-hud.is-done .rh-bottom > * { pointer-events: none; }
+.race-hud.is-done .rh-bottom .rc-btn,
+.race-hud.is-done .rh-bottom .rc-left > * { pointer-events: none; }
 
 /* ---- Top: standing, progress, pause ---- */
 .rh-top { align-items: flex-start; }
@@ -612,7 +621,8 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rh-cam-pips b { width: 4px; height: 4px; border-radius: 50%; background: rgba(255, 255, 255, 0.3); }
 .rh-cam[data-view='chase'] .rh-cam-pips b:nth-child(1),
 .rh-cam[data-view='close'] .rh-cam-pips b:nth-child(2),
-.rh-cam[data-view='hood'] .rh-cam-pips b:nth-child(3) { background: var(--accent); }
+.rh-cam[data-view='hood'] .rh-cam-pips b:nth-child(3),
+.rh-cam[data-view='cockpit'] .rh-cam-pips b:nth-child(4) { background: var(--accent); }
 #rh-pause svg { stroke-width: 3; }
 
 /* ---- Bottom: steering, speedometer, actions ---- */
@@ -634,30 +644,23 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rc-steer.left-on .left,
 .rc-steer.right-on .right { background: linear-gradient(135deg, rgba(255, 42, 58, calc(0.35 + 0.5 * var(--steer, 1))), rgba(255, 122, 26, calc(0.3 + 0.45 * var(--steer, 1)))); transform: scale(0.96); }
 
-.rh-speedo {
-  position: relative;
-  width: 200px;
-  padding: 8px 16px 12px;
-  margin-bottom: 2px;
-  text-align: center;
-  pointer-events: none !important;
-  --cut: 12px;
-}
-.rh-dial { display: block; width: 100%; height: auto; margin-bottom: -38px; }
-.rh-dial path { fill: none; stroke-width: 7; stroke-linecap: round; }
-.rh-dial-bg { stroke: rgba(255, 255, 255, 0.12); }
-.rh-dial-fill { stroke: var(--accent); stroke-dasharray: 100; stroke-dashoffset: 100; transition: stroke-dashoffset 0.1s linear; }
+.rc-actions { --nitro: 112px; --gauge: calc(var(--nitro) + 36px); }
+/* Speed read-out built round NITRO (no box over the road): a thin 270-degree speed arc just
+   outside the nitro ring, the speed itself inside the button above its label. */
+.rc-nitro-gauge { position: relative; display: grid; place-items: center; width: var(--gauge); height: var(--gauge); margin: 0 0 -6px; }
+.rh-dial { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.rh-dial path { fill: none; stroke-width: 4; stroke-linecap: round; }
+.rh-dial-bg { stroke: rgba(255, 255, 255, 0.14); }
+.rh-dial-fill { stroke: var(--accent); stroke-dasharray: 100; stroke-dashoffset: 100; opacity: 0.9; transition: stroke-dashoffset 0.1s linear; filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.6)); }
 .race-hud[data-boost='1'] .rh-dial-fill { stroke: #3aa8ff; }
 .race-hud[data-boost='2'] .rh-dial-fill { stroke: #ff8a2a; }
-.rh-speed { position: relative; display: flex; flex-direction: column; align-items: center; line-height: 1; }
-.rh-speed b { font-size: 40px; font-weight: 900; font-style: italic; font-variant-numeric: tabular-nums; }
-.rh-speed small { font-size: 10px; font-weight: 800; letter-spacing: 0.3em; color: var(--muted); }
-.rh-nitro { position: relative; height: 8px; margin-top: 8px; background: rgba(255, 255, 255, 0.12); transform: skewX(-20deg); overflow: hidden; }
-.rh-nitro i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #1f6fff, #3aa8ff 60%, #8fd6ff); transition: width 0.12s linear; }
-.race-hud[data-boost='2'] .rh-nitro i { background: linear-gradient(90deg, #ff7a1a, #c062ff); }
-.rh-nitro .mark { position: absolute; top: 0; bottom: 0; left: var(--at); width: 2px; background: rgba(0, 0, 0, 0.55); }
+.rc-speed { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; line-height: 0.95; margin-top: -2px; }
+.rc-speed b { font-size: 30px; font-weight: 900; font-style: italic; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; color: #fff; text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7); }
+.rc-speed small { font-size: 8px; font-weight: 800; letter-spacing: 0.28em; color: rgba(230, 240, 255, 0.7); font-style: normal; }
 
 .rc-actions { display: flex; align-items: flex-end; gap: 14px; }
+.rc-btn.nitro { display: flex; flex-direction: column; justify-content: center; gap: 2px; }
+.rc-nitro-label { position: relative; z-index: 1; font-size: 11px; letter-spacing: 0.16em; }
 .rc-btn { position: relative; font-weight: 900; font-style: italic; letter-spacing: 0.1em; font-size: 13px; }
 .rc-btn.drift { width: 96px; height: 80px; margin-bottom: 4px; clip-path: polygon(14px 0, 100% 0, calc(100% - 14px) 100%, 0 100%); }
 .rc-btn.gas { display: none; width: 74px; height: 118px; clip-path: polygon(12px 0, 100% 0, 100% 100%, 0 100%, 0 12px); color: #c9ffd9; }
@@ -685,8 +688,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .race-hud.ctl-wheel .rc-wheel { display: block; }
 .race-hud.ctl-tilt .rc-btn.brake { display: grid; place-items: center; }
 .rc-btn.drift.is-pressed { background: linear-gradient(135deg, rgba(255, 42, 58, 0.9), rgba(255, 122, 26, 0.8)); transform: scale(0.96); }
-.rc-btn.nitro { width: 112px; height: 112px; border-radius: 50%; color: #cfeaff; box-shadow: inset 0 0 0 1.5px rgba(58, 168, 255, 0.4); }
-.rc-btn.nitro span { position: relative; z-index: 1; }
+.rc-btn.nitro { width: var(--nitro); height: var(--nitro); border-radius: 50%; color: #cfeaff; box-shadow: inset 0 0 0 1.5px rgba(58, 168, 255, 0.4); }
 .rc-btn.nitro.ready { background: radial-gradient(circle, rgba(58, 168, 255, 0.45), rgba(14, 17, 26, 0.5) 70%); color: #fff; }
 .rc-btn.nitro.pulse-ready { box-shadow: inset 0 0 0 1.5px rgba(192, 98, 255, 0.6), 0 0 18px rgba(58, 168, 255, 0.35); }
 .rc-btn.nitro.is-pressed { animation: nitro-press 0.2s ease-out; }
@@ -708,7 +710,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rh-callouts {
   position: fixed;
   left: 50%;
-  top: calc(var(--sat) + 13%);
+  top: calc(var(--pad-t) + 104px);
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
@@ -749,12 +751,12 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 }
 .rh-drift-score {
   position: fixed;
-  left: 50%;
-  top: calc(var(--sat) + 29%);
-  transform: translateX(-50%) skewX(-8deg);
+  right: calc(var(--pad-r) + 8px);
+  top: calc(var(--pad-t) + 66px);
+  transform: skewX(-8deg);
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-end;
   line-height: 1;
   color: #ffd34d;
   text-shadow: 0 0 16px rgba(255, 180, 40, 0.55);
@@ -799,7 +801,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 }
 .rh-callout.combo { font-size: 24px; color: #ffd34d; }
 .rh-callout.combo.l3 { color: #ff7af0; text-shadow: 0 0 18px rgba(255, 43, 214, 0.8); }
-.rh-surface { position: absolute; right: 12px; top: 8px; transform: skewX(-10deg); padding: 2px 8px; font-size: 9px; font-weight: 900; letter-spacing: 0.25em; color: #1b1406; background: #d9b878; }
+.rh-surface { position: absolute; left: 50%; top: -8px; transform: translateX(-50%) skewX(-10deg); white-space: nowrap; z-index: 2; padding: 2px 8px; font-size: 9px; font-weight: 900; letter-spacing: 0.25em; color: #1b1406; background: #d9b878; }
 .rh-surface[data-surface='grass'] { background: #9ccf5a; }
 .rh-surface[data-surface='dirt'] { background: #c8643c; color: #fff4ea; }
 .rh-surface[data-surface='wood'] { background: #9a7350; color: #fff7ec; }
@@ -817,10 +819,10 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rh-wrong {
   position: fixed;
   left: 50%;
-  top: 46%;
-  transform: translate(-50%, -50%);
-  padding: 8px 22px;
-  font-size: 22px;
+  top: calc(var(--pad-t) + 62px);
+  transform: translateX(-50%);
+  padding: 6px 20px;
+  font-size: 18px;
   font-weight: 900;
   letter-spacing: 0.16em;
   background: rgba(200, 16, 46, 0.85);
@@ -942,13 +944,15 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .rc-half { width: 80px; height: 80px; }
   .rc-half svg { width: 34px; height: 34px; }
   .rc-btn.drift { width: 84px; height: 68px; }
-  .rc-btn.nitro { width: 94px; height: 94px; }
+  .rc-actions { --nitro: 94px; --gauge: calc(var(--nitro) + 32px); }
+  .rc-speed b { font-size: 25px; }
+  .rc-nitro-label { font-size: 10px; }
   .rc-wheel { width: 132px; height: 132px; }
   .rc-btn.brake { width: 74px; height: 104px; }
   .rh-callout.perfect { font-size: 38px; }
-  .rh-speedo { width: 168px; padding: 6px 12px 10px; }
-  .rh-dial { margin-bottom: -32px; }
-  .rh-speed b { font-size: 32px; }
+  .rh-callouts { top: calc(var(--pad-t) + 90px); }
+  .rh-drift-score { top: calc(var(--pad-t) + 58px); }
+  .rh-drift-score b { font-size: 26px; }
   .rh-callout { font-size: 22px; }
   .rh-callout.pulse { font-size: 28px; }
   .results-card { padding: 12px 18px 14px; }
@@ -959,7 +963,6 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 }
 @media (orientation: portrait) {
   .rh-progress { display: none; }
-  .rh-speedo { position: fixed; left: 50%; bottom: calc(var(--pad-b) + 130px); transform: translateX(-50%); }
   .res-grid { grid-template-columns: 1fr; }
 }
 
@@ -1234,7 +1237,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .rh-draft {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--pad-b) + 178px);
+  top: calc(var(--pad-t) + 52px);
   transform: translateX(-50%) skewX(-12deg);
   padding: 3px 12px;
   font-size: 12px;
@@ -1294,7 +1297,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .stage-chip b { font-size: 12.5px; }
   .rh-mode { top: calc(var(--pad-t) + 60px); min-width: 150px; padding: 6px 12px 7px 11px; }
   .rh-mode b { font-size: 21px; }
-  .rh-draft { bottom: calc(var(--pad-b) + 150px); }
+  .rh-draft { top: calc(var(--pad-t) + 46px); }
   .ri-objectives { margin-top: 6px; }
   .res-objectives { margin-bottom: 8px; }
   .res-objectives li { padding: 3px 8px; font-size: 11px; }
