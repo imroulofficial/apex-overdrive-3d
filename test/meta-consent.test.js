@@ -60,14 +60,15 @@ test('the SDK starts natively at app start, before the first screen, when the st
   }
 });
 
-test('the JS re-sync after ads.init() and Settings → Ad privacy still drives the bridge', async () => {
+test('the JS re-sync after the UMP consent check and Settings → Ad privacy still drives the bridge', async () => {
   const js = await read('src/monetization/metaMeasurement.js');
   assert.match(js, /registerPlugin\('MetaMeasurement'\)/);
   assert.match(js, /Native\.sync\(\)/);
   const plugin = await read(`${JAVA}/MetaMeasurementPlugin.java`);
   assert.match(plugin, /@PluginMethod\s+public void sync\(PluginCall call\)/);
   assert.match(plugin, /onConsentUpdated\(/);
-  assert.match(await read('src/main.js'), /ads\.init\(\)\.then\(\(\) => metaMeasurement\.sync\(/);
+  assert.match(await read('src/main.js'), /startAds\(\{ ads, metaMeasurement,/);
+  assert.match(await read('src/monetization/startAds.js'), /ads\.consent\(\)\.then\(\(\) => metaMeasurement\.sync\(/);
   assert.match(await read('src/ui/settings.js'), /\.then\(\(\) => metaMeasurement\.sync\(/);
   // The Java consent rules run with every release bundle.
   assert.match(await read('android/app/build.gradle'), /it\.name == 'bundleRelease' \}\.configureEach \{ dependsOn 'testReleaseUnitTest' \}/);

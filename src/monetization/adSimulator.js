@@ -50,6 +50,9 @@ export function createAdSimulator() {
   let sizeListener = () => {};
   let banner = null;
   return {
+    async consent() {
+      return {};
+    },
     async init() {
       await wait(50);
       return { canRequestAds: true, privacyOptions: false };
