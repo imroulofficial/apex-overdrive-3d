@@ -4,11 +4,12 @@
 // public/assets/pilot/:
 //
 //   git apply tools/cars/preview-loader.patch
-//   mkdir -p public/assets/pilot && cp tools/cars/out/tm_tempesta*.glb public/assets/pilot/
-//   npm run build && node tools/cars/preview.mjs [--out dir] [--only garage,race-new]
+//   mkdir -p public/assets/pilot && cp tools/cars/out/<file>*.glb public/assets/pilot/
+//   npm run build && node tools/cars/preview.mjs [--car ag_aurelia] [--out dir] [--only garage,race-new]
 //   git checkout src && rm -r public/assets/pilot        # undo
 //
-// localStorage 'apex.pilot' = 'new' makes the loader take the pilot files for tm-tempesta.
+// localStorage 'apex.pilot' = 'new' makes the loader take the pilot files for the car. A car with
+// opening windows (extras.apex.windows) also gets cockpit shots with the door window down.
 import { preview } from 'vite';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -23,8 +24,14 @@ const arg = (name, fallback) => {
 };
 const OUT = path.resolve(arg('out', path.join(here, 'build', 'preview')));
 const ONLY = arg('only', null)?.split(',');
-const CAR = 'tm-tempesta';
-const EYE = { x: -0.3, y: 1.02, z: 0 }; // defs/tm_tempesta.py EYE (onboard camera)
+// driver-view eye per car: defs/<file>.py EYE
+const CARS = {
+  tm_tempesta: { id: 'tm-tempesta', eye: { x: -0.3, y: 1.02, z: 0 }, windows: false },
+  ag_aurelia: { id: 'ag-aurelia', eye: { x: -0.33, y: 1.16, z: -0.37 }, windows: true },
+};
+const FILE = arg('car', 'tm_tempesta');
+const CAR = CARS[FILE].id;
+const EYE = CARS[FILE].eye;
 
 // Garage: the factory livery, three player paints, then a swap rim.
 const PAINTS = [
@@ -123,6 +130,19 @@ for (const [variant, time, stage] of RUNS) {
       return r.raceTime;
     });
     await shoot('straight');
+    if (CARS[FILE].windows && view === 'cockpit' && variant === 'new') {
+      await page.evaluate(() => {
+        const r = window.__app.race;
+        globalThis.__pilotSetWindows?.('open');
+        for (let i = 0; i < 2; i++) (r.update(1 / 30), r.render());
+      });
+      await shoot('straight-window-open');
+      await page.evaluate(() => {
+        const r = window.__app.race;
+        globalThis.__pilotSetWindows?.('closed');
+        r.render();
+      });
+    }
     const turn = await page.evaluate(() => {
       const r = window.__app.race;
       const v = r.player.vehicle;

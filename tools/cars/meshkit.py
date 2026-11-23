@@ -306,7 +306,7 @@ def loft(rings, mat='default', cap0='fan', cap1='fan', mats=None, closed=False, 
             idx = list(range(ring_i * N, ring_i * N + N))
             if cap is None:
                 continue
-            cm = cap_mat or mat
+            cm = cap_mat[0 if ring_i == 0 else 1] if isinstance(cap_mat, tuple) else (cap_mat or mat)
             if isinstance(cap, str):
                 cap_ring(m, idx, cap, mat=cm, flip=flip)
             else:

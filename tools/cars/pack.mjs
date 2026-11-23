@@ -38,6 +38,11 @@ const LODS = [
   { lod: 'cockpit', suffix: '_cockpit', maxTris: 60000, maxBytes: 1.5e6, tex: { base: 1024, orm: 512, normal: 512, paint: 512, carbon: 512 } },
 ];
 // Per material, the largest texture size used (smaller atlases stay at their own size).
+// A closed car's cabin is seen through tinted glass: its atlases are capped per LOD.
+// (A cap may also name one texture, e.g. Body_normal.) A closed car's drive file keeps the Body
+// ORM (chrome needs its metal map), so its Body normal map drops to 256.
+const CAPS = { Interior: { showroom: 512, drive: 256 }, Gauges: { showroom: 512, drive: 256 },
+  Body_normal: { drive: FILE === 'ag_aurelia' ? 256 : 512 } };
 const QUALITY = { base: 84, orm: 88, normal: 90 };
 
 async function webp(file, size, kind) {
@@ -126,6 +131,8 @@ for (const L of LODS) {
   // Textures per material.
   const texCount = [];
   const tex = async (name, file, size, kind) => {
+    const mname = name.split('_')[0];
+    size = Math.min(size, CAPS[name]?.[L.lod] ?? CAPS[mname]?.[L.lod] ?? size);
     const buf = await webp(file, size, kind);
     const t = doc.createTexture(name).setImage(buf).setMimeType('image/webp');
     const m = await sharp(buf).metadata();
@@ -143,6 +150,13 @@ for (const L of LODS) {
       mat.setExtras({ ...mat.getExtras(), factoryLum: files.factoryLum });
       continue;
     }
+    if (name === 'Gauges') {
+      // dial atlas (generated, not baked); glows faintly so the instruments read at night
+      const t = await tex('Gauges_base', files.base, 1024, 'base');
+      mat.setBaseColorFactor([1, 1, 1, 1]).setBaseColorTexture(t).setRoughnessFactor(0.35).setMetallicFactor(0);
+      mat.setEmissiveTexture(t).setEmissiveFactor([0.35, 0.33, 0.30]);
+      continue;
+    }
     if (files.weave_base) {
       // Carbon: tiling twill on TEXCOORD_1 (metres / weaveTile), baked AO + roughness on UV 0.
       mat.setBaseColorFactor([1, 1, 1, 1]).setRoughnessFactor(1).setMetallicFactor(1);
@@ -158,8 +172,8 @@ for (const L of LODS) {
     }
     mat.setBaseColorFactor([1, 1, 1, 1]).setRoughnessFactor(1).setMetallicFactor(1);
     mat.setBaseColorTexture(await tex(`${name}_base`, files.base, L.tex.base, 'base'));
-    if (L.tex.orm) {
-      const orm = await tex(`${name}_orm`, files.orm, L.tex.orm, 'orm');
+    if (L.tex.orm || (files.useOrm && !(L.lod === 'drive' && name === 'Interior'))) {
+      const orm = await tex(`${name}_orm`, files.orm, L.tex.orm ?? L.tex.normal, 'orm');
       mat.setMetallicRoughnessTexture(orm);
       mat.setOcclusionTexture(orm);
     } else {
@@ -174,14 +188,14 @@ for (const L of LODS) {
     for (const mesh of root.listMeshes())
       for (const p of mesh.listPrimitives()) {
         const m = p.getMaterial()?.getName() ?? '';
-        if (!['Body', 'Tyre', 'Rim', 'Driver', 'Carbon'].includes(m)) {
+        if (!['Body', 'Tyre', 'Rim', 'Driver', 'Carbon', 'Interior'].includes(m)) {
           const c = p.getAttribute('COLOR_0');
           if (c) p.setAttribute('COLOR_0', null);
         }
         if (!p.getAttribute('COLOR_0')) p.setAttribute('TEXCOORD_0', null);
       }
     for (const mat of root.listMaterials()) {
-      if (['Body', 'Tyre', 'Rim', 'Driver', 'Carbon'].includes(mat.getName())) mat.setBaseColorFactor([1, 1, 1, 1]);
+      if (['Body', 'Tyre', 'Rim', 'Driver', 'Carbon', 'Interior'].includes(mat.getName())) mat.setBaseColorFactor([1, 1, 1, 1]);
     }
     for (const mesh of root.listMeshes()) for (const p of mesh.listPrimitives()) p.setAttribute('TEXCOORD_0', null);
   }

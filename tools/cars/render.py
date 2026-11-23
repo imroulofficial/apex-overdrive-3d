@@ -35,6 +35,8 @@ ap.add_argument('--res', default='1600x1000')
 ap.add_argument('--length', type=float, default=5.2)
 ap.add_argument('--nose-axis', default='x', help="'z' for source models with the nose on +Z")
 ap.add_argument('--hide', default='', help='comma-separated node names to hide')
+ap.add_argument('--glass-alpha', type=float, default=0.82, help='car glass opacity (closed cars: ~0.45)')
+ap.add_argument('--windows', default='closed', help="'open': door windows in their META open pose")
 args = ap.parse_args(argv)
 os.makedirs(args.out, exist_ok=True)
 
@@ -179,7 +181,10 @@ def textured_material(name, files, uv1=None):
         nmap = nt.nodes.new('ShaderNodeNormalMap')
         nt.links.new(nm.outputs['Color'], nmap.inputs['Color'])
         nt.links.new(nmap.outputs['Normal'], b.inputs['Normal'])
-    if name in ('Body', 'Cockpit'):
+    if name == 'Gauges':
+        nt.links.new(base.outputs['Color'], b.inputs['Emission Color'])
+        b.inputs['Emission Strength'].default_value = 0.25
+    if name in ('Body',):
         b.inputs['Coat Weight'].default_value = 0.25
         b.inputs['Coat Roughness'].default_value = 0.08
     return m
@@ -205,7 +210,8 @@ def apply_materials(objs, tex_json):
     paint = paint_material((0.62, 0.025, 0.02) if args.paint == 'factory' else tuple(float(v) for v in args.paint.split(',')))
     mats = {
         'CarPaint': paint,
-        'Glass': plain('Glass', (0.02, 0.02, 0.025), 0.03, 0.4, alpha=0.82),
+        'Glass': plain('Glass', (0.02, 0.025, 0.027), 0.03, 0.4, alpha=args.glass_alpha),
+        'ClearGlass': plain('ClearGlass', (0.85, 0.88, 0.9), 0.01, 0.0, alpha=0.10),
         'MirrorGlass': plain('MirrorGlass', (0.85, 0.87, 0.9), 0.02, 1.0),
         'headlight_lens': plain('head', (0.8, 0.85, 0.9), 0.05, 0.0, ((0.9, 0.95, 1.0), 1.5)),
         'taillight_lens': plain('tail', (0.25, 0.005, 0.005), 0.1, 0.0, ((1.0, 0.03, 0.02), 2.5)),
@@ -219,7 +225,7 @@ def apply_materials(objs, tex_json):
     for g, files in info['textures'].items():
         mats[g] = textured_material(g, files, uv1)
     for g, (r, mt) in {'Body': (0.45, 0.15), 'Tyre': (0.85, 0.0), 'Rim': (0.35, 0.7), 'Driver': (0.6, 0.0),
-                       'Carbon': (0.3, 0.0)}.items():
+                       'Carbon': (0.3, 0.0), 'Interior': (0.7, 0.0), 'Gauges': (0.3, 0.0)}.items():
         if g not in mats:  # race LOD: albedo x AO in the vertex colours
             m = plain(g, (1, 1, 1), r, mt)
             nt = m.node_tree
@@ -258,6 +264,26 @@ for o in car:
         for ch in o.children_recursive:
             ch.hide_render = True
 
+if args.windows == 'open':
+    _m = None
+    for _p in (args.tex,):
+        if _p:
+            _m = json.load(open(_p)).get('meta')
+    from mathutils import Matrix, Quaternion
+    B3 = Matrix(((1, 0, 0), (0, 0, -1), (0, 1, 0)))
+    for o in car:
+        pose = (_m or {}).get('windows', {}).get(o.name.split('.')[0]) if isinstance((_m or {}).get('windows'), dict) else None
+        if not pose or o.type != 'MESH':
+            continue
+        qx, qy, qz, qw = pose['open']['quaternion']
+        Rg = Quaternion((qw, qx, qy, qz)).to_matrix()
+        Rb = B3 @ Rg @ B3.transposed()
+        tg = Vector(pose['open']['position'])
+        tb = B3 @ tg
+        M = Matrix.Translation(tb) @ Rb.to_4x4()
+        # the node sits at the car origin: pose in the car's (holder's) frame
+        H = o.parent.matrix_world if o.parent else Matrix()
+        o.matrix_world = H @ M @ H.inverted() @ o.matrix_world
 cockpit_objs = []
 if args.cockpit:
     info = json.load(open(args.cockpit))
@@ -371,6 +397,14 @@ VIEWS = {
     'front_wing': ((3.35, -1.55, 0.55), (2.25, -0.55, 0.18), 45, None),
     'rear_wing': ((-3.3, -1.75, 1.25), (-2.35, -0.55, 0.72), 45, None),
     'diffuser': ((-3.6, -0.9, 0.18), (-2.0, 0.0, 0.25), 38, None),
+    # closed GT close-ups (Aurelia)
+    'gt_wheel': ((2.30, -1.75, 0.50), (1.40, -0.80, 0.36), 62, None),
+    'gt_lights': ((3.05, -1.35, 0.88), (2.12, -0.60, 0.62), 45, None),
+    'gt_grille': ((3.55, -0.55, 0.70), (2.20, 0.0, 0.47), 48, None),
+    'gt_tail': ((-3.30, -1.45, 1.00), (-2.20, -0.40, 0.60), 45, None),
+    'gt_interior': ((0.10, -2.35, 1.30), (-0.25, 0.0, 0.80), 40, None),
+    'gt_window': ((0.60, -3.20, 1.20), (0.05, 0.0, 0.85), 38, None),
+    'gt_side34': ((1.6, -5.4, 1.2), (0.0, 0.0, 0.6), 45, None),
 }
 EYE = (-0.175, 0.0, 0.900)
 _meta = None

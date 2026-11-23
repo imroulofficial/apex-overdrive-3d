@@ -2,7 +2,7 @@
  {
   "lod": "showroom",
   "file": "tm_tempesta.glb",
-  "bytes": 1679120,
+  "bytes": 1682428,
   "maxBytes": 1800000,
   "tris": 136928,
   "maxTris": 150000,
@@ -25,8 +25,8 @@
    "Body_normal 1024² (111 KB)",
    "Carbon_weave 512² (3 KB)",
    "Carbon_weave_normal 512² (11 KB)",
-   "Carbon_orm 512² (56 KB)",
-   "CarPaint_base 1024² (33 KB)",
+   "Carbon_orm 512² (58 KB)",
+   "CarPaint_base 1024² (35 KB)",
    "Driver_base 512² (15 KB)",
    "Driver_orm 512² (30 KB)",
    "Driver_normal 512² (16 KB)",
@@ -129,7 +129,7 @@
  {
   "lod": "drive",
   "file": "tm_tempesta_drive.glb",
-  "bytes": 618528,
+  "bytes": 618816,
   "maxBytes": 650000,
   "tris": 38972,
   "maxTris": 40000,
@@ -147,12 +147,12 @@
    "Tyre"
   ],
   "textures": [
-   "Body_base 1024² (53 KB)",
+   "Body_base 1024² (52 KB)",
    "Body_normal 512² (49 KB)",
    "Carbon_weave 512² (3 KB)",
    "Carbon_weave_normal 512² (11 KB)",
-   "Carbon_orm 512² (52 KB)",
-   "CarPaint_base 512² (14 KB)",
+   "Carbon_orm 512² (55 KB)",
+   "CarPaint_base 512² (13 KB)",
    "Driver_base 256² (7 KB)",
    "Driver_normal 256² (4 KB)",
    "Rim_base 256² (7 KB)",
@@ -252,7 +252,7 @@
  {
   "lod": "race",
   "file": "tm_tempesta_race.glb",
-  "bytes": 106340,
+  "bytes": 106344,
   "maxBytes": 330000,
   "tris": 7574,
   "maxTris": 8000,

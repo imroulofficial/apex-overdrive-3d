@@ -312,7 +312,7 @@ def coaming(q):
     y = top_c(x) - 0.004
     path = np.stack([x, y, z], -1)
     k = seg(10, q, 5)
-    return sweep(path, lambda i, tt: ellipse(0.020, 0.016, k), 'carbon', closed=True)
+    return sweep(path, lambda i, tt: ellipse(0.020, 0.016, k), 'carbon:satin', closed=True)
 
 
 def headrest(q):
@@ -351,17 +351,17 @@ def mirrors(q):
     for s in (-1, 1):
         cx, cy, cz = MIRROR_C
         cz *= s
-        m += blob((cx, cy, cz), (0.032, 0.033, 0.088), n=n, rings=r, e1=0.32, e2=0.36, mat='paint')
-        m += strut((cx + 0.004, cy - 0.026, cz), (cx - 0.005, float(sp_yt(cx)) - 0.02, s * 0.585), 0.020, 0.008,
+        m += blob((cx, cy, cz), (0.028, 0.029, 0.074), n=n, rings=r, e1=0.32, e2=0.36, mat='paint')
+        m += strut((cx + 0.004, cy - 0.022, cz), (cx - 0.005, float(sp_yt(cx)) - 0.02, s * 0.585), 0.020, 0.008,
                    n=seg(8, q, 6), mat='carbon', samples=3)
         m += strut((cx + 0.010, cy - 0.004, s * 0.525), (cx + 0.060, cy - 0.065, s * 0.292), 0.018, 0.007,
                    n=seg(8, q, 6), mat='carbon', samples=3)
-        g = slab(rounded_rect(0.077, 0.026, 0.010, seg(4, q, 2)), 0.004, axis=0, centre=0.0, mat='mirror', steps=1)
+        g = slab(rounded_rect(0.064, 0.022, 0.009, seg(4, q, 2)), 0.004, axis=0, centre=0.0, mat='mirror', steps=1)
         # outline coords for axis 0 are (y, z): swap so the long side runs along z
         g.V = g.V[:, [0, 2, 1]]
         g.F = [f[::-1] for f in g.F]
         g.orient_outward()
-        g.transform(t=(cx - 0.0305, cy, cz))
+        g.transform(t=(cx - 0.0265, cy, cz))
         m += g
     return m
 
@@ -452,12 +452,12 @@ def diffuser(q):
         xs = np.linspace(X0 - 0.05, X1, seg(14, q, 4))
         top = roof_y(xs, zf) + 0.008
         pts = np.vstack([np.stack([xs, top], -1), [[X1, 0.066], [X0 - 0.05, 0.062]]])
-        m += slab(pts, 0.007 if abs(zf) < HZ else 0.012, axis=2, centre=zf, mat='carbon', steps=1)
+        m += slab(pts, 0.007 if abs(zf) < HZ else 0.012, axis=2, centre=zf, mat='carbon:satin', steps=1)
     if q >= 0.2:
         # trailing-edge gurney lip and outer kick-ups
         zz = np.linspace(-HZ, HZ, seg(24, q, 6))
         le = np.stack([np.full_like(zz, X1 + 0.02), roof_y(np.full_like(zz, X1), zz) + 0.004, zz], -1)
-        m += wing(le, 0.035, math.radians(55), airfoil(even(seg(12, q, 6)), 0.25, 0.0), mat='carbon')
+        m += wing(le, 0.035, math.radians(55), airfoil(even(seg(12, q, 6)), 0.25, 0.0), mat='carbon:satin')
     return m
 
 
@@ -924,6 +924,11 @@ def cockpit_shell(q):
 WHITE = (0.80, 0.80, 0.78)
 
 
+def crest_z(x):
+    zo, zi = sp_zo(x), hw_c(x) - 0.05
+    return zo - 0.30 * (zo - zi)
+
+
 def livery(group, P, N, valid):
     x, y, z = P[..., 0], P[..., 1], P[..., 2]
     az = np.abs(z)
@@ -950,8 +955,12 @@ def livery(group, P, N, valid):
         tm = lv.text_mask('TEMPESTA')
         ao = lv.text_mask('APEX OVERDRIVE')
         for s in (-1, 1):
-            dark = np.maximum(dark, 0.92 * lv.stamp(P, N, valid, ao, (-0.30, 0.640, s * 0.555), (s, 0, 0),
-                                                    (0, 0, -s), 0.50, facing=(0, 1, 0), min_dot=0.4, depth=0.10))
+            # on the paint flash between the crisp outer edge and the crest, clear of both
+            flash = valid & (az > crest_z(x) + 0.012) & (az < sp_zo(x) - 0.012)
+            # stamp plane laid along the flash (it slopes ~55 degrees from the edge up to the crest)
+            dark = np.maximum(dark, 0.92 * flash * lv.stamp(P, N, valid, ao, (-0.26, 0.548, s * 0.652), (s, 0, 0),
+                                                            (0, 0.821, -s * 0.571), 0.44, facing=(0, 0.571, s * 0.821),
+                                                            min_dot=0.3, depth=0.07))
         flap = valid & (x < -2.44) & (y > 0.93) & (az < 0.84)
         dark = np.maximum(dark, 0.92 * flap * lv.stamp(P, N, valid, ao, (-2.505, 0.985, 0.0), (0, 0, 1),
                                                        (0.87, -0.5, 0), 1.00, facing=(0.5, 0.87, 0), min_dot=0.3,
@@ -999,9 +1008,9 @@ def livery(group, P, N, valid):
         rep = valid & (az > 0.83) & (az < 0.865) & (x < -2.22) & (y > 0.37)
         od = lv.text_mask('OVERDRIVE')
         for s in (-1, 1):
-            layers.append((lv.stamp(P, N, valid, ap, (-2.475, 0.735, s * 0.846), (s, 0, 0), (0, 1, 0), 0.20,
+            layers.append((lv.stamp(P, N, valid, ap, (-2.490, 0.735, s * 0.846), (s, 0, 0), (0, 1, 0), 0.15,
                                     facing=side(s), min_dot=0.5, depth=0.02) * rep, WHITE, 0.24))
-            layers.append((lv.stamp(P, N, valid, od, (-2.475, 0.650, s * 0.846), (s, 0, 0), (0, 1, 0), 0.22,
+            layers.append((lv.stamp(P, N, valid, od, (-2.490, 0.650, s * 0.846), (s, 0, 0), (0, 1, 0), 0.17,
                                     facing=side(s), min_dot=0.5, depth=0.02) * rep, WHITE, 0.24))
         layers.append((lv.band(y, 0.990, 1.05, 0.004) * rep, WHITE, 0.24))
         return {'layers': layers}

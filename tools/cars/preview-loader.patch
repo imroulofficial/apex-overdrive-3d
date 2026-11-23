@@ -1,46 +1,72 @@
 diff --git a/src/assets/modelLoader.js b/src/assets/modelLoader.js
-index 15b73b2..e90bd0a 100644
+index 15b73b2..60b5e4b 100644
 --- a/src/assets/modelLoader.js
 +++ b/src/assets/modelLoader.js
-@@ -84,7 +84,21 @@ export function evictModel(def, lod = 'garage') {
+@@ -84,7 +84,23 @@ export function evictModel(def, lod = 'garage') {
  
  // Spawns a car rig for a catalog entry at `lod` ('garage' | 'drive' | 'race'). A missing LOD
  // file falls back to the next more detailed one; a car with no loadable file at all throws.
-+// PILOT: preloads the formula cockpit parts for the driver view.
-+export async function loadPilotCockpit() {
-+  const g = await fetchGltf(resolveUrl('assets/pilot/tm_tempesta_cockpit.glb'));
++// PILOT: the Blender pilot cars (assets/pilot/<file>*.glb) and their own driver-view parts.
++const PILOT_CARS = { 'tm-tempesta': 'tm_tempesta', 'ag-aurelia': 'ag_aurelia' };
++export async function loadPilotCockpit(file) {
++  const g = await fetchGltf(resolveUrl(`assets/pilot/${file}_cockpit.glb`));
 +  globalThis.__pilotCockpit = g ? g.scene : true;
++  globalThis.__pilotCockpitFile = file;
 +}
 +
  export async function loadCar(def, { paintColor, finish, lod = 'garage', rim } = {}) {
-+  // PILOT (temporary, not committed): new Blender Tempesta from assets/pilot/ when the page
++  // PILOT (temporary, not committed): the new Blender car from assets/pilot/ when the page
 +  // sets localStorage 'apex.pilot' = 'new'.
-+  let pilot = false;
++  let pilot = null;
 +  try {
-+    pilot = def.id === 'tm-tempesta' && localStorage.getItem('apex.pilot') === 'new';
++    pilot = localStorage.getItem('apex.pilot') === 'new' ? PILOT_CARS[def.id] ?? null : null;
 +  } catch {}
-+  if (pilot && globalThis.__pilotEye && !globalThis.__pilotCockpit) await loadPilotCockpit();
-+  if (pilot) def = { ...def, model: { ...def.model, url: 'assets/pilot/tm_tempesta.glb', driveUrl: 'assets/pilot/tm_tempesta_drive.glb', raceUrl: 'assets/pilot/tm_tempesta_race.glb' } };
++  if (pilot && globalThis.__pilotEye && globalThis.__pilotCockpitFile !== pilot) await loadPilotCockpit(pilot);
++  if (pilot) def = { ...def, model: { ...def.model, url: `assets/pilot/${pilot}.glb`, driveUrl: `assets/pilot/${pilot}_drive.glb`, raceUrl: `assets/pilot/${pilot}_race.glb` } };
    const order = ['race', 'drive', 'garage'];
    const urls = order.slice(order.indexOf(lod)).map((k) => def.model?.[LOD_URL[k]]).filter(Boolean);
    for (const url of urls) {
-@@ -147,6 +161,15 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', url }) {
+@@ -147,6 +163,39 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', url }) {
    // Inner group carries the normalisation (orientation, scale, centring), so the rig's own
    // root keeps an identity transform.
    const model = source.clone(true);
-+  // PILOT: driver view of the formula car: no driver or exterior wheel, the car's own cockpit
-+  // parts (wheel with display, hands, inner panel) added in the same car frame.
-+  if (globalThis.__pilotCockpit && /assets\/pilot\//.test(url ?? '')) {
-+    for (const n of ['driver', 'steering_wheel']) {
-+      const o = model.getObjectByName(n);
-+      if (o) o.visible = false, o.parent.remove(o);
++  // PILOT: driver view of a pilot car (the player's drive LOD only): no driver, exterior wheel,
++  // interior or exterior glass; the car's own cockpit file (wheel, hands, cabin, its own clear
++  // glass and door windows) added in the same car frame. Door windows follow
++  // globalThis.__pilotWindows = 'open' | 'closed' through the poses in extras.apex.windows.
++  if (/assets\/pilot\/.*_drive\.glb/.test(url ?? '')) {
++    let meta = null;
++    model.traverse((o) => { if (!meta && o.userData?.apex) try { meta = JSON.parse(o.userData.apex); } catch {} });
++    const cockpitOn = globalThis.__pilotCockpit && globalThis.__pilotCockpitFile && url.includes(globalThis.__pilotCockpitFile);
++    if (cockpitOn) {
++      for (const n of meta?.hideInCockpit ?? ['driver', 'steering_wheel']) {
++        const o = model.getObjectByName(n);
++        if (o) o.visible = false, o.parent.remove(o);
++      }
++      if (globalThis.__pilotCockpit.isObject3D) model.add(globalThis.__pilotCockpit.clone(true));
 +    }
-+    if (globalThis.__pilotCockpit.isObject3D) model.add(globalThis.__pilotCockpit.clone(true));
++    if (meta?.windows) {
++      // The pose is in the car frame and goes on top of the node's own transform (the packer
++      // gives every node a dequantisation offset and scale).
++      const wins = [];
++      model.traverse((o) => meta.windows[o.name] && wins.push({ o, p: o.position.clone(), q: o.quaternion.clone() }));
++      const apply = (state) => {
++        for (const { o, p, q } of wins) {
++          const pose = meta.windows[o.name][state === 'open' ? 'open' : 'closed'];
++          const pq = new THREE.Quaternion().fromArray(pose.quaternion);
++          o.position.copy(p).applyQuaternion(pq).add(new THREE.Vector3().fromArray(pose.position));
++          o.quaternion.copy(pq).multiply(q);
++        }
++      };
++      apply(globalThis.__pilotWindows);
++      (globalThis.__pilotWindowSetters ??= []).push(apply);
++      globalThis.__pilotSetWindows = (state) => { globalThis.__pilotWindows = state; for (const f of globalThis.__pilotWindowSetters) f(state); };
++    }
 +  }
    const fit = new THREE.Group();
    fit.add(model);
    car.add(fit);
-@@ -243,6 +266,7 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', url }) {
+@@ -243,6 +292,7 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', url }) {
      const wb = new THREE.Box3().setFromObject(node);
      const wheel = new THREE.Group();
      wb.getCenter(wheel.position);

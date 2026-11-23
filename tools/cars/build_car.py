@@ -76,6 +76,12 @@ LODS = {
     'race': dict(q=0.075, tex=None, orm=set()),
     'cockpit': dict(q=1.0, tex={'Cockpit': 1024, 'Carbon': 512}, orm={'Cockpit', 'Carbon'}),
 }
+# A design may add atlases or change sizes per LOD (e.g. a closed car's Interior), as
+# TEX = {lod: {group: size}} and ORM = {lod: {group, ...}}.
+for _lod, _t in getattr(car, 'TEX', {}).items():
+    LODS[_lod]['tex'] = {**(LODS[_lod]['tex'] or {}), **_t}
+for _lod, _o in getattr(car, 'ORM', {}).items():
+    LODS[_lod]['orm'] = set(LODS[_lod]['orm']) | set(_o)
 # Carbon fibre is not baked into an atlas: a tiling 2x2 twill (albedo + normal) on a second UV
 # set in metres (TEXCOORD_1, box-projected per face), with the baked AO / roughness on UV 0.
 WEAVE_TILE = 0.024   # metres per texture repeat (two twill periods of four 3 mm tows)
@@ -114,20 +120,26 @@ def rot_z(a):
 
 def group_of(key, lod):
     head = key.split(':')[0]
+    if key == 'glass:clear':
+        return 'ClearGlass'
+    if key == 'int:gauge':
+        return 'Gauges'
     if lod == 'cockpit':
         return {'glass': 'Glass', 'carbon': 'Carbon', 'mirror': 'MirrorGlass'}.get(head, 'Cockpit')
     return {'paint': 'CarPaint', 'carbon': 'Carbon', 'mirror': 'MirrorGlass', 'body': 'Body', 'tyre': 'Tyre',
-            'rim': 'Rim', 'driver': 'Driver', 'glass': 'Glass'}.get(head, key)
+            'rim': 'Rim', 'driver': 'Driver', 'glass': 'Glass', 'int': 'Interior'}.get(head, key)
 
 
-BAKED = {'Body', 'Tyre', 'Rim', 'Driver', 'Cockpit', 'Carbon'}  # race LOD: vertex colours
+BAKED = {'Body', 'Tyre', 'Rim', 'Driver', 'Cockpit', 'Carbon', 'Interior'}  # race LOD: vertex colours
 
 # Plain export materials (base colour linear RGBA, roughness, metalness, emissive).
 PLAIN = {
     'CarPaint': ((0.62, 0.025, 0.02, 1), 0.3, 0.0, None),
     'MirrorGlass': ((0.62, 0.64, 0.68, 1), 0.03, 1.0, None),
     'Carbon': ((1, 1, 1, 1), 0.3, 0.0, None),
-    'Glass': ((0.03, 0.03, 0.035, 0.72), 0.05, 0.3, None),
+    'Glass': getattr(car, 'GLASS', ((0.03, 0.03, 0.035, 0.72), 0.05, 0.3, None)),
+    # lamp covers and the cockpit's own windows: nearly clear
+    'ClearGlass': ((0.80, 0.84, 0.86, 0.14), 0.02, 0.0, None),
     'headlight_lens': ((0.85, 0.88, 0.92, 1), 0.1, 0.0, (0.0, 0.0, 0.0)),
     'taillight_lens': ((0.30, 0.01, 0.01, 1), 0.15, 0.0, (0.25, 0.0, 0.0)),
     'exhaust': ((0.55, 0.47, 0.38, 1), 0.35, 1.0, None),
@@ -136,6 +148,8 @@ PLAIN = {
     'Tyre': ((1, 1, 1, 1), 0.85, 0.0, None),
     'Rim': ((1, 1, 1, 1), 0.35, 0.7, None),
     'Driver': ((1, 1, 1, 1), 0.6, 0.0, None),
+    'Interior': ((1, 1, 1, 1), 0.7, 0.0, None),
+    'Gauges': ((1, 1, 1, 1), 0.3, 0.0, None),
 }
 
 
@@ -231,7 +245,7 @@ def text_strip():
             font = ImageFont.truetype(f, 104)
             break
     font = font or ImageFont.load_default()
-    words = ['APEX OVERDRIVE', 'TEMPESTA', 'APEX OVERDRIVE', 'TEMPESTA']
+    words = getattr(car, 'TYRE_WORDS', ['APEX OVERDRIVE', 'TEMPESTA', 'APEX OVERDRIVE', 'TEMPESTA'])
     x = 60
     for wd in words:
         d.text((x, 22), wd, fill=255, font=font)
@@ -344,8 +358,20 @@ def make_key_material(key):
         col = k.mix(hole, col, srgb((0.02, 0.02, 0.02)))
         rough = 0.6
         height = k.math('MULTIPLY', hole, -1.0)
+    elif key == 'body:discp':
+        # plain solid disc of a classic car: machined iron with fine concentric grind marks
+        r = k.node('ShaderNodeVectorMath', operation='LENGTH')
+        cxy = k.node('ShaderNodeCombineXYZ')
+        k.feed(cxy.inputs[0], ox)
+        k.feed(cxy.inputs[1], oz)
+        k.l.new(cxy.outputs[0], r.inputs[0])
+        g = k.math('FRACT', k.math('MULTIPLY', r.outputs['Value'], 1 / 0.0012))
+        n = k.noise(vec, 90.0, 4.0)
+        col = k.mix(k.math('ADD', k.math('MULTIPLY', g, 0.3), k.math('MULTIPLY', n, 0.5)),
+                    srgb((0.30, 0.30, 0.31)), srgb((0.46, 0.46, 0.47)))
+        rough, metal = k.mixf(g, 0.32, 0.42), 1.0
     elif key == 'body:caliper':
-        col, rough, coat = srgb((0.85, 0.08, 0.05)), 0.30, 1.0
+        col, rough, coat = srgb(getattr(car, 'CALIPER', (0.85, 0.08, 0.05))), 0.30, 1.0
     elif key == 'body:padding':
         n = k.noise(vec, 300.0, 4.0, 0.7)
         col = k.mix(n, srgb((0.07, 0.07, 0.075)), srgb((0.11, 0.11, 0.115)))
@@ -374,11 +400,18 @@ def make_key_material(key):
         k.feed(az.inputs[0], oz)
         k.feed(az.inputs[1], ox)
         u = k.math('ADD', k.math('MULTIPLY', az.outputs[0], 1 / math.tau), 0.5)
-        side = k.smooth(0.10, 0.17, k.math('ABSOLUTE', oy))
+        th = getattr(car, 'TYRE_HW', 0.20)          # half width of the narrower tyre
+        side = k.smooth(0.50 * th, 0.85 * th, k.math('ABSOLUTE', oy))
         R0 = car.RIM_R
-        band = k.math('MULTIPLY', k.smooth(R0 + 0.075, R0 + 0.079, rr), k.smooth(R0 + 0.092, R0 + 0.088, rr))
+        b0 = getattr(car, 'TYRE_BAND', (0.075, 0.092))   # coloured sidewall ring (None: no ring)
+        if b0:
+            band = k.math('MULTIPLY', k.smooth(R0 + b0[0], R0 + b0[0] + 0.004, rr),
+                          k.smooth(R0 + b0[1], R0 + b0[1] - 0.004, rr))
+        else:
+            band = 0.0
         band = k.math('MULTIPLY', band, side)
-        v = k.math('MULTIPLY', k.math('SUBTRACT', rr, R0 + 0.030), 1 / 0.036)
+        lt = getattr(car, 'TYRE_TEXT_R', (0.030, 0.036))  # lettering: start above the rim, height
+        v = k.math('MULTIPLY', k.math('SUBTRACT', rr, R0 + lt[0]), 1 / lt[1])
         cmb = k.node('ShaderNodeCombineXYZ')
         k.feed(cmb.inputs[0], k.math('FRACT', k.math('MULTIPLY', u, 2.0)))
         k.feed(cmb.inputs[1], v)
@@ -386,7 +419,7 @@ def make_key_material(key):
         letters = k.math('MULTIPLY', img.outputs['Color'], side)
         n = k.noise(vec, 220.0, 3.0)
         base = k.mix(k.math('MULTIPLY', n, 0.4), srgb((0.030, 0.030, 0.032)), srgb((0.045, 0.045, 0.047)))
-        tread = k.smooth(0.155, 0.10, k.math('ABSOLUTE', oy))
+        tread = k.smooth(0.775 * th, 0.50 * th, k.math('ABSOLUTE', oy))
         base = k.mix(k.math('MULTIPLY', tread, 0.5), base, srgb((0.055, 0.054, 0.052)))
         base = k.mix(letters, base, srgb((0.62, 0.62, 0.60)))
         col = k.mix(band, base, srgb((0.80, 0.05, 0.04)))
@@ -403,6 +436,9 @@ def make_key_material(key):
         col = k.mix(lip, srgb((0.40, 0.41, 0.43)), srgb((0.80, 0.80, 0.82)))
         rough = k.mixf(lip, 0.34, 0.16)
         metal = 1.0
+    elif key == 'rim:wire':
+        n = k.noise(vec, 400.0, 2.0)
+        col, rough, metal = k.mix(n, (0.80, 0.81, 0.83), (0.88, 0.89, 0.90)), 0.10, 1.0
     elif key == 'rim:spoke':
         n = k.noise(vec, 400.0, 2.0)
         col = k.mix(k.math('MULTIPLY', n, 0.3), srgb((0.42, 0.43, 0.45)), srgb((0.50, 0.51, 0.53)))
@@ -423,12 +459,86 @@ def make_key_material(key):
         col = k.mix(side, srgb((0.06, 0.065, 0.08)), srgb((0.72, 0.05, 0.04)))
         rough = k.mixf(n, 0.75, 0.9)
         height = k.math('MULTIPLY', n, 0.15)
+    elif key == 'driver:jacket':
+        # navy wool jacket of a gentleman driver
+        n = k.noise(vec, 260.0, 3.0)
+        col = k.mix(n, srgb((0.030, 0.036, 0.062)), srgb((0.050, 0.058, 0.090)))
+        rough = 0.9
+        height = k.math('MULTIPLY', n, 0.2)
+    elif key == 'driver:glove' and getattr(car, 'GLOVE', None):
+        n = k.noise(vec, 300.0, 3.0)
+        col = k.mix(k.math('MULTIPLY', n, 0.5), srgb(car.GLOVE), srgb(tuple(v * 1.25 for v in car.GLOVE)))
+        rough = 0.6
+        height = k.math('MULTIPLY', n, 0.15)
     elif key == 'driver:glove':
         n = k.noise(vec, 260.0, 3.0)
         col = k.mix(k.math('MULTIPLY', n, 0.4), srgb((0.05, 0.05, 0.055)), srgb((0.12, 0.12, 0.13)))
         rough = 0.8
         height = k.math('MULTIPLY', n, 0.2)
-    elif key == 'glass':
+    elif key == 'body:chrome' or key == 'int:chrome' or key == 'rim:chrome':
+        n = k.noise(vec, 600.0, 2.0)
+        col, rough, metal = (0.86, 0.87, 0.89), k.mixf(n, 0.05, 0.09), 1.0
+    elif key == 'body:reflector':
+        # lamp reflector: chrome bowl with concentric facets
+        r = k.node('ShaderNodeVectorMath', operation='LENGTH')
+        k.l.new(vec, r.inputs[0])
+        rings_ = k.math('FRACT', k.math('MULTIPLY', r.outputs['Value'], 1 / 0.006))
+        col, rough, metal = (0.90, 0.90, 0.91), 0.12, 1.0
+        height = k.math('MULTIPLY', k.smooth(0.3, 0.7, rings_), 0.5)
+    elif key == 'body:well':
+        n = k.noise(vec, 120.0, 3.0)
+        col, rough = k.mix(n, srgb((0.025, 0.025, 0.027)), srgb((0.04, 0.04, 0.042))), 0.85
+        height = k.math('MULTIPLY', n, 0.3)
+    elif key == 'body:rubber':
+        col, rough = srgb((0.02, 0.02, 0.022)), 0.75
+    elif key == 'body:grille':
+        col, rough, metal = (0.70, 0.71, 0.73), 0.18, 1.0
+    elif key == 'body:badge':
+        col, rough, coat = srgb((0.05, 0.10, 0.30)), 0.25, 1.0
+    elif key == 'body:amber':
+        col, rough, coat = srgb((0.95, 0.45, 0.05)), 0.15, 1.0
+    elif key == 'int:leather':
+        n = k.noise(vec, 260.0, 5.0, 0.7)
+        c0 = tuple(getattr(car, 'LEATHER', (0.30, 0.09, 0.05)))
+        col = k.mix(k.math('MULTIPLY', n, 0.5), srgb(c0), srgb(tuple(v * 0.7 for v in c0)))
+        rough = k.mixf(n, 0.48, 0.62)
+        height = k.math('MULTIPLY', n, 0.35)
+    elif key == 'int:pleat':
+        # pleated seat centres: ribs across the seat (along the car's x in Blender local)
+        rib = k.math('ABSOLUTE', k.math('SUBTRACT', k.math('FRACT', k.math('MULTIPLY', oz, 1 / 0.045)), 0.5))
+        n = k.noise(vec, 260.0, 5.0, 0.7)
+        c0 = tuple(getattr(car, 'LEATHER', (0.30, 0.09, 0.05)))
+        col = k.mix(k.smooth(0.42, 0.5, rib), srgb(c0), srgb(tuple(v * 0.55 for v in c0)))
+        rough = k.mixf(n, 0.5, 0.62)
+        height = k.math('ADD', k.math('MULTIPLY', k.smooth(0.5, 0.3, rib), 1.0), k.math('MULTIPLY', n, 0.2))
+    elif key == 'int:carpet':
+        n = k.noise(vec, 700.0, 4.0, 0.8)
+        col, rough = k.mix(n, srgb((0.035, 0.033, 0.032)), srgb((0.06, 0.055, 0.05))), 0.95
+        height = k.math('MULTIPLY', n, 0.4)
+    elif key == 'int:dash':
+        # leather-grain vinyl: matte, so the dash top does not mirror the sky into the screen
+        n = k.noise(vec, 400.0, 4.0, 0.6)
+        col, rough = k.mix(n, srgb((0.030, 0.030, 0.032)), srgb((0.045, 0.045, 0.048))), 0.9
+        height = k.math('MULTIPLY', n, 0.25)
+    elif key == 'int:headliner':
+        n = k.noise(vec, 500.0, 3.0, 0.6)
+        col, rough = k.mix(n, srgb((0.55, 0.53, 0.49)), srgb((0.62, 0.60, 0.56))), 0.9
+        height = k.math('MULTIPLY', n, 0.2)
+    elif key == 'int:wood':
+        # walnut veneer: grain along the car's z (Blender -y)
+        n = k.noise(vec, 30.0, 6.0, 0.65)
+        g = k.math('FRACT', k.math('ADD', k.math('MULTIPLY', oy, 70.0), k.math('MULTIPLY', n, 6.0)))
+        col = k.mix(k.smooth(0.2, 0.8, g), srgb((0.20, 0.09, 0.035)), srgb((0.34, 0.17, 0.07)))
+        rough, coat = 0.25, 1.0
+    elif key == 'int:metal':
+        n = k.noise(vec, 900.0, 2.0)
+        col, rough, metal = k.mix(n, srgb((0.62, 0.62, 0.63)), srgb((0.72, 0.72, 0.73))), 0.28, 1.0
+    elif key == 'int:gauge':
+        # dial faces: a generated dial atlas on a planar UV (group Gauges, see gauge_uv)
+        col, rough = srgb((0.03, 0.03, 0.03)), 0.2
+    elif key == 'int:black':
+        col, rough = srgb((0.02, 0.02, 0.022)), 0.45
+    elif key == 'glass' or key == 'glass:clear':
         col, rough, metal = (0.05, 0.045, 0.03), 0.04, 0.6
     elif key == 'headlight_lens':
         col, rough = (0.85, 0.88, 0.92), 0.1
@@ -559,8 +669,11 @@ def build_lod(lod):
         sw_M = mat4(rot_z(car.WHEEL_TILT), car.WHEEL_CENTRE)
         sw = empty('steering_wheel', sw_M, root)
         b.nodes['steering_wheel'] = sw
-        for node, mesh, parent in (('steering_wheel', parts['steering_wheel'], sw), ('hands', parts['hands'], sw),
-                                   ('cockpit_shell', parts['cockpit_shell'], root)):
+        # steering wheel and hands in the wheel's frame; every other part (shell, the cockpit's
+        # own window glass...) in the car frame, one node each
+        order = ['steering_wheel', 'hands'] + [k for k in parts if k not in ('steering_wheel', 'hands')]
+        for node in order:
+            mesh, parent = parts[node], (sw if node in ('steering_wheel', 'hands') else root)
             M = sw_M if parent is sw else mat4()
             for g, gm in split_by_group(mesh, lod).items():
                 ob = mesh_object(f'{node}__{g}', gm, lod, M, parent)
@@ -578,9 +691,15 @@ def build_lod(lod):
         'driver': (mat4(), None),
         'steering_wheel': (mat4(rot_z(car.WHEEL_TILT), car.WHEEL_CENTRE), None),
     }
+    # Further car-frame nodes a design may add (glass, interior, window_L / window_R...): children
+    # of body, origin at the car's origin (a window node's open position is in META['windows']).
+    for node in nodes:
+        if node not in placement and not node.startswith(('tyre_', 'rim_', 'upright_')):
+            placement[node] = (mat4(), None)
+    under_root = ('driver', 'steering_wheel')
     for node, (M, holder) in placement.items():
         if holder is None:
-            holder = empty(node, M, body if node in ('exhaust', 'headlight_lens', 'taillight_lens') else root)
+            holder = empty(node, M, root if node in under_root else body)
             b.nodes[node] = holder
         for g, gm in split_by_group(nodes[node], lod).items():
             ob = mesh_object(f'{node}__{g}', gm, lod, M, holder)
@@ -807,27 +926,108 @@ def weave_uv(objs):
         me.uv_layers[0].active_render = True
 
 
-def planar_uv(objs):
-    """Mirror glass: 0..1 per glass (u along the car's z, v up), for the game's live mirror
-    (render target) or its low-tier sky gradient (reads uv.y)."""
+def components(me):
+    """Connected parts of a mesh: a component id per vertex (union-find over the faces)."""
+    nv = len(me.vertices)
+    par = np.arange(nv)
+
+    def find(a):
+        while par[a] != a:
+            par[a] = par[par[a]]
+            a = par[a]
+        return a
+    for p in me.polygons:
+        vs = list(p.vertices)
+        r0 = find(vs[0])
+        for v in vs[1:]:
+            r = find(v)
+            if r != r0:
+                par[r] = r0
+    roots = np.array([find(i) for i in range(nv)])
+    _, comp = np.unique(roots, return_inverse=True)
+    return comp
+
+
+def planar_uv(objs, tiles=None):
+    """0..1 per glass / dial (each connected part on its own), u along the car's z and v up for
+    a part that faces along x; along x and up for one that faces sideways. For the game's live
+    mirror (render target) or its low-tier sky gradient (reads uv.y). `tiles` (gauges): a list of
+    (u0, v0, size) atlas cells, given to the parts in order of their z (left to right)."""
     for o in objs:
         me = o.data
         V = np.empty(len(me.vertices) * 3)
         me.vertices.foreach_get('co', V)
-        V = V.reshape(-1, 3)
-        gz, gy = -V[:, 1], V[:, 2]
+        V = V.reshape(-1, 3) @ np.asarray(o.matrix_world)[:3, :3].T + np.asarray(o.matrix_world)[:3, 3]
+        gx, gz, gy = V[:, 0], -V[:, 1], V[:, 2]
+        comp = components(me)
+        order = sorted(range(comp.max() + 1), key=lambda c: gz[comp == c].mean())
         uv = np.zeros((len(V), 2))
-        for side in (gz < 0, gz >= 0):
-            if side.any():
-                z0, z1 = gz[side].min(), gz[side].max()
-                y0, y1 = gy[side].min(), gy[side].max()
-                uv[side, 0] = (gz[side] - z0) / max(z1 - z0, 1e-6)
+        for rank, c in enumerate(order):
+            side = comp == c
+            ext = np.array([np.ptp(gx[side]), np.ptp(gz[side])])
+            a = gz if ext[1] >= ext[0] else -gx * np.sign(gz[side].mean() or 1)
+            a0, a1 = a[side].min(), a[side].max()
+            y0, y1 = gy[side].min(), gy[side].max()
+            if tiles is not None:
+                # keep the dial round: square cell round the part's centre
+                span = max(a1 - a0, y1 - y0)
+                ac, yc = (a0 + a1) / 2, (y0 + y1) / 2
+                u0, v0, sz = tiles[min(rank, len(tiles) - 1)]
+                uv[side, 0] = u0 + sz * ((a[side] - ac) / span + 0.5)
+                uv[side, 1] = v0 + sz * ((gy[side] - yc) / span + 0.5)
+            else:
+                uv[side, 0] = (a[side] - a0) / max(a1 - a0, 1e-6)
                 uv[side, 1] = (gy[side] - y0) / max(y1 - y0, 1e-6)
         lv = np.empty(len(me.loops), dtype=np.int64)
         me.loops.foreach_get('vertex_index', lv)
         if not me.uv_layers:
             me.uv_layers.new(name='UVMap')
         me.uv_layers.active.data.foreach_set('uv', uv[lv].ravel())
+
+
+def gauge_atlas():
+    """Dial faces for the classic instruments (car.GAUGES: list of dicts with kind, label, max,
+    ticks), 2 x 2 cells of 512 px; returns (path, tiles)."""
+    from PIL import Image, ImageDraw, ImageFont
+    S = 1024
+    im = Image.new('RGB', (S, S), (8, 8, 9))
+    d = ImageDraw.Draw(im)
+    try:
+        F = lambda px: ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', px)
+        F(10)
+    except OSError:
+        F = lambda px: ImageFont.load_default()
+    tiles = []
+    for i, g in enumerate(getattr(car, 'GAUGES', [])[:4]):
+        cx, cy = (i % 2) * 512 + 256, (i // 2) * 512 + 256
+        R = 236
+        d.ellipse((cx - R, cy - R, cx + R, cy + R), fill=(14, 14, 15), outline=(190, 190, 185), width=6)
+        a0, a1 = math.radians(225), math.radians(-45)
+        n = g.get('ticks', 8)
+        for k in range(n * 5 + 1):
+            a = a0 + (a1 - a0) * k / (n * 5)
+            major = k % 5 == 0
+            r1 = R - (52 if major else 32)
+            d.line((cx + (R - 14) * math.cos(a), cy - (R - 14) * math.sin(a), cx + r1 * math.cos(a), cy - r1 * math.sin(a)),
+                   fill=(235, 232, 220), width=7 if major else 3)
+            if major:
+                val = str(int(g['max'] * (k // 5) / n))
+                f = F(44)
+                bb = d.textbbox((0, 0), val, font=f)
+                tx, ty = cx + (R - 92) * math.cos(a), cy - (R - 92) * math.sin(a)
+                d.text((tx - (bb[2] - bb[0]) / 2, ty - (bb[3] - bb[1]) / 2 - bb[1]), val, fill=(235, 232, 220), font=f)
+        f = F(34)
+        bb = d.textbbox((0, 0), g['label'], font=f)
+        d.text((cx - (bb[2] - bb[0]) / 2, cy + 70), g['label'], fill=(200, 196, 180), font=f)
+        # needle at rest-ish, centre cap
+        a = a0 + (a1 - a0) * g.get('needle', 0.12)
+        d.line((cx - 30 * math.cos(a), cy + 30 * math.sin(a), cx + (R - 40) * math.cos(a), cy - (R - 40) * math.sin(a)),
+               fill=(245, 110, 30), width=10)
+        d.ellipse((cx - 26, cy - 26, cx + 26, cy + 26), fill=(30, 30, 32), outline=(150, 150, 150), width=4)
+        tiles.append(((i % 2) * 0.5 + 0.01, 1 - ((i // 2) + 1) * 0.5 + 0.01, 0.48))
+    path = os.path.join(OUT, 'gauges.png')
+    im.save(path)
+    return path, tiles
 
 
 def weave_textures():
@@ -921,9 +1121,9 @@ def bake_textures(b, lod):
         bake('BASE', objs, base, mats, samples=4)
         bake('NORMAL', objs, nrm, mats, samples=4)
         B, Nn = pixels(base)[..., :3], pixels(nrm)[..., :3]
-        if g == 'Body' and hasattr(car, 'livery'):
+        if hasattr(car, 'livery') and g in getattr(car, 'LIVERY_GROUPS', ('Body',)):
             P, N, valid = livery_inputs(objs, mats, size)
-            L = car.livery('Body', P, N, valid)
+            L = car.livery(g, P, N, valid)
             lin = to_lin(B)
             for mask, col, rgh in L.get('layers', []):
                 m = np.clip(mask, 0, 1) * valid
@@ -938,7 +1138,8 @@ def bake_textures(b, lod):
         if g in cfg['orm']:
             save_png(stem + '_base.png', B)  # Blender stores sRGB images display-encoded
             save_png(stem + '_orm.png', np.stack([A, R, Mt], -1))
-            files[g] = {'base': stem + '_base.png', 'orm': stem + '_orm.png', 'normal': stem + '_normal.png'}
+            files[g] = {'base': stem + '_base.png', 'orm': stem + '_orm.png', 'normal': stem + '_normal.png',
+                        'useOrm': True}
         else:
             # AO multiplied into the albedo (decode sRGB, multiply, encode)
             lin = to_lin(B) * (0.25 + 0.75 * A[..., None])
@@ -950,6 +1151,11 @@ def bake_textures(b, lod):
         objs = [o for (_, gg, o) in b.parts if gg == g]
         if objs:
             planar_uv(objs)
+    objs = [o for (_, gg, o) in b.parts if gg == 'Gauges']
+    if objs:
+        path, tiles = gauge_atlas()
+        planar_uv(objs, tiles)
+        files['Gauges'] = {'base': path}
     return files
 
 
@@ -1166,7 +1372,7 @@ def tag_upright_parts(b):
         vals = np.zeros(len(me.polygons), dtype=np.int32)
         for p in me.polygons:
             nm = me.materials[p.material_index].name
-            vals[p.index] = 1 if nm == 'body:caliper' else 2 if nm == 'body:disc' else 0
+            vals[p.index] = 1 if nm == 'body:caliper' else 2 if nm in ('body:disc', 'body:discp') else 0
         attr.data.foreach_set('value', vals)
 
 

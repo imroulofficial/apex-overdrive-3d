@@ -1,0 +1,436 @@
+[
+ {
+  "lod": "showroom",
+  "file": "ag_aurelia.glb",
+  "bytes": 1766752,
+  "maxBytes": 1800000,
+  "tris": 136464,
+  "maxTris": 150000,
+  "materials": [
+   "Body",
+   "Glass",
+   "ClearGlass",
+   "headlight_lens",
+   "Interior",
+   "Gauges",
+   "taillight_lens",
+   "CarPaint",
+   "MirrorGlass",
+   "Driver",
+   "Rim",
+   "Tyre"
+  ],
+  "textures": [
+   "Body_base 2048² (174 KB)",
+   "Body_orm 1024² (176 KB)",
+   "Body_normal 1024² (167 KB)",
+   "Interior_base 512² (17 KB)",
+   "Interior_orm 512² (36 KB)",
+   "Interior_normal 512² (24 KB)",
+   "Gauges_base 512² (28 KB)",
+   "CarPaint_base 1024² (23 KB)",
+   "Driver_base 512² (10 KB)",
+   "Driver_orm 512² (42 KB)",
+   "Driver_normal 512² (24 KB)",
+   "Rim_base 512² (35 KB)",
+   "Rim_orm 512² (53 KB)",
+   "Rim_normal 512² (49 KB)",
+   "Tyre_base 1024² (15 KB)",
+   "Tyre_orm 1024² (18 KB)",
+   "Tyre_normal 1024² (4 KB)"
+  ],
+  "openEdges": 0,
+  "openByMesh": {
+   "exhaust": 0,
+   "glass": 0,
+   "headlight_lens": 0,
+   "interior": 0,
+   "taillight_lens": 0,
+   "window_L": 0,
+   "window_R": 0,
+   "body": 0,
+   "driver": 0,
+   "steering_wheel": 0,
+   "brake_disc_FL": 0,
+   "caliper_FL": 0,
+   "upright_FL": 0,
+   "brake_disc_FR": 0,
+   "caliper_FR": 0,
+   "upright_FR": 0,
+   "brake_disc_RL": 0,
+   "caliper_RL": 0,
+   "upright_RL": 0,
+   "brake_disc_RR": 0,
+   "caliper_RR": 0,
+   "upright_RR": 0,
+   "rim_FR": 0,
+   "tyre_FR": 0,
+   "rim_RR": 0,
+   "tyre_RR": 0
+  },
+  "wheels": {
+   "tyre_FL": {
+    "radius": 0.3720000125152793,
+    "roundness": 0.9899180259620458
+   },
+   "tyre_FR": {
+    "radius": 0.3720000125152793,
+    "roundness": 0.9899180259620458
+   },
+   "tyre_RL": {
+    "radius": 0.3780000103625837,
+    "roundness": 0.9906192087806029
+   },
+   "tyre_RR": {
+    "radius": 0.3780000103625837,
+    "roundness": 0.9906192087806029
+   }
+  },
+  "bounds": {
+   "min": [
+    -2.3,
+    0,
+    -0.959
+   ],
+   "max": [
+    2.3,
+    1.39,
+    0.959
+   ]
+  },
+  "nodes": [
+   "exhaust",
+   "glass",
+   "headlight_lens",
+   "interior",
+   "taillight_lens",
+   "window_L",
+   "window_R",
+   "body",
+   "driver",
+   "steering_wheel",
+   "brake_disc_FL",
+   "caliper_FL",
+   "upright_FL",
+   "brake_disc_FR",
+   "caliper_FR",
+   "upright_FR",
+   "brake_disc_RL",
+   "caliper_RL",
+   "upright_RL",
+   "brake_disc_RR",
+   "caliper_RR",
+   "upright_RR",
+   "rim_FL",
+   "tyre_FL",
+   "wheel_FL",
+   "rim_FR",
+   "tyre_FR",
+   "wheel_FR",
+   "rim_RL",
+   "tyre_RL",
+   "wheel_RL",
+   "rim_RR",
+   "tyre_RR",
+   "wheel_RR",
+   "ag_aurelia"
+  ]
+ },
+ {
+  "lod": "drive",
+  "file": "ag_aurelia_drive.glb",
+  "bytes": 637000,
+  "maxBytes": 650000,
+  "tris": 37896,
+  "maxTris": 40000,
+  "materials": [
+   "Body",
+   "Glass",
+   "ClearGlass",
+   "headlight_lens",
+   "Interior",
+   "taillight_lens",
+   "CarPaint",
+   "MirrorGlass",
+   "Driver",
+   "Rim",
+   "Tyre"
+  ],
+  "textures": [
+   "Body_base 1024² (103 KB)",
+   "Body_orm 512² (80 KB)",
+   "Body_normal 256² (27 KB)",
+   "Interior_base 256² (5 KB)",
+   "Interior_normal 256² (9 KB)",
+   "CarPaint_base 512² (10 KB)",
+   "Driver_base 256² (3 KB)",
+   "Driver_normal 256² (4 KB)",
+   "Rim_base 256² (6 KB)",
+   "Rim_orm 256² (12 KB)",
+   "Rim_normal 256² (9 KB)",
+   "Tyre_base 512² (5 KB)",
+   "Tyre_normal 512² (1 KB)"
+  ],
+  "openEdges": 0,
+  "openByMesh": {
+   "exhaust": 0,
+   "glass": 0,
+   "headlight_lens": 0,
+   "interior": 0,
+   "taillight_lens": 0,
+   "window_L": 0,
+   "window_R": 0,
+   "body": 0,
+   "driver": 0,
+   "steering_wheel": 0,
+   "brake_disc_FL": 0,
+   "caliper_FL": 0,
+   "upright_FL": 0,
+   "brake_disc_FR": 0,
+   "caliper_FR": 0,
+   "upright_FR": 0,
+   "brake_disc_RL": 0,
+   "caliper_RL": 0,
+   "upright_RL": 0,
+   "brake_disc_RR": 0,
+   "caliper_RR": 0,
+   "upright_RR": 0,
+   "rim_FR": 0,
+   "tyre_FR": 0,
+   "rim_RR": 0,
+   "tyre_RR": 0
+  },
+  "wheels": {
+   "tyre_FL": {
+    "radius": 0.3720000125152793,
+    "roundness": 0.9949486771395286
+   },
+   "tyre_FR": {
+    "radius": 0.3720000125152793,
+    "roundness": 0.9949486771395286
+   },
+   "tyre_RL": {
+    "radius": 0.37800000912891213,
+    "roundness": 0.9964225701223259
+   },
+   "tyre_RR": {
+    "radius": 0.37800000912891213,
+    "roundness": 0.9964225701223259
+   }
+  },
+  "bounds": {
+   "min": [
+    -2.3,
+    0,
+    -0.956
+   ],
+   "max": [
+    2.3,
+    1.39,
+    0.956
+   ]
+  },
+  "nodes": [
+   "exhaust",
+   "glass",
+   "headlight_lens",
+   "interior",
+   "taillight_lens",
+   "window_L",
+   "window_R",
+   "body",
+   "driver",
+   "steering_wheel",
+   "brake_disc_FL",
+   "caliper_FL",
+   "upright_FL",
+   "brake_disc_FR",
+   "caliper_FR",
+   "upright_FR",
+   "brake_disc_RL",
+   "caliper_RL",
+   "upright_RL",
+   "brake_disc_RR",
+   "caliper_RR",
+   "upright_RR",
+   "rim_FL",
+   "tyre_FL",
+   "wheel_FL",
+   "rim_FR",
+   "tyre_FR",
+   "wheel_FR",
+   "rim_RL",
+   "tyre_RL",
+   "wheel_RL",
+   "rim_RR",
+   "tyre_RR",
+   "wheel_RR",
+   "ag_aurelia"
+  ]
+ },
+ {
+  "lod": "race",
+  "file": "ag_aurelia_race.glb",
+  "bytes": 113464,
+  "maxBytes": 330000,
+  "tris": 7862,
+  "maxTris": 8000,
+  "materials": [
+   "Body",
+   "Glass",
+   "ClearGlass",
+   "headlight_lens",
+   "Interior",
+   "taillight_lens",
+   "CarPaint",
+   "MirrorGlass",
+   "Driver",
+   "Rim",
+   "Tyre"
+  ],
+  "textures": [],
+  "openEdges": 0,
+  "openByMesh": {
+   "exhaust": 0,
+   "glass": 0,
+   "headlight_lens": 0,
+   "interior": 0,
+   "taillight_lens": 0,
+   "window_L": 0,
+   "window_R": 0,
+   "body": 0,
+   "driver": 0,
+   "steering_wheel": 0,
+   "brake_disc_FL": 0,
+   "caliper_FL": 0,
+   "brake_disc_FR": 0,
+   "caliper_FR": 0,
+   "brake_disc_RL": 0,
+   "caliper_RL": 0,
+   "brake_disc_RR": 0,
+   "caliper_RR": 0,
+   "rim_FR": 0,
+   "tyre_FR": 0,
+   "rim_RR": 0,
+   "tyre_RR": 0
+  },
+  "wheels": {
+   "tyre_FL": {
+    "radius": 0.3720000125152793,
+    "roundness": 0.9999540823070152
+   },
+   "tyre_FR": {
+    "radius": 0.3720000125152793,
+    "roundness": 0.9999540823070152
+   },
+   "tyre_RL": {
+    "radius": 0.37800000912891213,
+    "roundness": 0.9999966036299567
+   },
+   "tyre_RR": {
+    "radius": 0.37800000912891213,
+    "roundness": 0.9999966036299567
+   }
+  },
+  "bounds": {
+   "min": [
+    -2.3,
+    0,
+    -0.952
+   ],
+   "max": [
+    2.3,
+    1.379,
+    0.952
+   ]
+  },
+  "nodes": [
+   "exhaust",
+   "glass",
+   "headlight_lens",
+   "interior",
+   "taillight_lens",
+   "window_L",
+   "window_R",
+   "body",
+   "driver",
+   "steering_wheel",
+   "brake_disc_FL",
+   "caliper_FL",
+   "upright_FL",
+   "brake_disc_FR",
+   "caliper_FR",
+   "upright_FR",
+   "brake_disc_RL",
+   "caliper_RL",
+   "upright_RL",
+   "brake_disc_RR",
+   "caliper_RR",
+   "upright_RR",
+   "rim_FL",
+   "tyre_FL",
+   "wheel_FL",
+   "rim_FR",
+   "tyre_FR",
+   "wheel_FR",
+   "rim_RL",
+   "tyre_RL",
+   "wheel_RL",
+   "rim_RR",
+   "tyre_RR",
+   "wheel_RR",
+   "ag_aurelia"
+  ]
+ },
+ {
+  "lod": "cockpit",
+  "file": "ag_aurelia_cockpit.glb",
+  "bytes": 522108,
+  "maxBytes": 1500000,
+  "tris": 30268,
+  "maxTris": 60000,
+  "materials": [
+   "ClearGlass",
+   "Cockpit",
+   "Gauges",
+   "MirrorGlass"
+  ],
+  "textures": [
+   "Cockpit_base 1024² (80 KB)",
+   "Cockpit_orm 512² (69 KB)",
+   "Cockpit_normal 512² (61 KB)",
+   "Gauges_base 1024² (62 KB)"
+  ],
+  "openEdges": 0,
+  "openByMesh": {
+   "cabin_glass": 0,
+   "cockpit_shell": 0,
+   "hands": 0,
+   "steering_wheel": 0,
+   "window_L": 0,
+   "window_R": 0
+  },
+  "wheels": {},
+  "bounds": {
+   "min": [
+    -1.523,
+    0.22,
+    -0.832
+   ],
+   "max": [
+    0.671,
+    1.364,
+    0.832
+   ]
+  },
+  "nodes": [
+   "cabin_glass",
+   "cockpit_shell",
+   "hands",
+   "steering_wheel",
+   "window_L",
+   "window_R",
+   "cockpit"
+  ]
+ }
+]
