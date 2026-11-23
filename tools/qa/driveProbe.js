@@ -315,7 +315,7 @@
           const jumpH = Math.hypot(v.pos.x - ex, v.pos.z - ez);
           // A car put back on the road (the player's BACK ON TRACK, an AI unsticking itself)
           // stops dead where it lands: that is a respawn, counted on its own.
-          const recovered = speed === 0;
+          const recovered = speed < 1;
           if (jumpH > 1.0 && recovered) {
             inc(S, 'respawn');
             this.near('respawn', r, { m: +jumpH.toFixed(2), trail: v.trail?.id ?? null, ptrail: p.trail ?? null });

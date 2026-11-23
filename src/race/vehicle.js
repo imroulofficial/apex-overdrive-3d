@@ -646,7 +646,11 @@ export class Vehicle {
     this.groundY = ground; // for the contact shadow (raceCars.js)
     if (!this.airborne) {
       const predicted = this.pos.y + this.vy * dt - 0.5 * GRAVITY * dt * dt;
-      if (ground < predicted - 0.03 && this.vy > 1) {
+      // Takes off from real upward speed (a ramp, a crest), or off an edge the ground drops
+      // away from by more than a seam (the end of a ramp's side slope): it falls from there
+      // instead of snapping down.
+      const drop = predicted - ground;
+      if (drop > 0.03 && (this.vy > 1 || drop > SEAM.base + SEAM.grade * run)) {
         this.airborne = true;
         this.airTime = 0;
         if (this.drifting) this.endDrift('air');

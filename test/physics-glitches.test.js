@@ -164,6 +164,33 @@ test('C2: every ramp falls away to the road over its side slope, never a vertica
   }
 });
 
+test('C2: a car running up a ramp side slope leaves the lip and falls, never snapping down to the road', () => {
+  for (const def of TRACKS) {
+    for (const track of both(def)) {
+      for (const r of track.ramps) {
+        for (const d of [r.from - RAMP_SIDE / 2, r.to + RAMP_SIDE / 2]) {
+          for (const speed of [30, 50]) {
+            const v = new Vehicle(track, params);
+            v.reset(r.s0 - 30, d);
+            let worst = 0;
+            for (let i = 0; i < 160; i++) {
+              const pr = v.proj;
+              const hd = Math.atan2(-pr.tz, pr.tx);
+              v.heading = hd;
+              v.vel.set(Math.cos(hd) * speed, -Math.sin(hd) * speed);
+              const y = v.pos.y;
+              const air = v.airborne;
+              v.step(1 / 60, steady(), i / 60);
+              if (!air && !v.airborne) worst = Math.max(worst, y - v.pos.y);
+            }
+            assert.ok(worst < 0.25, `${routeName(track)} ramp at ${r.s0.toFixed(0)} d ${d.toFixed(2)} @${speed}: grounded drop of ${worst.toFixed(2)} m in one step`);
+          }
+        }
+      }
+    }
+  }
+});
+
 test('C12: the Alpine canyon ramp is lowered for the climb the other way only', () => {
   const [fwd, rev] = both(ALPINE_SUMMIT);
   const canyon = (t) => t.ramps.reduce((a, r) => (r.height > a.height || (r.length === 16 && r.from === -7.1) ? r : a));

@@ -72,7 +72,7 @@ for (const shot of SHOTS) {
     const t = r.track;
     const v = r.player.vehicle;
     const p = shot.place;
-    const s0 = shot.kerb ? (t.kerbSpans[0].s0 + t.kerbSpans[0].s1) / 2 : p.s;
+    const s0 = shot.kerb ? (t.kerbSpans ? (t.kerbSpans[0].s0 + t.kerbSpans[0].s1) / 2 : 506) : p.s; // v73 has no kerbSpans: same corner
     const d0 = shot.kerb ? t.halfWidth - 0.4 : p.d;
     // Everyone else out of the way (a rival is brought back for the contact shot).
     for (const o of r.racers) if (o !== r.player) o.vehicle.reset(t.wrapS(s0 + 300), 0);
