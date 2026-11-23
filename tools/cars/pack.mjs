@@ -154,7 +154,8 @@ for (const L of LODS) {
       // dial atlas (generated, not baked); glows faintly so the instruments read at night
       const t = await tex('Gauges_base', files.base, 1024, 'base');
       mat.setBaseColorFactor([1, 1, 1, 1]).setBaseColorTexture(t).setRoughnessFactor(0.35).setMetallicFactor(0);
-      mat.setEmissiveTexture(t).setEmissiveFactor([0.35, 0.33, 0.30]);
+      // the cockpit's own dials are backlit (warm white) so they read clearly at night
+      mat.setEmissiveTexture(t).setEmissiveFactor(L.lod === 'cockpit' ? [1.0, 0.86, 0.66] : [0.35, 0.33, 0.30]);
       continue;
     }
     if (files.weave_base) {
@@ -182,6 +183,10 @@ for (const L of LODS) {
       mat.setMetallicFactor(name === 'Rim' ? 0.85 : 0.05);
     }
     mat.setNormalTexture(await tex(`${name}_normal`, files.normal, L.tex.normal, 'normal'));
+    if (files.glow) {
+      // baked night light (dash glow from the instruments, a little ambient): emissive map
+      mat.setEmissiveTexture(await tex(`${name}_glow`, files.glow, 512, 'base')).setEmissiveFactor([1, 1, 1]);
+    }
   }
   if (L.lod === 'race') {
     // CarPaint must not carry vertex colours (the loader would take them as a livery).

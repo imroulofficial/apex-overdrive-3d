@@ -139,7 +139,7 @@ PLAIN = {
     'Carbon': ((1, 1, 1, 1), 0.3, 0.0, None),
     'Glass': getattr(car, 'GLASS', ((0.03, 0.03, 0.035, 0.72), 0.05, 0.3, None)),
     # lamp covers and the cockpit's own windows: nearly clear
-    'ClearGlass': ((0.80, 0.84, 0.86, 0.14), 0.02, 0.0, None),
+    'ClearGlass': getattr(car, 'CLEAR_GLASS', ((0.80, 0.84, 0.86, 0.14), 0.02, 0.0, None)),
     'headlight_lens': ((0.85, 0.88, 0.92, 1), 0.1, 0.0, (0.0, 0.0, 0.0)),
     'taillight_lens': ((0.30, 0.01, 0.01, 1), 0.15, 0.0, (0.25, 0.0, 0.0)),
     'exhaust': ((0.55, 0.47, 0.38, 1), 0.35, 1.0, None),
@@ -238,19 +238,26 @@ def text_strip():
     W, H = 4096, 160
     im = Image.new('L', (W, H), 0)
     d = ImageDraw.Draw(im)
-    font = None
+    ttf = None
     for f in ('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
               '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf'):
         if os.path.exists(f):
-            font = ImageFont.truetype(f, 104)
+            ttf = f
             break
-    font = font or ImageFont.load_default()
     words = getattr(car, 'TYRE_WORDS', ['APEX OVERDRIVE', 'TEMPESTA', 'APEX OVERDRIVE', 'TEMPESTA'])
-    x = 60
-    for wd in words:
-        d.text((x, 22), wd, fill=255, font=font)
-        bb = d.textbbox((x, 22), wd, font=font)
-        x = bb[2] + 330
+    # every word centred in its own equal share of the strip (the strip wraps once round the
+    # sidewall), the font shrunk if the longest word would not fit its share with a margin
+    cell = W / len(words)
+    size = 104
+    while True:
+        font = ImageFont.truetype(ttf, size) if ttf else ImageFont.load_default()
+        widest = max(d.textbbox((0, 0), wd, font=font)[2] for wd in words)
+        if widest <= cell - 160 or size <= 40 or not ttf:
+            break
+        size -= 4
+    for i, wd in enumerate(words):
+        bb = d.textbbox((0, 0), wd, font=font)
+        d.text(((i + 0.5) * cell - (bb[2] - bb[0]) / 2 - bb[0], 22 + (104 - size) / 2), wd, fill=255, font=font)
     path = os.path.join(OUT, '_strip.png')
     im.save(path)
     img = bpy.data.images.load(path)
@@ -522,7 +529,8 @@ def make_key_material(key):
         height = k.math('MULTIPLY', n, 0.25)
     elif key == 'int:headliner':
         n = k.noise(vec, 500.0, 3.0, 0.6)
-        col, rough = k.mix(n, srgb((0.55, 0.53, 0.49)), srgb((0.62, 0.60, 0.56))), 0.9
+        h0 = tuple(getattr(car, 'HEADLINER', (0.55, 0.53, 0.49)))
+        col, rough = k.mix(n, srgb(h0), srgb(tuple(v * 1.12 for v in h0))), 0.9
         height = k.math('MULTIPLY', n, 0.2)
     elif key == 'int:wood':
         # walnut veneer: grain along the car's z (Blender -y)
@@ -533,6 +541,9 @@ def make_key_material(key):
     elif key == 'int:metal':
         n = k.noise(vec, 900.0, 2.0)
         col, rough, metal = k.mix(n, srgb((0.62, 0.62, 0.63)), srgb((0.72, 0.72, 0.73))), 0.28, 1.0
+        col, rough, metal = (k.mix(n, srgb(getattr(car, 'METAL', (0.62, 0.62, 0.63))),
+                                   srgb(tuple(min(1, v * 1.12) for v in getattr(car, 'METAL', (0.62, 0.62, 0.63))))),
+                             *getattr(car, 'METAL_RM', (0.28, 1.0)))
     elif key == 'int:gauge':
         # dial faces: a generated dial atlas on a planar UV (group Gauges, see gauge_uv)
         col, rough = srgb((0.03, 0.03, 0.03)), 0.2
@@ -1135,6 +1146,16 @@ def bake_textures(b, lod):
                 lin = lin * L['shade'][..., None]
             B = np.where(lin <= 0.0031308, lin * 12.92, 1.055 * np.clip(lin, 0, None) ** (1 / 2.4) - 0.055)
         print(f'    check {g}: base mean {B.mean():.3f} ao {A.mean():.3f}', flush=True)
+        glow = None
+        if hasattr(car, 'glow'):
+            P, N, valid = livery_inputs(objs, mats, size)
+            glow = car.glow(g, lod, P, N, valid)
+        if glow is not None:
+            # night light baked into an emissive map: albedo x (gain), dark trims lifted to a floor
+            gain, floor = glow
+            E = np.maximum(to_lin(B), floor) * (gain * (0.35 + 0.65 * A))[..., None]
+            save_png(stem + '_glow.png', E, srgb_encode=True)
+            print(f'    check {g}: glow mean {E.mean():.4f} max {E.max():.3f}', flush=True)
         if g in cfg['orm']:
             save_png(stem + '_base.png', B)  # Blender stores sRGB images display-encoded
             save_png(stem + '_orm.png', np.stack([A, R, Mt], -1))
@@ -1146,6 +1167,8 @@ def bake_textures(b, lod):
             save_png(stem + '_base.png', lin, srgb_encode=True)
             save_png(stem + '_orm.png', np.stack([A, R, Mt], -1))
             files[g] = {'base': stem + '_base.png', 'orm': stem + '_orm.png', 'normal': stem + '_normal.png'}
+        if glow is not None:
+            files[g]['glow'] = stem + '_glow.png'
         save_png(stem + '_normal.png', Nn)
     for g in ('MirrorGlass',):
         objs = [o for (_, gg, o) in b.parts if gg == g]

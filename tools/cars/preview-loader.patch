@@ -75,7 +75,7 @@ index 15b73b2..60b5e4b 100644
      const spin = new THREE.Group();
      wheel.add(spin);
 diff --git a/src/race/Race.js b/src/race/Race.js
-index 4da40ee..e3d9a1c 100644
+index 4da40ee..a3f30df 100644
 --- a/src/race/Race.js
 +++ b/src/race/Race.js
 @@ -76,6 +76,33 @@ const puff = (color, size, life, grow, alpha) => {
@@ -122,7 +122,18 @@ index 4da40ee..e3d9a1c 100644
      this.bloom.render(this.scene, this.camera);
    }
  
-@@ -1307,8 +1335,9 @@ export class Race {
+@@ -735,7 +763,9 @@ export class Race {
+     this.updateCockpit(dt, playerInput);
+     this.culling.update(this.camera);
+     const lineLevel = player.tier === 2 ? 1 : player.tier === 1 ? 0.5 : 0;
+-    this.speedLines.update(dt, simulate ? lineLevel : 0, Math.max(20, player.speed), player.tier);
++    // PILOT: in the car's own cockpit no nitro streaks cross the cabin or the windscreen
++    const pilotCab = !!globalThis.__pilotEye && this.cockpitShown;
++    this.speedLines.update(dt, simulate && !pilotCab ? lineLevel : 0, Math.max(20, player.speed), player.tier);
+ 
+     this.processEvents();
+     this.updateEngine(playerInput, dt);
+@@ -1307,8 +1337,11 @@ export class Race {
      const shown = chase.view === 'cockpit' && chase.mode !== 'orbit' && this.camera.position.distanceToSquared(chase.pos) < 0.36;
      if (shown !== this.cockpitShown) {
        this.cockpitShown = shown;
@@ -131,6 +142,8 @@ index 4da40ee..e3d9a1c 100644
 +      this.cockpit.setVisible(shown && !globalThis.__pilotEye);
 +      this.player.visual.root.visible = !shown || !!globalThis.__pilotEye; // PILOT
 +      if (globalThis.__pilotEye && !this.pilotMirrors) this.pilotMirrors = pilotMirrorGlass(this.player.visual.root, this.cockpit);
++      // PILOT: smoke and sparks fade out within a few metres of the driver's eye (never inside the cabin)
++      for (const p of [this.smoke, this.sparks]) p.material.uniforms.nearFade.value = shown && globalThis.__pilotEye ? 2.8 : 0;
        for (const m of this.factory.sharedMeshes) m.visible = !shown;
        // Rain: drops run on the windscreen, and no falling streaks inside the cabin.
        this.lens.setGlass(shown);
@@ -146,3 +159,29 @@ index 2f3c781..82b66b8 100644
    out.x = Math.max(COCKPIT.minX, size.nose - COCKPIT.back);
    out.y = clamp(size.roof - COCKPIT.below, COCKPIT.minY, COCKPIT.maxY);
    out.z = COCKPIT.side;
+diff --git a/src/race/effects.js b/src/race/effects.js
+index 322a32c..cb8952a 100644
+--- a/src/race/effects.js
++++ b/src/race/effects.js
+@@ -25,18 +25,19 @@ export class Particles {
+       transparent: true,
+       depthWrite: false,
+       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+-      uniforms: { map: { value: texture }, scale: { value: 400 } },
++      uniforms: { map: { value: texture }, scale: { value: 400 }, nearFade: { value: 0 } }, // PILOT nearFade
+       vertexShader: /* glsl */ `
+         attribute float alpha;
+         attribute float size;
+         attribute vec3 color;
+         uniform float scale;
++        uniform float nearFade;
+         varying float vAlpha;
+         varying vec3 vColor;
+         void main() {
+-          vAlpha = alpha;
+           vColor = color;
+           vec4 mv = modelViewMatrix * vec4(position, 1.0);
++          vAlpha = nearFade > 0.0 ? alpha * smoothstep(nearFade * 0.45, nearFade, -mv.z) : alpha;
+           gl_PointSize = size * scale / max(0.5, -mv.z);
+           gl_Position = projectionMatrix * mv;
+         }`,

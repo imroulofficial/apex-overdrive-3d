@@ -49,7 +49,7 @@ NOSE, TAIL = 2.300, -2.300
 DRIVER_Z = -0.370               # left-hand drive
 # Driver's eye: seated low behind the wheel, the bonnet's crown and both wings in view under the
 # windscreen, the roof header near the top of the frame.
-EYE = (-0.330, 1.160, DRIVER_Z)
+EYE = (-0.250, 1.100, DRIVER_Z)
 WHEEL_CENTRE = (0.120, 0.905, DRIVER_Z)
 WHEEL_TILT = math.radians(28)
 FACTORY_PAINT = (0.34, 0.355, 0.38)   # linear RGB: silver
@@ -60,7 +60,13 @@ TYRE_HW = WF / 2
 TYRE_BAND = None
 TYRE_TEXT_R = (0.070, 0.024)
 LIVERY_GROUPS = ('Body',)
-GLOVE = (0.34, 0.19, 0.09)             # tan leather driving gloves
+GLOVE = (0.050, 0.042, 0.036)          # black-brown leather driving gloves
+HEADLINER = (0.055, 0.055, 0.058)      # charcoal headliner: neutral under any sky / ground light
+METAL = (0.70, 0.70, 0.71)             # brushed aluminium spokes and trims
+METAL_RM = (0.34, 0.55)                # half-metal satin: a neutral grey, not a mirror of the verges
+# cockpit windows: clear, a faint neutral-grey tint (a dark albedo, so no sky / ground colour washes over
+# the view through them)
+CLEAR_GLASS = ((0.06, 0.065, 0.07, 0.09), 0.03, 0.0, None)
 CALIPER = (0.10, 0.10, 0.105)          # classic: dark grey iron callipers
 TEX = {
     'showroom': {'Interior': 1024},
@@ -103,31 +109,38 @@ def turned(m, R=None, t=(0, 0, 0)):
 # Body shape: curves along x (metres, game frame)
 # ---------------------------------------------------------------------------------------------
 
-yb_c = Curve([(2.26, 0.27), (2.10, 0.215), (1.90, 0.19), (1.60, 0.17), (1.20, 0.155), (0.80, 0.145), (0.00, 0.140),
-              (-0.80, 0.145), (-1.50, 0.170), (-1.90, 0.215), (-2.10, 0.245), (-2.26, 0.30)])
-hw_c = Curve([(2.26, 0.62), (2.15, 0.76), (2.05, 0.83), (1.90, 0.872), (1.70, 0.898), (1.45, 0.910), (1.20, 0.908),
-              (0.90, 0.900), (0.60, 0.896), (0.20, 0.898), (-0.30, 0.902), (-0.80, 0.910), (-1.10, 0.915),
-              (-1.40, 0.910), (-1.70, 0.893), (-1.95, 0.862), (-2.10, 0.822), (-2.20, 0.775), (-2.26, 0.72)])
-ymx_c = Curve([(2.26, 0.50), (1.80, 0.53), (1.00, 0.52), (0.00, 0.52), (-1.00, 0.55), (-1.80, 0.58), (-2.26, 0.56)])
-# shoulder crease: the car's main character line, front wing crown to rear haunch
-ysh_c = Curve([(2.26, 0.62), (2.10, 0.70), (1.90, 0.775), (1.60, 0.835), (1.35, 0.858), (1.00, 0.868), (0.60, 0.885),
-               (0.00, 0.905), (-0.60, 0.920), (-1.10, 0.932), (-1.50, 0.918), (-1.80, 0.880), (-2.05, 0.820),
-               (-2.20, 0.760), (-2.26, 0.70)])
-shd_c = Curve([(2.26, 0.10), (2.0, 0.065), (1.6, 0.055), (1.0, 0.052), (0.0, 0.050), (-1.0, 0.052), (-1.6, 0.058),
-               (-2.0, 0.07), (-2.26, 0.10)])   # how far the crease sits inboard of the widest point
-# centre-line top: bonnet, cabin sill height, rear deck
-top_c = Curve([(2.26, 0.60), (2.18, 0.695), (2.10, 0.755), (2.00, 0.800), (1.80, 0.852), (1.60, 0.890), (1.40, 0.915),
-               (1.20, 0.932), (1.00, 0.945), (0.80, 0.955), (0.66, 0.965), (0.40, 1.010), (-0.60, 1.020),
-               (-1.30, 1.040), (-1.50, 1.040), (-1.65, 1.000), (-1.85, 0.935), (-2.00, 0.875), (-2.12, 0.815),
-               (-2.20, 0.760), (-2.26, 0.690)])
+yb_c = Curve([(2.26, 0.275), (2.10, 0.225), (1.90, 0.195), (1.60, 0.172), (1.20, 0.156), (0.80, 0.146), (0.00, 0.140),
+              (-0.80, 0.145), (-1.50, 0.168), (-1.90, 0.215), (-2.10, 0.252), (-2.26, 0.305)])
+# plan view: full front wings to a blunt rounded nose, a slight waist at the doors, the rear
+# haunch over the rear wheels, then a tail that tapers in plan
+hw_c = Curve([(2.26, 0.700), (2.20, 0.778), (2.12, 0.832), (2.00, 0.869), (1.85, 0.890), (1.65, 0.901),
+              (1.40, 0.905), (1.15, 0.901), (0.90, 0.894), (0.50, 0.887), (0.10, 0.887), (-0.40, 0.893),
+              (-0.80, 0.907), (-1.10, 0.920), (-1.40, 0.917), (-1.65, 0.900), (-1.90, 0.860), (-2.10, 0.792),
+              (-2.20, 0.728), (-2.26, 0.665)])
+ymx_c = Curve([(2.26, 0.52), (1.80, 0.57), (1.00, 0.58), (0.00, 0.57), (-1.00, 0.60), (-1.80, 0.60), (-2.26, 0.56)])
+# shoulder crease: the car's main character line, from the wing tops beside the lamps, falling
+# gently along the doors' top and rising into the rear haunch
+ysh_c = Curve([(2.26, 0.672), (2.18, 0.718), (2.05, 0.762), (1.85, 0.795), (1.60, 0.818), (1.30, 0.840),
+               (1.00, 0.852), (0.60, 0.866), (0.00, 0.885), (-0.50, 0.905), (-0.90, 0.934), (-1.15, 0.950),
+               (-1.40, 0.942), (-1.66, 0.908), (-1.90, 0.858), (-2.10, 0.806), (-2.20, 0.772), (-2.26, 0.742)])
+shd_c = Curve([(2.26, 0.085), (2.0, 0.072), (1.6, 0.068), (1.0, 0.075), (0.3, 0.082), (-0.5, 0.074), (-1.1, 0.050),
+               (-1.6, 0.054), (-2.0, 0.066), (-2.26, 0.085)])   # how far the crease sits inboard of the widest point
+# centre-line top: bonnet (below the wing tops at the nose, a power bulge on top, see crown),
+# cabin sill height, the fastback's deck and a boot lid ending in a small lip
+top_c = Curve([(2.26, 0.572), (2.20, 0.620), (2.10, 0.680), (1.95, 0.745), (1.75, 0.812), (1.50, 0.862),
+               (1.20, 0.903), (0.90, 0.930), (0.66, 0.952), (0.40, 1.000), (-0.60, 1.000), (-1.30, 1.000),
+               (-1.66, 1.002), (-1.80, 0.960), (-1.95, 0.908), (-2.10, 0.850), (-2.19, 0.818), (-2.235, 0.808),
+               (-2.26, 0.778)])
 
 CABIN = (-1.42, 0.64)           # the open tub under the greenhouse (x range)
 TUB_FLOOR = 0.235
 ci_c = Curve([(0.70, 0.725), (-0.40, 0.725), (-0.62, 0.560), (-1.45, 0.540)])   # tub inner wall
 ZWELL = 0.600                   # wheel-well inner wall
-ARCH = [(XF, RF + 0.030, RF + 0.062), (XR, RR + 0.030, RR + 0.062)]   # (x, y centre, radius)
-MORPH = (2.02, 2.255)           # the nose turns into the grille mouth over this x range
-MOUTH = (0.445, 0.470, 0.150)   # mouth centre y, half width, half height (front end of the nose)
+ARCH = [(XF, RF + 0.016, RF + 0.054), (XR, RR + 0.016, RR + 0.054)]   # (x, y centre, radius)
+FACE_X = NOSE - 0.075           # the last body section; the face panel rolls forward from it to the mouth
+MOUTH = (0.425, 0.490, 0.132)   # grille mouth centre y, half width, half height
+MOUTH_E = (0.42, 0.80)          # mouth superellipse exponents (z, y): a wide, softly squared oval
+BULGE = 0.022                   # bonnet power bulge height
 
 
 def crown(x, z):
@@ -135,7 +148,9 @@ def crown(x, z):
     hs = hw_c(x) - shd_c(x)
     ys, yt = ysh_c(x), top_c(x)
     u = np.clip(np.abs(z) / hs, 0, 1)
-    return ys + (yt - ys) * (1 - u ** 2.4)
+    bulge = BULGE * np.exp(-(np.asarray(z) / 0.21) ** 2) * window(x, 0.80, 2.02, 0.22)
+    e = 2.4 - 0.7 * smoothstep(-1.70, -2.20, x)      # the boot lid rounds off toward the tail
+    return ys + (yt - ys) * (1 - u ** e) + bulge
 
 
 def arch_y(x):
@@ -153,8 +168,8 @@ def tub_depth(x):
 
 def gb_c(x):
     """Greenhouse half width at the belt (the side glass foot)."""
-    return float(Curve([(0.70, 0.700), (0.55, 0.770), (0.30, 0.800), (-0.40, 0.805), (-0.90, 0.790), (-1.20, 0.745),
-                        (-1.40, 0.650), (-1.56, 0.560)])(x))
+    return float(Curve([(0.70, 0.688), (0.55, 0.752), (0.30, 0.776), (-0.40, 0.780), (-0.90, 0.766), (-1.20, 0.722),
+                        (-1.45, 0.640), (-1.66, 0.540)])(x))
 
 
 def half_section(x):
@@ -163,7 +178,7 @@ def half_section(x):
     yb, hw, ymx, ys, yt = (float(c(x)) for c in (yb_c, hw_c, ymx_c, ysh_c, top_c))
     hs = hw - float(shd_c(x))
     yr = yb + 0.055
-    hr = hw - 0.040
+    hr = hw - 0.068
     pts = []
     # underside, centre -> rocker corner (rounded)
     for z in np.linspace(0, hr - 0.06, 60):
@@ -177,7 +192,7 @@ def half_section(x):
     # upper side: widest point -> shoulder crease
     for t in np.linspace(0, 1, 40)[1:]:
         y = lerp(ymx, ys, t)
-        pts.append((hw - (hw - hs) * t ** 1.7, y))
+        pts.append((hw - (hw - hs) * t ** 1.45, y))
     # crown: crease -> centre
     for z in np.linspace(hs, 0, 120)[1:]:
         pts.append((z, float(crown(x, z))))
@@ -204,7 +219,7 @@ def body_ring(x, counts):
     yr = yb + 0.055
     y_anchor = min(ya, ys - 0.05) if ya is not None else yr + 0.05
     ci = float(ci_c(np.clip(x, -1.45, 0.70)))
-    gb = min(gb_c(np.clip(x, -1.56, 0.70)), hs - 0.012)
+    gb = min(gb_c(np.clip(x, -1.66, 0.70)), hs - 0.012)
     # anchors by arc length
     zs, ysx = P[:, 0], P[:, 1]
     k_side0 = 75                                   # first side point (end of the underside corner)
@@ -244,15 +259,6 @@ def body_ring(x, counts):
         hz, hy = half[:, 0], half[:, 1]
         m = smoothstep(ci + 0.030, ci - 0.020, hz) * (band >= 5)
         half[:, 1] = hy - D * m * np.maximum(hy - TUB_FLOOR, 0)
-    # nose: the section turns into the oval grille mouth
-    mw = float(smoothstep(MORPH[0], MORPH[1], x)) if x > MORPH[0] else 0.0
-    if mw > 0:
-        cy, ma, mb = MOUTH
-        ang = np.arctan2(half[:, 1] - cy, half[:, 0])
-        target = np.stack([ma * spow(np.cos(ang), 0.55), cy + mb * spow(np.sin(ang), 0.75)], -1)
-        target[:, 0] = np.abs(target[:, 0])
-        e = mw ** 1.5
-        half = half * (1 - e) + target * e
     full = np.vstack([half, half[-2:0:-1] * [-1, 1]])
     bands = np.concatenate([band, band[-2:0:-1]])
     return np.stack([np.full(len(full), x), full[:, 1], full[:, 0]], -1), bands
@@ -261,20 +267,52 @@ def body_ring(x, counts):
 def body_stations(q):
     """x stations tail -> nose: even spacing, plus exact stations at the arch edges, the tub ends
     and the panel-gap lines so those edges are crisp vertex rows."""
-    n = seg(150, q, 18)
-    xs = list(np.linspace(TAIL + 0.04, NOSE - 0.045, n))
+    n = seg(150, q, 18) if q >= 0.1 else 8
+    xs = list(np.linspace(TAIL + 0.04, FACE_X, n))
     if q >= 0.2:
         for xc, yc, ra in ARCH:
             for d in (-ra, -ra + 0.006, -ra + 0.018, -ra + 0.04, ra - 0.04, ra - 0.018, ra - 0.006, ra):
                 xs.append(xc + d)
         xs += [CABIN[0], CABIN[0] + 0.06, CABIN[1] - 0.06, CABIN[1]]
-        xs += list(np.linspace(MORPH[0], NOSE - 0.045, seg(14, q, 4)))
+        xs += list(np.linspace(2.05, FACE_X, seg(10, q, 4)))
+    else:
+        # coarse LOD: exact stations at the arch edges (and the axle) instead of the even ones
+        # that fall inside an arch, so no face straddles the arch line (no dark wedges)
+        xs = [x for x in xs if all(abs(x - xc) > ra + 0.05 for xc, yc, ra in ARCH)]
+        for xc, yc, ra in ARCH:
+            xs += [xc - ra, xc - ra * 0.62, xc, xc + ra * 0.62, xc + ra]
     xs = np.unique(np.round(np.array(xs), 4))
     keep = [xs[0]]
     for v in xs[1:]:
         if v - keep[-1] > 0.004:
             keep.append(v)
     return np.array(keep)
+
+
+def mouth_pts(ang, grow=0.0):
+    """Grille mouth outline (z, y) at angles about its centre."""
+    cy, ma, mb = MOUTH
+    return np.stack([(ma + grow) * spow(np.cos(ang), MOUTH_E[0]), cy + (mb + grow) * spow(np.sin(ang), MOUTH_E[1])], -1)
+
+
+FACE_D = 0.060                  # how far the face's centre stands ahead of the last section
+
+
+def face_rings(front, k):
+    """Rings from the last body section (x = FACE_X) to the mouth outline: each point slides
+    toward the mouth point at the same angle about the mouth centre while the face bows forward."""
+    cy = MOUTH[0]
+    zy = front[:, [2, 1]]
+    ang = np.arctan2(zy[:, 1] - cy, zy[:, 0])
+    tgt = mouth_pts(ang)
+    out = []
+    for i in range(1, k + 1):
+        f = i / k
+        g = f ** 0.85
+        p = zy * (1 - g) + tgt * g
+        xx = FACE_X + FACE_D * (1 - (1 - f) ** 2.2)
+        out.append(np.stack([np.full(len(p), xx), p[:, 1], p[:, 0]], -1))
+    return out
 
 
 def body_shell(q):
@@ -292,13 +330,14 @@ def body_shell(q):
     for x in xs:
         r, bands = body_ring(x, counts)
         rings.append(r)
-    # nose: rolled lip into the grille mouth, a shallow duct behind it
-    front = rings[-1]
-    c = front.mean(0)
-    c[1] = MOUTH[0]
-    rr, pole = recess_rings(front, c, (1, 0, 0), lip=0.86, depth=0.16, steps=seg(3, q, 2), lip_round=0.016)
-    nlip = seg(3, q, 2)
-    tail_rr, tail_pole = dome_rings(rings[0], rings[0].mean(0), (-1, 0, 0), 0.03, steps=seg(4, q, 2))
+    # nose: the face panel rolls forward and inward from the last section to the grille mouth,
+    # then a rounded lip turns into a shallow duct behind the grille
+    face = face_rings(rings[-1], seg(7, q, 2))
+    c = np.array([face[-1][:, 0].mean(), MOUTH[0], 0.0])
+    rr, pole = recess_rings(face[-1], c, (1, 0, 0), lip=0.95, depth=0.15, steps=seg(3, q, 2), lip_round=0.010)
+    rr = face + rr
+    nlip = len(face) + seg(3, q, 2)
+    tail_rr, tail_pole = dome_rings(rings[0], rings[0].mean(0), (-1, 0, 0), 0.06, steps=seg(5, q, 2), power=0.8)
     allr = tail_rr[::-1] + rings + rr
     R = np.array(allr)
     nt = len(tail_rr)
@@ -315,7 +354,7 @@ def body_shell(q):
         x = p[0]
         if i < nt:
             # tail panel (the dome that closes the body): paint down to the valance
-            return 'body:well' if p[1] < float(yb_c(x)) + 0.07 else 'paint'
+            return 'body:well' if p[1] < float(yb_c(x)) + 0.025 else 'paint'
         bd = bands[j]
         if bd == 0:
             return 'body:well'
@@ -329,7 +368,7 @@ def body_shell(q):
                 i2 = min(i + 1, len(R) - 1)
                 nn = np.cross(R[i2, j] - R[i, j], R[i, (j + 1) % N] - R[i, j])
                 nx = abs(nn[0]) / (np.linalg.norm(nn) + 1e-12)
-                if abs(p[2]) < ZWELL + 0.12 or (nx > 0.55 and abs(p[2]) < float(hw_c(x)) - 0.09):
+                if abs(p[2]) < ZWELL + 0.10 and nx > 0.3:
                     return 'body:well'
         if tub_depth(x) > 0.5 and bd >= 5:
             # inside the tub: door cards on the walls, carpet on the floor, trim on the sill
@@ -350,15 +389,15 @@ def body_shell(q):
 # 1 the belt, > 1 below the belt inside the door); roof, pillars, sails and glass are panels on it
 # ---------------------------------------------------------------------------------------------
 
-yr_c = Curve([(0.668, 0.968), (0.60, 1.040), (0.50, 1.120), (0.40, 1.205), (0.30, 1.285), (0.215, 1.340),
-              (0.05, 1.377), (-0.20, 1.390), (-0.50, 1.378), (-0.70, 1.360), (-0.90, 1.322), (-1.05, 1.275),
-              (-1.20, 1.195), (-1.35, 1.112), (-1.50, 1.048), (-1.56, 1.030)])
-GH_X = (-1.56, 0.668)           # canopy extent
+yr_c = Curve([(0.668, 0.966), (0.6, 1.025), (0.5, 1.098), (0.4, 1.163), (0.3, 1.222), (0.2, 1.27), (0.1, 1.305),
+              (0.0, 1.328), (-0.1, 1.341), (-0.2, 1.345), (-0.382, 1.3324), (-0.565, 1.3069), (-0.748, 1.2721),
+              (-0.93, 1.2295), (-1.112, 1.18), (-1.295, 1.1241), (-1.477, 1.0623), (-1.66, 0.995)])
+GH_X = (-1.66, 0.668)           # canopy extent
 T_CANT = 0.55
-A_TOP, A_BASE = 0.215, 0.665    # A-pillar from the header corner down to the scuttle
-B_X = -0.405                    # B-pillar (door glass rear edge)
-C_TOP, C_BASE = -0.830, -1.190  # C line (quarter glass rear edge) from the cant down to the belt
-RW = (-1.515, -0.830, 0.455)    # rear window: base x, top x, half width in t
+A_TOP, A_BASE = 0.125, 0.665    # A-pillar from the header corner down to the scuttle
+B_X = -0.385                    # B-pillar (door glass rear edge)
+C_TOP, C_BASE = -0.820, -1.130  # C line (quarter glass rear edge) from the cant down to the belt
+RW = (-1.600, -0.900, 0.410)    # rear window: base x, top x, half width in t
 
 
 def canopy(x, t):
@@ -369,7 +408,7 @@ def canopy(x, t):
     yB = crown(x, gb)
     yr = yr_c(x)
     yk = yB + 0.78 * (yr - yB)
-    gk = gb - 0.40 * (yk - yB)
+    gk = gb - 0.52 * (yk - yB)
     at = np.abs(t)
     th = np.clip(at / T_CANT, 0, 1) * math.pi / 2
     roof_z = gk * np.sin(th)
@@ -422,16 +461,16 @@ def greenhouse(q):
     """Painted roof, pillars and sails, chrome B-pillars (body)."""
     m = Mesh()
     nu, nv = seg(30, q, 6), seg(16, q, 4)
-    m += panel((-0.850, 0.240), (-0.605, 0.605), nu, nv, 0.022, 'paint')
+    m += panel((RW[1] - 0.015, A_TOP + 0.025), (-0.605, 0.605), nu, nv, 0.022, 'paint')
     for s in (-1, 1):
         # A-pillar: a strip round the pillar line, from the header corner to the scuttle
-        m += panel((A_TOP - 0.03, A_BASE + 0.008), lambda x: (t_apillar(x) - 0.030, np.minimum(1.04, t_apillar(x) + 0.050)),
+        m += panel((A_TOP - 0.03, A_BASE + 0.008), lambda x: (t_apillar(x) - 0.024, np.minimum(1.04, t_apillar(x) + 0.040)),
                    seg(22, q, 5), seg(4, q, 2), 0.020, 'paint', side=s)
         # cant rail over the door and the quarter glass
         m += panel((C_TOP - 0.02, A_TOP), (0.57, 0.615), seg(26, q, 5), 2, 0.018, 'paint', side=s)
         # sail (C-pillar) from the C line back to the rear window and down to the deck
         m += panel((GH_X[0] - 0.005, C_TOP + 0.02),
-                   lambda x: (RW[2] - 0.030, np.where(x > C_BASE, np.clip(t_cline(x) + 0.035, 0.60, 1.08), 1.08)),
+                   lambda x: (np.where(x < RW[1] + 0.012, RW[2] - 0.030, 0.598), np.where(x > C_BASE, np.clip(t_cline(x) + 0.035, 0.60, 1.08), 1.08)),
                    seg(24, q, 5), seg(10, q, 3), 0.022, 'paint', side=s)
         # B-pillar: a slim chrome post between the door glass and the quarter glass
         m += panel((B_X - 0.018, B_X + 0.012), (0.585, 1.01), 2, seg(8, q, 3), 0.016, 'body:chrome', inset=-0.002,
@@ -494,13 +533,13 @@ def window_trims(q):
     """Chrome frames round the glass: windscreen surround, drip rails, belt mouldings, rear
     window surround, and black rubber seals inside them (body)."""
     m = Mesh()
-    n = seg(6, q, 4)
-    sam = lambda L: max(4, int(L / 0.05 * q) + 3)
+    n = seg(6, q, 4) if q >= 0.2 else 3
+    sam = lambda L: max(4 if q >= 0.2 else 3, int(L / 0.05 * q) + 3)
 
     def along(pts, r, mat='body:chrome'):
         P = np.asarray(pts)
         L = float(np.sum(np.linalg.norm(np.diff(P, axis=0), axis=1)))
-        return tube(P, r, n=n, mat=mat, samples=sam(L))
+        return tube(P, r, n=n, mat=mat, samples=sam(L), cap='dome' if q >= 0.2 else 'fan')
 
     xs = np.linspace(A_TOP, A_BASE, 8)
     for s in (-1, 1):
@@ -605,164 +644,238 @@ def placed(m, R, t):
 # Front: grille, headlamps, indicators, badge, bumper; rear: lamps, bumper, badge plate
 # ---------------------------------------------------------------------------------------------
 
+_TRI = {}
+
+
+def _body_tris():
+    if 'T' not in _TRI:
+        m = body_shell(0.6)
+        tris = []
+        for f in m.F:
+            for k in range(1, len(f) - 1):
+                tris.append((f[0], f[k], f[k + 1]))
+        T = m.V[np.array(tris)]
+        _TRI['T'] = T
+    return _TRI['T']
+
+
+def ray_hit(o, d):
+    """First hit of the ray o + t d on the body shell: (point, unit normal facing the ray's origin)."""
+    T = _body_tris()
+    o = np.asarray(o, float)
+    d = norm(np.asarray(d, float))
+    e1, e2 = T[:, 1] - T[:, 0], T[:, 2] - T[:, 0]
+    pv = np.cross(d, e2)
+    det = np.sum(e1 * pv, -1)
+    ok = np.abs(det) > 1e-12
+    inv = np.where(ok, 1 / np.where(ok, det, 1), 0)
+    tv = o - T[:, 0]
+    u = np.sum(tv * pv, -1) * inv
+    qv = np.cross(tv, e1)
+    v = np.sum(d * qv, -1) * inv
+    t = np.sum(e2 * qv, -1) * inv
+    hit = ok & (u >= 0) & (v >= 0) & (u + v <= 1) & (t > 0)
+    if not hit.any():
+        raise ValueError(f'ray {o} {d} misses the body')
+    k = np.where(hit)[0][np.argmin(t[hit])]
+    n = norm(np.cross(e1[k], e2[k]))
+    if np.dot(n, d) > 0:
+        n = -n
+    return o + d * t[k], n
+
+
+def nose_hit(y, z):
+    return ray_hit((3.0, y, z), (-1, 0, 0))
+
+
+def tail_hit(y, z):
+    return ray_hit((-3.0, y, z), (1, 0, 0))
+
+
 def mouth_outline(n, grow=0.0, x=None):
-    cy, ma, mb = MOUTH
     t = np.arange(n) / n * TAU
-    z = (ma + grow) * spow(np.cos(t), 0.55)
-    y = cy + (mb + grow) * spow(np.sin(t), 0.75)
-    return np.stack([np.full(n, NOSE - 0.045 if x is None else x), y, z], -1)
+    zy = mouth_pts(t, grow)
+    return np.stack([np.full(n, _mouth_x() if x is None else x), zy[:, 1], zy[:, 0]], -1)
+
+
+def _mouth_x():
+    return FACE_X + FACE_D
 
 
 def grille(q):
+    """Chrome surround on the mouth's lip, fine horizontal chrome bars with a slim centre post,
+    and a dark mesh behind them (body)."""
     m = Mesh()
     cy, ma, mb = MOUTH
-    n = seg(56, q, 12)
-    # chrome surround just proud of the lip
-    ring = mouth_outline(n, 0.006, NOSE - 0.040)
-    m += sweep(ring, lambda i, t: ellipse(0.006, 0.009, seg(8, q, 4)), 'body:chrome', closed=True)
+    n = seg(64, q, 14)
+    ring = mouth_outline(n, 0.002, _mouth_x() + 0.001)
+    m += sweep(ring, lambda i, t: ellipse(0.0055, 0.0075, seg(8, q, 4)), 'body:chrome', closed=True)
     if q < 0.2:
         return m
-    xg = NOSE - 0.075
-    # egg-crate: horizontal blades and vertical bars, inside the mouth
-    inner = lambda y: ma * 0.97 * np.abs(1 - np.abs((y - cy) / (mb * 0.97)) ** (1 / 0.75)) ** 0.55
-    for yy in np.linspace(cy - mb * 0.62, cy + mb * 0.62, 4):
-        w = float(inner(yy)) - 0.01
-        m += _hbar(xg, yy, w)
-    for zz in np.linspace(-ma * 0.88, ma * 0.88, 19):
-        hh = mb * 0.97 * (1 - (abs(zz) / (ma * 0.97)) ** (1 / 0.55)) ** 0.75 - 0.006
-        if hh > 0.02:
-            b = slab(rounded_rect(0.012, hh, 0.003, 1), 0.0035, axis=2, centre=zz, mat='body:grille', steps=1)
-            b.transform(t=(xg, cy, 0))
-            m += b
+    xg = _mouth_x() - 0.030
+
+    def half_w(y):
+        v = np.clip(np.abs((y - cy) / (mb * 0.985)), 0, 1)
+        return ma * 0.985 * (1 - v ** (1 / MOUTH_E[1])) ** MOUTH_E[0]
+
+    for yy in np.linspace(cy - mb * 0.80, cy + mb * 0.80, 9):
+        w = float(half_w(yy)) - 0.006
+        if w > 0.05:
+            m += _hbar(xg + 0.004, yy, w)
+    # slim vertical centre post and a dark mesh plane behind the bars
+    b = slab(rounded_rect(0.007, mb * 0.96, 0.003, 1), 0.012, axis=2, centre=0.0, round_r=0.002,
+             mat='body:chrome', steps=1)
+    b.transform(t=(xg + 0.010, cy, 0))
+    m += b
+    mesh = slab(rounded_rect(mb * 0.94, ma * 0.97, mb * 0.5, seg(6, q, 3)), 0.004, axis=0, centre=xg - 0.018,
+                mat='body:grille', steps=1)
+    mesh.transform(t=(0, cy, 0))
+    m += mesh
     return m
 
 
 def _hbar(xg, yy, w):
-    b = slab(rounded_rect(0.012, 0.0025, 0.002, 1), 2 * w, axis=2, centre=0.0, round_r=0.002, mat='body:grille', steps=1)
+    b = slab(rounded_rect(0.008, 0.0028, 0.0025, 1), 2 * w, axis=2, centre=0.0, round_r=0.002, mat='body:chrome', steps=1)
     b.transform(t=(xg, yy, 0))
     return b
 
 
-HEAD_Y, HEAD_Z = 0.655, 0.628
-
-
-def head_x():
-    return bisect(lambda x: surf_z(x, HEAD_Y) - HEAD_Z, 1.95, 2.25)
+HEAD_Y, HEAD_Z = 0.622, 0.600   # headlamp centres, in the wing tips beside the grille
+HEAD_R = 0.090
 
 
 def headlamp_parts(q, s):
-    """One headlamp (side s): paint bucket faired into the wing, chrome bezel, faceted reflector,
-    bulb shield (headlight_lens), clear cover. Returns (body, lens, glass) meshes."""
-    xl = head_x()
-    axis = norm((1.0, 0.10, 0.16 * s))
+    """One headlamp (side s), faired into the wing tip under a clear cover: a paint cowl that
+    grows out of the wing, a slim chrome ring, faceted reflector, bulb shield
+    (headlight_lens) and the domed glass cover. Returns (body, lens, glass) meshes."""
+    p, nrm = nose_hit(HEAD_Y, s * HEAD_Z)
+    axis = norm(np.array([1.0, 0.06, 0.20 * s]) + nrm * 0.4)
     R = frame_from(axis)
-    # stands proud of the sloping wing so the whole bezel shows; the paint bucket behind it
-    # fairs the lamp into the wing
-    c = np.array([xl + 0.040, HEAD_Y, s * HEAD_Z])
-    n = seg(36, q, 10)
+    c = p + axis * 0.042            # stands proud of the face; the cowl fairs it back into the wing
+    r = HEAD_R
+    n = seg(36, q, 8)
     body = Mesh()
-    body += placed(revolve([(0.100, -0.22), (0.112, -0.10), (0.108, -0.02), (0.104, 0.000), (0.096, 0.004),
-                            (0.093, -0.050), (0.088, -0.22)], n, mat='paint', closed_profile=True), R, c)
-    body += placed(revolve([(0.093, 0.000), (0.102, 0.001), (0.104, 0.008), (0.099, 0.013), (0.093, 0.010)], n,
-                           mat='body:chrome', closed_profile=True), R, c)
+    body += placed(revolve([(r + 0.002, -0.24), (r + 0.010, -0.08), (r + 0.008, -0.012), (r + 0.002, 0.000),
+                            (r - 0.006, -0.004), (r - 0.008, -0.050), (r - 0.010, -0.20)], n, mat='paint',
+                           closed_profile=True), R, c)
+    body += placed(revolve([(r - 0.007, -0.001), (r + 0.001, 0.000), (r + 0.003, 0.005), (r - 0.002, 0.009),
+                            (r - 0.007, 0.006)], n, mat='body:chrome', closed_profile=True), R, c)
     if q >= 0.2:
-        body += placed(revolve([(0.092, -0.004), (0.070, -0.026), (0.040, -0.052), (0.018, -0.062), (0.014, -0.058),
-                                (0.038, -0.047), (0.068, -0.021), (0.089, -0.001)], n, mat='body:reflector',
-                               closed_profile=True), R, c)
-    lens = placed(revolve([(0.0, -0.040), (0.028, -0.040), (0.030, -0.030), (0.024, -0.020), (0.0, -0.018)],
+        body += placed(revolve([(r - 0.008, -0.006), (r * 0.75, -0.030), (r * 0.45, -0.052), (0.018, -0.060),
+                                (0.014, -0.056), (r * 0.43, -0.047), (r * 0.73, -0.025), (r - 0.010, -0.003)], n,
+                               mat='body:reflector', closed_profile=True), R, c)
+    lens = placed(revolve([(0.0, -0.040), (0.026, -0.040), (0.028, -0.030), (0.022, -0.020), (0.0, -0.018)],
                           seg(16, q, 6), mat='headlight_lens'), R, c)
-    glass = placed(revolve([(0.0, 0.026), (0.050, 0.021), (0.094, 0.008), (0.094, 0.004), (0.050, 0.016),
-                            (0.0, 0.021)], n, mat='glass:clear'), R, c)
+    glass = placed(revolve([(0.0, 0.030), (r * 0.55, 0.024), (r - 0.004, 0.010), (r - 0.004, 0.006),
+                            (r * 0.55, 0.019), (0.0, 0.025)], n, mat='glass:clear'), R, c)
     return body, lens, glass
 
 
 def indicators(q):
+    """Small round amber lamps under the headlamps, beside the grille's ends."""
     m = Mesh()
     for s in (-1, 1):
-        y, z0 = 0.430, 0.585
-        x = bisect(lambda x: surf_z_low(x, y) - z0, 1.9, 2.28) - 0.004
-        R = frame_from(norm((1.0, 0.0, 0.35 * s)))
-        lamp = revolve([(0.0, -0.01), (0.026, -0.01), (0.028, 0.004), (0.020, 0.010), (0.0, 0.012)], seg(16, q, 6),
+        p, nrm = nose_hit(0.452, s * 0.600)
+        R = frame_from(norm(nrm + np.array([0.6, 0, 0])))
+        c = p - nrm * 0.004
+        lamp = revolve([(0.0, -0.01), (0.022, -0.01), (0.024, 0.004), (0.017, 0.010), (0.0, 0.012)], seg(16, q, 6),
                        mat='body:amber')
-        lamp.V[:, 0] *= 1.5
-        m += placed(lamp, R, (x, y, s * z0))
-        rim = revolve([(0.026, -0.004), (0.031, -0.002), (0.031, 0.006), (0.027, 0.006)], seg(16, q, 6),
+        lamp.V[:, 0] *= 1.35
+        m += placed(lamp, R, c)
+        rim = revolve([(0.022, -0.004), (0.027, -0.002), (0.027, 0.006), (0.023, 0.006)], seg(16, q, 6),
                       mat='body:chrome', closed_profile=True)
-        rim.V[:, 0] *= 1.5
-        m += placed(rim, R, (x, y, s * z0))
+        rim.V[:, 0] *= 1.35
+        m += placed(rim, R, c)
     return m
 
 
+BADGE_Y = 0.585
+
+
 def nose_badge(q):
-    """Enamel roundel over the grille mouth on the nose (generic: the game's own mark)."""
-    x = bisect(lambda x: top_y(x) - 0.640, 2.10, 2.28)
-    p = np.array([x, 0.640, 0.0])
-    e = 0.004
-    nrm = norm(np.array([top_y(x - e) - top_y(x + e), 2 * e, 0.0]))
-    R = frame_from(nrm, up=(1, 0, 0))
-    m = placed(revolve([(0.0, -0.004), (0.030, -0.004), (0.032, 0.004), (0.028, 0.008), (0.0, 0.008)],
+    """Enamel roundel on the nose above the grille (generic: the game's own mark)."""
+    p, nrm = nose_hit(BADGE_Y, 0.0)
+    R = frame_from(nrm, up=(0, 1, 0))
+    m = placed(revolve([(0.0, -0.004), (0.026, -0.004), (0.028, 0.004), (0.024, 0.007), (0.0, 0.007)],
                        seg(24, q, 8), mat='body:badge'), R, p)
-    m += placed(revolve([(0.029, 0.000), (0.035, 0.001), (0.035, 0.008), (0.030, 0.010)], seg(24, q, 8),
+    m += placed(revolve([(0.025, 0.000), (0.031, 0.001), (0.031, 0.007), (0.026, 0.009)], seg(24, q, 8),
                         mat='body:chrome', closed_profile=True), R, p)
     return m
 
 
 def blade(path_xz, y, h, t_, q, mat='body:chrome'):
-    P = catmull([(x, y, z) for x, z in path_xz], seg(40, q, 8))
+    P = catmull([(x, y, z) for x, z in path_xz], seg(44, q, 8))
     return sweep(P, lambda i, t: ellipse(t_, h, seg(10, q, 6), e=0.7), mat, up=(0, 1, 0), dome_depth=0.02,
                  dome_steps=2)
 
 
+def _bumper_path(hit, y, sign, zs, gap):
+    pts = []
+    for z in zs:
+        p, nrm = hit(y, z)
+        pts.append((p[0] + sign * gap, z))
+    half = pts[::-1] + [(x, -z) for x, z in pts[1:]]
+    return [(x, -z) for x, z in half]
+
+
 def bumpers(q):
+    """Slim chrome blades hugging the nose and the tail, short rounded overriders."""
     m = Mesh()
-    fx = [(1.90, -0.840), (2.02, -0.818), (2.14, -0.745), (2.24, -0.56), (2.290, -0.30), (2.302, 0.0), (2.290, 0.30),
-          (2.24, 0.56), (2.14, 0.745), (2.02, 0.818), (1.90, 0.840)]
-    m += blade(fx, 0.262, 0.030, 0.014, q)
-    rx = [(-1.94, -0.868), (-2.06, -0.845), (-2.18, -0.77), (-2.275, -0.60), (-2.314, -0.30), (-2.322, 0.0),
-          (-2.314, 0.30), (-2.275, 0.60), (-2.18, 0.77), (-2.06, 0.845), (-1.94, 0.868)]
-    m += blade(rx, 0.372, 0.030, 0.014, q)
+    zs = [0.0, 0.25, 0.45, 0.60, 0.70, 0.76]
+    fpath = _bumper_path(nose_hit, 0.300, 1, zs, 0.030)
+    fpath = [(fpath[0][0] - 0.06, fpath[0][1] * 1.03)] + fpath + [(fpath[-1][0] - 0.06, fpath[-1][1] * 1.03)]
+    m += blade(fpath, 0.300, 0.020, 0.011, q)
+    rzs = [0.0, 0.25, 0.42, 0.55, 0.64, 0.70]
+    rpath = _bumper_path(tail_hit, 0.400, -1, rzs, 0.030)
+    rpath = [(rpath[0][0] + 0.07, rpath[0][1] * 1.04)] + rpath + [(rpath[-1][0] + 0.07, rpath[-1][1] * 1.04)]
+    m += blade(rpath, 0.400, 0.020, 0.011, q)
     n = seg(12, q, 6)
     for s in (-1, 1):
-        # overriders: upright chrome posts with rubber tips
-        m += strut((2.290, 0.215, s * 0.290), (2.270, 0.395, s * 0.290), 0.020, 0.022, n=n, mat='body:chrome',
-                   samples=seg(5, q, 3))
-        m += strut((-2.316, 0.300, s * 0.330), (-2.298, 0.470, s * 0.330), 0.020, 0.022, n=n, mat='body:chrome',
-                   samples=seg(5, q, 3))
-        if q >= 0.2:
-            for a, b in (((2.30, 0.262, s * 0.65), (2.17, 0.262, s * 0.65)), ((-2.31, 0.372, s * 0.65),
-                                                                            (-2.22, 0.372, s * 0.65))):
-                m += strut(a, b, 0.010, 0.010, n=seg(8, q, 4), mat='body:well', samples=2)
+        for hit, y0, y1, sg in ((nose_hit, 0.245, 0.360, 1),):
+            p, _ = hit(0.30 if sg > 0 else 0.40, s * 0.30)
+            x = p[0] + sg * 0.036
+            m += strut((x, y0, s * 0.30), (x - sg * 0.006, y1, s * 0.30), 0.016, 0.014, n=n, mat='body:chrome',
+                       samples=seg(5, q, 3))
     return m
 
 
-TAIL_Y, TAIL_Z = 0.635, 0.545
-
-
-def tail_x():
-    return bisect(lambda x: surf_z(x, TAIL_Y) - TAIL_Z, -2.29, -1.95)
+TAIL_Y, TAIL_Z = 0.672, 0.585    # tail lamp centres, in the ends of the rear wings
 
 
 def tail_lamps(q):
-    """Horizontal oval tail lamps (red lens with a chrome bezel, a small amber section at the
-    outer end). Returns (body, lens)."""
+    """Long tapered tail lamps set into the rear wing ends: a chrome bezel, red lens with a small
+    amber section at the inner end, the outer end wrapping round the corner. Returns
+    (body, lens)."""
     body, lens = Mesh(), Mesh()
-    xt = -2.281          # on the flat tail panel (the dome that closes the body)
     for s in (-1, 1):
-        axis = norm((-1.0, 0.04, 0.10 * s))
+        p, nrm = tail_hit(TAIL_Y, s * TAIL_Z)
+        axis = norm(nrm * 0.75 + np.array([-0.25, 0.0, 0.0]))
         R = frame_from(axis)
-        c = np.array([xt, TAIL_Y, s * TAIL_Z])
+        c = p - axis * 0.004
         n = seg(32, q, 10)
-        bez = revolve([(0.040, -0.030), (0.046, -0.002), (0.046, 0.006), (0.040, 0.010), (0.037, -0.030)], n,
-                      mat='body:chrome', closed_profile=True)
-        bez.V[:, :2] *= (2.4, 1.15)
+
+        def shaped(m):
+            # long oval, tapered toward the car's centre line (local x points across the car)
+            V = m.V
+            lx = V[:, 0] * 2.7
+            k = 1.0 + 0.22 * np.clip(lx * s / 0.10, -1, 1)
+            V[:, 0] = lx
+            V[:, 1] = V[:, 1] * 1.05 * k
+            return m
+
+        bez = shaped(revolve([(0.040, -0.030), (0.045, -0.002), (0.045, 0.005), (0.040, 0.008), (0.037, -0.030)],
+                             n, mat='body:chrome', closed_profile=True))
         body += placed(bez, R, c)
-        L = revolve([(0.0, -0.020), (0.039, -0.020), (0.040, 0.004), (0.026, 0.012), (0.0, 0.015)], n,
-                    mat='taillight_lens')
-        L.V[:, :2] *= (2.4, 1.15)
+        cowl = shaped(revolve([(0.047, -0.16), (0.050, -0.04), (0.046, -0.004), (0.040, -0.004), (0.040, -0.16)], n,
+                              mat='paint', closed_profile=True))
+        if q >= 0.2:
+            body += placed(cowl, R, c)
+        L = shaped(revolve([(0.0, -0.020), (0.039, -0.020), (0.040, 0.003), (0.026, 0.010), (0.0, 0.012)], n,
+                           mat='taillight_lens'))
         lens += placed(L, R, c)
         if q >= 0.2:
-            am = revolve([(0.0, -0.01), (0.016, -0.01), (0.017, 0.010), (0.0, 0.016)], seg(14, q, 6), mat='body:amber')
-            body += placed(am, R, c + R @ np.array([s * 0.0, 0, 0.0]) + R @ np.array([-0.060 * s, 0, 0.004]))
+            am = revolve([(0.0, -0.01), (0.015, -0.01), (0.016, 0.009), (0.0, 0.014)], seg(14, q, 6), mat='body:amber')
+            body += placed(am, R, c + R @ np.array([-0.062 * s, 0.0, 0.004]))
     return body, lens
 
 
@@ -1168,24 +1281,29 @@ def hands(q):
         c = radial * WHEEL_R
         # back of the hand: a flattened pad behind and over the rim
         Rh = np.stack([X, tang, radial], -1)
-        m += blob(c - X * 0.020 + radial * 0.010, (0.017, 0.040, 0.030), n=seg(18, q, 8), rings=seg(10, q, 5),
-                  e1=0.6, e2=0.7, mat='driver:glove', R=Rh)
+        m += blob(c - X * 0.017 + radial * 0.008, (0.013, 0.034, 0.024), n=seg(18, q, 8), rings=seg(10, q, 5),
+                  e1=0.55, e2=0.65, mat='driver:glove', R=Rh)
+        # knuckle ridge where the fingers leave the back of the hand
+        m += blob(c - X * 0.006 + radial * 0.017, (0.009, 0.031, 0.011), n=seg(14, q, 6), rings=seg(6, q, 4),
+                  e1=0.6, e2=0.6, mat='driver:glove', R=Rh)
         # four fingers curled round the rim from the outside to the front
         for k in range(4):
-            off = (k - 1.6) * 0.0175
+            off = (k - 1.5) * 0.0150
             base = c + tang * off
-            ang = np.radians(np.linspace(-30, 200, 7))
-            rr = 0.020
+            ang = np.radians(np.linspace(-20, 215 - 12 * k, 8))
+            rr = 0.0185
             pts = [base + radial * (math.cos(t) * rr) + X * (math.sin(t) * rr) for t in ang]
-            m += tube(pts, 0.0082 - 0.0006 * k, n=n, mat='driver:glove', samples=seg(10, q, 5))
+            m += tube(pts, 0.0068 - 0.0005 * k, n=n, mat='driver:glove', samples=seg(12, q, 5),
+                      radius_fn=lambda t: lerp(1.08, 0.82, t))
         # thumb along the inside of the rim
-        tb = c - X * 0.012 - radial * 0.016 - tang * 0.020
-        m += tube([tb, tb + tang * 0.030 - radial * 0.004 + X * 0.012, tb + tang * 0.048 + X * 0.020], 0.0085, n=n,
-                  mat='driver:glove', samples=seg(6, q, 3))
+        tb = c - X * 0.010 - radial * 0.014 - tang * 0.018
+        m += tube([tb, tb + tang * 0.026 - radial * 0.004 + X * 0.010, tb + tang * 0.040 + X * 0.017], 0.0070, n=n,
+                  mat='driver:glove', samples=seg(6, q, 3), radius_fn=lambda t: lerp(1.1, 0.85, t))
         # cuff and sleeve back toward the driver's elbow
-        w0 = c - X * 0.040 - radial * 0.004
-        m += tube([w0, w0 - X * 0.035 - radial * 0.010], 0.030, n=n, mat='driver:glove', samples=seg(3, q, 2))
-        m += tube([w0 - X * 0.030 - radial * 0.010, w0 - X * 0.20 - radial * 0.11 + np.array([0, -0.05, 0])], 0.036,
+        w0 = c - X * 0.034 - radial * 0.002
+        m += tube([w0, w0 - X * 0.032 - radial * 0.010], 0.024, n=n, mat='driver:glove', samples=seg(3, q, 2),
+                  radius_fn=lambda t: lerp(0.95, 1.1, t))
+        m += tube([w0 - X * 0.028 - radial * 0.010, w0 - X * 0.20 - radial * 0.11 + np.array([0, -0.05, 0])], 0.031,
                   n=n, mat='driver:jacket', samples=seg(6, q, 3), radius_fn=lambda t: lerp(1.0, 1.2, t))
     return m
 
@@ -1292,8 +1410,8 @@ def binnacle(q):
 def rear_view_mirror(q):
     """Interior mirror hung from the header rail, glass toward the driver (MirrorGlass)."""
     m = Mesh()
-    top = canopy(0.205, 0.0)
-    c = np.array([0.130, 1.262, -0.06])
+    top = canopy(A_TOP + 0.005, 0.0)
+    c = np.array([A_TOP - 0.050, float(canopy(A_TOP - 0.050, 0.0)[1]) - 0.070, -0.06])
     m += strut(tuple(top + [0, -0.004, 0]), tuple(c + [0.010, 0.018, 0]), 0.006, 0.006, n=seg(8, q, 5),
                mat='int:chrome', samples=3)
     yaw = rot((0, 1, 0), math.radians(-8))       # turned a little toward the driver
@@ -1348,7 +1466,7 @@ def pillar_trims(q):
         m += panel((B_X - 0.022, B_X + 0.016), (0.585, 1.0), 2, seg(8, q, 3), 0.008, 'int:headliner', inset=0.020,
                    side=s)
         # sun visor folded up against the headliner
-        c = canopy(0.13, s * 0.30)
+        c = canopy(A_TOP - 0.075, s * 0.30)
         m += blob(c + [0, -0.034, 0], (0.075, 0.010, 0.165), n=seg(16, q, 6), rings=seg(6, q, 3), e1=0.35, e2=0.35,
                   mat='int:headliner', R=rot((0, 0, 1), math.radians(-28)))
     return m
@@ -1371,6 +1489,24 @@ def cockpit_shell(q):
     m += pillar_trims(q)
     m += rear_view_mirror(q)
     return m
+
+
+GLOW_C = np.array([0.36, 0.86, DRIVER_Z * 0.6])   # where the instrument light seems to come from
+
+
+def glow(group, lod, P, N, valid):
+    """Night light for the cockpit atlas (emissive map = albedo x gain, see build_car): a soft
+    ambient over the whole cabin (dark trims lifted to a floor so the pillars and the headliner
+    read against the night) and a warm pool of instrument light over the fascia, the wheel and
+    the hands. Daylight hides it (it is a few percent of the day's light)."""
+    if lod != 'cockpit' or group != 'Cockpit':
+        return None
+    d = P - GLOW_C
+    r = np.linalg.norm(d, axis=-1)
+    facing = np.clip(np.sum(N * -d / np.maximum(r, 1e-6)[..., None], -1) * 0.6 + 0.4, 0, 1)
+    pool = 0.55 * facing / (1.0 + (r / 0.22) ** 2)
+    gain = (0.10 + pool) * valid
+    return gain.astype(np.float32), 0.10
 
 
 def cockpit(q=1.0):
@@ -1406,7 +1542,7 @@ def livery(group, P, N, valid):
         top = valid & (N[..., 1] > 0.30)
         yb = np.vectorize(lambda v: float(yb_c(v)))(x)
         sill = yb + 0.115
-        belt = np.vectorize(lambda v: float(crown(v, gb_c(np.clip(v, -1.56, 0.668)))))(x)
+        belt = np.vectorize(lambda v: float(crown(v, gb_c(np.clip(v, GH_X[0], GH_X[1])))))(x)
         in_door = (x < DOOR_X[0] + 0.004) & (x > DOOR_X[1] - 0.004)
         # door: front and rear shut lines from the sill up to the belt, bottom edge over the sill
         for xd in DOOR_X:
@@ -1440,15 +1576,15 @@ def livery(group, P, N, valid):
         layers.append((lv.stamp(P, N, valid, au, (X0, y0, 0.0), (0, 0, 1), -up, 0.27, facing=nrm, min_dot=0.5,
                                 depth=0.012), (0.012, 0.012, 0.014), 0.3))
         # nose roundel: deep blue enamel with the game's initials in silver
-        xb = bisect(lambda xx: top_y(xx) - 0.640, 2.10, 2.28)
-        nb = norm(np.array([top_y(xb - e) - top_y(xb + e), 2 * e, 0.0]))
-        XB = fx(xb)
-        rel = P - np.array([XB, 0.640, 0.0])
-        disc = valid & (np.linalg.norm(rel, axis=-1) < 0.029) & ((N @ nb) > 0.6)
+        pb, nb = nose_hit(BADGE_Y, 0.0)
+        XB = fx(pb[0] + nb[0] * 0.007)
+        YB = pb[1] + nb[1] * 0.007
+        rel = P - np.array([XB, YB, 0.0])
+        disc = valid & (np.linalg.norm(rel, axis=-1) < 0.025) & ((N @ nb) > 0.6)
         layers.append((disc * 1.0, (0.010, 0.030, 0.120), 0.15))
         ao = lv.text_mask('AO', oblique=False)
         upb = norm(np.cross(nb, (0, 0, 1)))
-        layers.append((lv.stamp(P, N, valid, ao, (XB, 0.640, 0.0), (0, 0, 1), -upb, 0.036, facing=nb, min_dot=0.6,
+        layers.append((lv.stamp(P, N, valid, ao, (XB, YB, 0.0), (0, 0, 1), -upb, 0.032, facing=nb, min_dot=0.6,
                                 depth=0.012) * disc, (0.80, 0.80, 0.82), 0.12))
         return {'layers': layers}
     return {}
@@ -1554,6 +1690,10 @@ META = {
                 'quaternion (x, y, z, w); the glass stands up about the belt line and drops into the door',
     },
     'hideInCockpit': ['interior', 'driver', 'steering_wheel', 'glass', 'window_L', 'window_R'],
+    'cockpitFx': {'speedLines': False, 'particleNearFade': 2.8,
+                  'note': 'in the driver view no nitro streaks, smoke or sparks within ~2.8 m of the eye'},
+    'cockpitGlow': 'material Cockpit carries a baked emissive night-light map (instrument glow, soft ambient); '
+                   'Gauges glow warm white',
     'mirrorGlass': 'material MirrorGlass, uv 0..1 per glass (u along z, v up)',
     'factoryPaint': list(FACTORY_PAINT),
 }

@@ -27,7 +27,7 @@ const ONLY = arg('only', null)?.split(',');
 // driver-view eye per car: defs/<file>.py EYE
 const CARS = {
   tm_tempesta: { id: 'tm-tempesta', eye: { x: -0.3, y: 1.02, z: 0 }, windows: false },
-  ag_aurelia: { id: 'ag-aurelia', eye: { x: -0.33, y: 1.16, z: -0.37 }, windows: true },
+  ag_aurelia: { id: 'ag-aurelia', eye: { x: -0.25, y: 1.1, z: -0.37 }, windows: true },
 };
 const FILE = arg('car', 'tm_tempesta');
 const CAR = CARS[FILE].id;
@@ -52,6 +52,7 @@ async function open(variant, { view = 'chase', paint = 'factory', w = 1280, h = 
   const context = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1.5 });
   const page = await context.newPage();
   page.on('pageerror', (e) => console.error(`[${variant}] page error:`, e.message));
+  page.on('console', (m) => m.type() === 'error' && console.error(`[${variant}] console:`, m.text().slice(0, 300)));
   const save = seededSave({ car: CAR, cameraView: view, paint });
   await page.addInitScript(({ save, variant, eye }) => {
     localStorage.setItem('apex-overdrive.save.v2', JSON.stringify(save));
@@ -104,6 +105,7 @@ for (const [variant, time, stage] of RUNS) {
       if (view === 'cockpit' && variant === 'new') globalThis.__pilotEye = eye;
       await app.startRace(app.pickStage(stage));
     }, { view, variant, eye: EYE, stage });
+    await page.waitForFunction(() => window.__app.race, null, { timeout: 120000 });
     await page.waitForTimeout(1200);
     await page.evaluate(async () => {
       const r = window.__app.race;
