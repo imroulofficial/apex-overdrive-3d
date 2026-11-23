@@ -289,7 +289,7 @@ export function createGroundMaterial({ rockOnly = false, env = null } = {}) {
 const TERRAIN = { x0: -1500, x1: 1500, z0: -1300, z1: 700, cell: 10 };
 const CHUNK_CELLS = 60;
 
-function buildTerrain(track, def, quality, material) {
+export function buildTerrain(track, def, quality, material) {
   const { x0, x1, z0, z1 } = TERRAIN;
   const cell = quality === 'low' ? 16 : quality === 'medium' ? 12 : TERRAIN.cell;
   const nx = Math.round((x1 - x0) / cell) + 1;
@@ -304,7 +304,31 @@ function buildTerrain(track, def, quality, material) {
   // with the forest floor (their samples join in once they leave the highway's width).
   const dist = new Float32Array(nx * nz).fill(1e6);
   const roadY = new Float32Array(nx * nz);
+  // The drivable surface itself, kept apart for the highway and the trails: no terrain vertex
+  // near either may rise above it (see the clamp below).
+  const hwDist = new Float32Array(nx * nz).fill(1e6);
+  const hwTop = new Float32Array(nx * nz);
+  const trDist = new Float32Array(nx * nz).fill(1e6);
+  const trTop = new Float32Array(nx * nz);
   const R = 130;
+  const nearest = (px, pz, y, r, dArr, yArr) => {
+    const ia = Math.max(0, Math.floor((px - r - x0) / cx));
+    const ib = Math.min(nx - 1, Math.ceil((px + r - x0) / cx));
+    const ja = Math.max(0, Math.floor((pz - r - z0) / cz));
+    const jb = Math.min(nz - 1, Math.ceil((pz + r - z0) / cz));
+    for (let j = ja; j <= jb; j++) {
+      const z = z0 + j * cz;
+      for (let k = ia; k <= ib; k++) {
+        const x = x0 + k * cx;
+        const d = Math.hypot(x - px, z - pz);
+        const idx = j * nx + k;
+        if (d <= r && d < dArr[idx]) {
+          dArr[idx] = d;
+          yArr[idx] = y;
+        }
+      }
+    }
+  };
   const raster = (px, pz, y) => {
     const ia = Math.max(0, Math.floor((px - R - x0) / cx));
     const ib = Math.min(nx - 1, Math.ceil((px + R - x0) / cx));
@@ -326,6 +350,30 @@ function buildTerrain(track, def, quality, material) {
   for (let i = 0; i < track.n; i++) raster(track.px[i], track.pz[i], track.py[i] - 3.6);
   for (const t of track.trails) {
     for (let i = 0; i < t.n; i += 2) if (Math.abs(t.sep[i]) > track.halfWidth) raster(t.px[i], t.pz[i], t.py[i] - 0.45);
+  }
+  // Corridors: road + verge out to the rail (trail: lane out to its fences), widened by the
+  // grid's own diagonal, since a terrain triangle that reaches into the corridor is drawn
+  // between vertices up to one cell diagonal away.
+  const reach = Math.hypot(cx, cz);
+  const hwCorridor = track.fenceOffset + 1 + reach;
+  for (let i = 0; i < track.n; i++) nearest(track.px[i], track.pz[i], track.py[i], hwCorridor, hwDist, hwTop);
+  const hp = {};
+  const tf = {};
+  for (const t of track.trails) {
+    for (let i = 0; i < t.n; i++) {
+      // Near the fork and merge the trail's surface follows the highway's across its width
+      // (Trail.surfaceAt): the lowest of it, centre and both edges, is the top here.
+      let top = t.py[i];
+      if (t.tieAt(t.s[i]) > 0) {
+        t.frame(t.s[i], tf);
+        for (const k of [-1, 0, 1]) {
+          const d = k * t.halfWidthAt(t.s[i]);
+          track.project(tf.x + tf.rx * d, tf.z + tf.rz * d, -1, hp);
+          top = Math.min(top, t.surfaceAt(t.s[i], track.roadY(hp.s)));
+        }
+      }
+      nearest(t.px[i], t.pz[i], top, t.halfWidthAt(t.s[i]) + 1.5 + reach, trDist, trTop);
+    }
   }
 
   const natural = (x, z) => {
@@ -355,6 +403,10 @@ function buildTerrain(track, def, quality, material) {
         h = target + (h - target) * w;
       }
       if (gorge) h = gorge.carve(x, z, h);
+      // Never above the road or a trail inside their corridors (EC s~1535-1590 had grass up
+      // to 3 m over the asphalt where a hillside met the road between coarse grid vertices).
+      if (hwDist[idx] < 1e6) h = Math.min(h, hwTop[idx] - 0.15);
+      if (trDist[idx] < 1e6) h = Math.min(h, trTop[idx] - 0.15);
       heights[idx] = h;
     }
   }

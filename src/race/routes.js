@@ -22,7 +22,9 @@ export function reverseTrackDef(def, length) {
     ...def,
     reversed: true,
     points: [first, ...rest.reverse()],
-    ramps: (def.ramps ?? []).map((r) => ({ ...r, at: flip(r.at + r.length / length), from: -r.to, to: -r.from })),
+    // A ramp met on a climb instead of a descent throws harder: `reverseHeight` lowers it for this
+    // direction (C12).
+    ramps: (def.ramps ?? []).map((r) => ({ ...r, height: r.reverseHeight ?? r.height, at: flip(r.at + r.length / length), from: -r.to, to: -r.from })),
     // A slalom runs 56 m from its first cone: start it where the forward one ends.
     slaloms: (def.slaloms ?? []).map((f) => flip(f + 56 / length)),
     barricades: (def.barricades ?? []).map(flip),

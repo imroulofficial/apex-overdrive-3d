@@ -64,7 +64,10 @@ export const TRACK_SEGMENTS = {
   'nc-grand-prix': { id: 'nc-grand-prix', trackId: 'neon-city', name: 'Neon Grand Prix', route: 'circuit', layout: 'circuit', laps: 3, from: 0, to: 1, length: 8750 },
   'nc-reverse-loop': { id: 'nc-reverse-loop', trackId: 'neon-city', name: 'Downtown Loop Reverse', route: 'reverse', reverse: true, layout: 'circuit', laps: 2, from: 0, to: 1, length: 5840 },
   'nc-reverse-hotlap': { id: 'nc-reverse-hotlap', trackId: 'neon-city', name: 'Midnight Reverse Lap', route: 'reverse', reverse: true, layout: 'circuit', laps: 1, from: 0, to: 1, length: 2920 },
-  'nc-skyline-descent': { id: 'nc-skyline-descent', trackId: 'neon-city', name: 'Skyline Descent', route: 'sprint', reverse: true, layout: 'sprint', laps: 1, from: 0, to: 0.38, length: 1110 },
+  // Down the skyline switchbacks: hairpins all the way, nowhere near the chapter's 50 m/s
+  // highway pace. `pace` scales it, or the Time Trial clock ran out before the first checkpoint
+  // in any car (C13).
+  'nc-skyline-descent': { id: 'nc-skyline-descent', trackId: 'neon-city', name: 'Skyline Descent', route: 'sprint', reverse: true, layout: 'sprint', laps: 1, from: 0, to: 0.38, length: 1110, pace: 0.68 },
 };
 
 // `starGate`: total career stars needed to enter the chapter (on top of clearing the previous
@@ -163,7 +166,7 @@ export function describeObjective(o) {
 // chapter the stage is (`k`, 0-1): targets tighten by up to 6% across a chapter.
 function finishAndMastery(mode, seg, chapter, k, weather) {
   // Wet roads and fog are slower: the clock allows for them.
-  const pace = chapter.pace * (1 + 0.06 * k) * WEATHER[weather].pace;
+  const pace = chapter.pace * (seg.pace ?? 1) * (1 + 0.06 * k) * WEATHER[weather].pace;
   const run = seg.length / pace; // par time for the whole run
   const lapTime = seg.length / seg.laps / (pace * 1.08);
   const mastery = seg.layout === 'circuit' && seg.laps > 1 ? lap(lapTime) : time(run / 1.08);

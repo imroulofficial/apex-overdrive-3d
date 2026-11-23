@@ -26,13 +26,17 @@ const mats = () => (shared ??= finishes());
 
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
 
-// Spokes radiating from the hub: `make(i)` returns one spoke geometry pointing along +x.
+// Spokes radiating from the hub: `geo` is one spoke pointing along +x. `twist` pitches each
+// blade about its own length (turbofan): it is baked into the geometry first, then every
+// copy is turned about the axle. Set as rotation.x on the mesh instead, three.js's XYZ Euler
+// order tilts every blade about the same world x axis, which buries half of them in the
+// disc and bunches the rest on one side.
 function radial(count, geo, mat, side, { offset = 0, z = FACE, twist = 0 } = {}) {
   const out = [];
+  const blade = twist ? geo.clone().rotateX(twist * side) : geo;
   for (let i = 0; i < count; i++) {
-    const mesh = new THREE.Mesh(geo, mat);
+    const mesh = new THREE.Mesh(blade, mat);
     mesh.rotation.z = offset + (i / count) * Math.PI * 2;
-    mesh.rotation.x = twist * side;
     mesh.position.z = z * side;
     out.push(mesh);
   }

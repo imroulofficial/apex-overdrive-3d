@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { mulberry32, canvasTexture } from './noise.js';
 import { paintVertices, mergePainted, createVertexPbrMaterial } from '../render/vertexPbr.js';
 import { wettable } from './trackMeshes.js';
-import { TRAIL } from './trails.js';
+import { TRAIL, Trail } from './trails.js';
+import { TRAIL_SURFACE } from './vehicle.js';
 import { VERGE } from './surface.js';
 
 // Emerald Coast set-pieces (blueprint §04 Biome 1): the Tidecutter Gorge timber suspension
@@ -55,20 +56,26 @@ export function buildBridge(track, wet) {
     return new THREE.Vector3(f.x + f.rx * d, track.roadY(s) + dy, f.z + f.rz * d);
   };
 
-  // Deck planks across the road, 0.42 m wide with a finger gap, each a slightly different tone.
+  // Deck planks across the road, each a slightly different tone. Every plank is cut to the
+  // deck's curve (its corners on the road frame at both of its edges), so the planks butt
+  // together across the whole width with no gap to see the stringers through, and the deck
+  // edge sits at road height like its centre.
   const tone = new THREE.Color();
-  for (let s = s0 - 1; s < s1 + 1; s += 0.47) {
+  const PLANK = 0.47;
+  const unit = new THREE.BoxGeometry(1, 1, 1).toNonIndexed();
+  for (let s = s0 - 1; s < s1 + 1; s += PLANK) {
     tone.setHex(plank.color).multiplyScalar(0.78 + rand() * 0.34);
-    const c0 = at(s, 0, -0.06);
-    const c1 = at(s + 0.42, 0, -0.06);
-    const mid = c0.clone().lerp(c1, 0.5);
-    track.frame(s + 0.21, f);
-    const geo = new THREE.BoxGeometry(W * 2, 0.12, 0.42).toNonIndexed();
-    const q = new THREE.Quaternion().setFromAxisAngle(up, Math.atan2(-f.tz, f.tx) + Math.PI / 2);
-    // Follow the road's grade.
-    const pitch = Math.atan2(c1.y - c0.y, 0.42);
-    q.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -pitch));
-    geo.applyMatrix4(new THREE.Matrix4().compose(mid, q, new THREE.Vector3(1, 1, 1)));
+    const e = Math.min(s + PLANK, s1 + 1);
+    // Box corner (x, y, z) in +-0.5 -> deck: x across (+x = left, keeps the winding), y up,
+    // z along the road.
+    const corner = (x, y, z) => at(z > 0 ? e : s, x > 0 ? -W : W, y > 0 ? 0 : -0.12);
+    const geo = unit.clone();
+    const pos = geo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const c = corner(pos.getX(i), pos.getY(i), pos.getZ(i));
+      pos.setXYZ(i, c.x, c.y, c.z);
+    }
+    geo.computeVertexNormals();
     parts.push(paintVertices(geo, { ...plank, color: tone.clone() }));
   }
   // Stringers and cross beams under the deck.
@@ -533,14 +540,30 @@ export function buildTrails(track, wet, env = null) {
     const cols = [[-1.25, litter, 0], [-1, dirt, 0.12], [-TRAIL.core / TRAIL.half, dirt, 0.3], [TRAIL.core / TRAIL.half, dirt, 0.7], [1, dirt, 0.88], [1.25, litter, 1]];
     const rows = Math.ceil(t.length / 2);
     const c = new THREE.Color();
+    const hp = {};
+    let hint = -1;
     for (let r = 0; r <= rows; r++) {
       const ls = (r / rows) * t.length;
       const f = t.frame(ls, {});
       const hw = t.halfWidthAt(ls);
-      const y = t.roadY(ls) - 0.035;
+      // In the fork and merge zones the dirt meets the highway at the height the cars drive
+      // at there (Trail.surfaceAt and the same blend as Vehicle.groundHeight), so the two
+      // surfaces join exactly.
+      const zone = ls <= t.forkEnd || ls >= t.mergeStart;
+      const tied = t.tieAt(ls) > 0;
       for (const [k, color, u] of cols) {
         const d = k * hw;
-        pos.push(f.x + f.rx * d, y - (Math.abs(k) > 1 ? 0.12 : 0), f.z + f.rz * d);
+        const x = f.x + f.rx * d;
+        const z = f.z + f.rz * d;
+        let y = t.roadY(ls);
+        if (zone || tied) {
+          track.project(x, z, hint, hp);
+          hint = hp.i;
+          const hy = track.roadY(hp.s);
+          y = t.surfaceAt(ls, hy);
+          if (zone) y = hy + (y - hy) * Trail.weight(hp.d, d);
+        }
+        pos.push(x, y + TRAIL_SURFACE - (Math.abs(k) > 1 ? 0.12 : 0), z);
         c.copy(color).multiplyScalar(Math.abs(k) > 0.5 && Math.abs(k) <= 1 ? 0.85 : 1);
         col.push(c.r, c.g, c.b);
         uv.push(u, ls / 8);
@@ -565,9 +588,9 @@ export function buildTrails(track, wet, env = null) {
         const d = side * (t.halfWidthAt(ls) + 0.3);
         const x = f.x + f.rx * d;
         const z = f.z + f.rz * d;
-        const y = t.roadY(ls);
         const road = onHighway(x, z, hint);
         hint = pr.i;
+        const y = t.surfaceAt(ls, track.roadY(pr.s));
         const p = new THREE.Vector3(x, y, z);
         if (road) {
           barriers.push({ p, yaw: Math.atan2(-f.tz, f.tx) });

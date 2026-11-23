@@ -35,13 +35,16 @@ import { MobileBloom } from '../render/bloom.js';
 import { SceneCulling } from '../render/culling.js';
 import { RaceQuality } from './quality.js';
 import { unifyProgramStates } from '../render/programStates.js';
+import { collideCars } from './contact.js';
+import { FixedStep, STEP } from './fixedStep.js';
 
 // One race on a track: owns the 3D scene, the cars, the race state machine
 // (intro → countdown → racing → finished) and reports to the HUD every frame. What kind of
 // race it is (who is on the grid, how it ends, extra rules) comes from the stage's game mode
 // (race/modes/index.js); the host tracks every car's distance along the stage's course.
 
-const STEP = 1 / 60;
+// The longest frame the clock takes in one go (a stalled tab); fixed steps: race/fixedStep.js.
+const MAX_FRAME = 0.1;
 const SMOKE = new THREE.Color(0xe9ebee);
 // The player's car is rebuilt when its body, rim or wing changes.
 const lookKey = (car, look) => `${car.id}|${look.rim ?? 'stock'}`;
@@ -408,7 +411,10 @@ export class Race {
       // Contact footprint from the car's model: a 5.2 m open-wheeler and a 4.2 m rally coupe
       // do not bump at the same distance.
       const ch = r.visual.chassis;
-      if (ch) r.vehicle.collider = { offset: Math.max(0.4, (ch.length - ch.width) / 2), radius: ch.width / 2 };
+      if (ch) {
+        r.vehicle.collider = { offset: Math.max(0.4, (ch.length - ch.width) / 2), radius: ch.width / 2 };
+        r.vehicle.size = { halfLength: ch.length / 2, halfWidth: ch.width / 2 };
+      }
       r.vehicle.proximity = false;
       if (!r.isPlayer) r.ai = new AIDriver(r.vehicle, track, { aggression: r.aggression, skill: Math.min(1, r.skill + mode.difficulty * 0.01), laneBias: r.laneBias, rand, duel });
       else r.ai = null;
@@ -436,6 +442,7 @@ export class Race {
     this.smoke.clear();
     this.sparks.clear();
     this.time = 0;
+    (this.physicsClock ??= new FixedStep()).reset();
     this.raceTime = 0;
     this.stateTime = 0;
     this.phase = 'intro';
@@ -639,7 +646,7 @@ export class Race {
   frame(nowMs) {
     // rAF stamps a frame with the time it began, which can be earlier than a long task that
     // ran just before it (the warm-up): never let that run time backwards.
-    const dt = Math.max(0, Math.min(0.05, (nowMs - this.last) / 1000));
+    const dt = Math.max(0, Math.min(MAX_FRAME, (nowMs - this.last) / 1000));
     this.last = nowMs;
     this.trackPerformance(dt);
     if (this.phase !== 'paused') this.update(dt);
@@ -694,9 +701,7 @@ export class Race {
       playerInput.nitroTaps.length = 0;
     } else {
       this.raceTime += dt;
-      const steps = Math.max(1, Math.ceil(dt / STEP));
-      const h = dt / steps;
-      for (let k = 0; k < steps; k++) this.simStep(h, playerInput, k === 0);
+      this.stepPhysics(dt, playerInput);
       this.updateProgress();
       this.onChain(this.chain.update(dt));
       if (this.phase === 'racing') {
@@ -705,7 +710,8 @@ export class Race {
       }
     }
 
-    // Visuals.
+    // Visuals, drawn where the cars are at this instant (between the last two steps).
+    this.blendCars();
     for (const r of this.racers) {
       if (r.out && !r.isPlayer) continue;
       if (r.isPlayer) r.visual.steerInput = r.ai ? r.ai.input.steer : r.out ? 0 : playerInput.steer;
@@ -738,6 +744,86 @@ export class Race {
     if (this.phase === 'finished' && !this.resultShown && this.stateTime > 1.6) {
       this.resultShown = true;
       this.hud.results(this.result);
+    }
+    this.unblendCars();
+  }
+
+  // Runs whole STEP-long physics steps until the simulation has caught up with the clock
+  // (C10: the same steps at 120, 60, 45, 30, 20 or 15 fps, no slow motion above 10 fps).
+  // One-shot inputs (nitro taps, the drift press) wait for the next frame that steps.
+  stepPhysics(dt, playerInput) {
+    const n = this.physicsClock.frame(dt);
+    const pend = (this.pending ??= { taps: [], brakePressed: false });
+    if (n === 0) {
+      // No step this frame: keep the edges for the next one.
+      for (const t of playerInput.nitroTaps) pend.taps.push(t);
+      pend.brakePressed ||= playerInput.brakePressed;
+      return;
+    }
+    if (pend.taps.length || pend.brakePressed) {
+      playerInput.nitroTaps.unshift(...pend.taps);
+      playerInput.brakePressed ||= pend.brakePressed;
+      pend.taps.length = 0;
+      pend.brakePressed = false;
+    }
+    for (let k = 0; k < n; k++) {
+      this.saveCars();
+      this.simStep(STEP, playerInput, k === 0);
+    }
+  }
+
+  // Each car's pose before the step, for drawing between steps.
+  saveCars() {
+    for (const r of this.racers) {
+      const v = r.vehicle;
+      if (!v) continue;
+      const p = (v.prevPose ??= { x: 0, y: 0, z: 0, heading: 0, pitch: 0 });
+      p.x = v.pos.x;
+      p.y = v.pos.y;
+      p.z = v.pos.z;
+      p.heading = v.heading;
+      p.pitch = v.pitch;
+    }
+  }
+
+  // While the simulation is ahead of the clock, moves every car back to where it was at this
+  // instant (between its last two steps) for the visuals, cameras and effects of this frame;
+  // unblendCars() puts the simulated pose back.
+  blendCars() {
+    this.blended = false;
+    const k = this.physicsClock.blend;
+    if (k <= 1e-4) return;
+    for (const r of this.racers) {
+      const v = r.vehicle;
+      const p = v?.prevPose;
+      if (!p) continue;
+      const c = (v.simPose ??= { x: 0, y: 0, z: 0, heading: 0, pitch: 0 });
+      c.x = v.pos.x;
+      c.y = v.pos.y;
+      c.z = v.pos.z;
+      c.heading = v.heading;
+      c.pitch = v.pitch;
+      v.pos.x -= (c.x - p.x) * k;
+      v.pos.y -= (c.y - p.y) * k;
+      v.pos.z -= (c.z - p.z) * k;
+      let dh = c.heading - p.heading;
+      dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+      v.heading -= dh * k;
+      v.pitch -= (c.pitch - p.pitch) * k;
+    }
+    this.blended = true;
+  }
+
+  unblendCars() {
+    if (!this.blended) return;
+    this.blended = false;
+    for (const r of this.racers) {
+      const v = r.vehicle;
+      const c = v?.simPose;
+      if (!c || !v.prevPose) continue;
+      v.pos.set(c.x, c.y, c.z);
+      v.heading = c.heading;
+      v.pitch = c.pitch;
     }
   }
 
@@ -871,44 +957,13 @@ export class Race {
     }
   }
 
+  // Car-to-car contact between the two bodies as boxes of their real length and width
+  // (race/contact.js): pushed fully apart along the axis that separates them least, a bounce
+  // along that normal (restitution 0.3, equal masses, as before), and a spin from where on
+  // the body the hit lands (a nudge on the rear quarter turns the car; a straight push does
+  // not), so no random jolt.
   collideCars(a, b) {
-    const dx0 = b.pos.x - a.pos.x;
-    const dz0 = b.pos.z - a.pos.z;
-    if (dx0 * dx0 + dz0 * dz0 > 36 || Math.abs(a.pos.y - b.pos.y) > 1.8) return;
-    const ca = a.collider;
-    const cb = b.collider;
-    const minD = ca.radius + cb.radius;
-    for (const oa of [ca.offset, -ca.offset]) {
-      for (const ob of [cb.offset, -cb.offset]) {
-        const ax = a.pos.x + Math.cos(a.heading) * oa;
-        const az = a.pos.z - Math.sin(a.heading) * oa;
-        const bx = b.pos.x + Math.cos(b.heading) * ob;
-        const bz = b.pos.z - Math.sin(b.heading) * ob;
-        let dx = bx - ax;
-        let dz = bz - az;
-        const d = Math.hypot(dx, dz);
-        if (d >= minD || d < 1e-4) continue;
-        dx /= d;
-        dz /= d;
-        const pen = (minD - d) / 2;
-        a.pos.x -= dx * pen;
-        a.pos.z -= dz * pen;
-        b.pos.x += dx * pen;
-        b.pos.z += dz * pen;
-        const rel = (b.vel.x - a.vel.x) * dx + (b.vel.y - a.vel.y) * dz;
-        if (rel < 0) {
-          const j = (-(1 + 0.3) * rel) / 2;
-          a.vel.x -= dx * j;
-          a.vel.y -= dz * j;
-          b.vel.x += dx * j;
-          b.vel.y += dz * j;
-          a.yawRate += (Math.random() - 0.5) * j * 0.05;
-          b.yawRate += (Math.random() - 0.5) * j * 0.05;
-          a.emit('bump', -rel);
-          b.emit('bump', -rel);
-        }
-      }
-    }
+    collideCars(a, b);
   }
 
   // Distance along the course for every car, laps, the finish line and the running order.

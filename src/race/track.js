@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { VERGE, ICE } from './surface.js';
+import { VERGE, ICE, LAYOUT } from './surface.js';
 import { Trail } from './trails.js';
 
 // Race spline: a closed Catmull-Rom loop resampled every ~2 m. All driving queries (lap
@@ -14,6 +14,15 @@ const MAX_PROFILE_SPEED = 90;
 const CORNER_RADIUS = 200;
 const CORNER_MIN_LENGTH = 14; // metres
 export const APEX_WINDOW = { before: 6, after: 22 }; // metres around the apex that count
+// Width of the side slope along both edges of a jump ramp (metres).
+export const RAMP_SIDE = 1;
+// Raised rumble-strip kerbs through the corners: curvature tighter than `radius` metres,
+// padded `pad` samples either side; `profile` is [offset from the asphalt edge, height] across
+// the strip and `lift` raises the whole ribbon off the road (race/trackMeshes.js).
+export const KERB = { radius: 150, pad: 8, lift: 0.015, profile: [[-0.2, 0], [0.05, 0.06], [0.55, 0.07], [0.95, 0]] };
+// The shoulder strips fall away from the asphalt edge: gravel to `gravelDrop`, then the grass
+// verge on to `vergeDrop` at the rail (metres, negative = below the road).
+export const SHOULDER = { gravel: LAYOUT.gravel, gravelDrop: -0.02, vergeDrop: -0.05 };
 
 export class Track {
   constructor(def) {
@@ -97,6 +106,7 @@ export class Track {
     // trails. `forced` (the Redwood Loop route) closes the highway along every trail.
     this.bridge = def.bridge ? { s0: def.bridge.from * this.length, s1: def.bridge.to * this.length } : null;
     this.trails = (def.trails ?? []).map((t) => new Trail(this, t));
+    this.kerbSpans = this.findKerbs();
     this.forced = false;
     // Weather: `wet` 0..1 (grip, puddles), set per stage by the race.
     this.wet = 0;
@@ -234,6 +244,55 @@ export class Track {
     return corners.sort((a, b) => a.apexS - b.apexS);
   }
 
+  // Stretches [s0, s1] with raised kerbs (race/trackMeshes.js draws them from this list):
+  // tighter than KERB.radius, padded by KERB.pad samples either way, never on the bridge.
+  findKerbs() {
+    const out = [];
+    let start = -1;
+    for (let i = 0; i <= this.n; i++) {
+      const on = i < this.n && Math.abs(this.curv[i]) > 1 / KERB.radius && !this.onBridge(this.s[i]);
+      if (on && start < 0) start = i;
+      if (!on && start >= 0) {
+        const from = Math.max(0, start - KERB.pad);
+        const to = Math.min(this.n, i + KERB.pad);
+        out.push({ from, to, s0: this.s[from], s1: to >= this.n ? this.length : this.s[to] });
+        start = -1;
+      }
+    }
+    return out;
+  }
+
+  inKerb(s) {
+    const ss = this.wrapS(s);
+    for (const k of this.kerbSpans) if (ss >= k.s0 && ss <= k.s1) return true;
+    return false;
+  }
+
+  // How far the rendered surface at (s, d) sits above the driving height heightAt(s, d): the
+  // raised kerb hump through the corners, the gravel shoulder and grass verge falling away a
+  // few centimetres outside the asphalt (trackMeshes.js profiles). Only the cars' visual
+  // suspension uses it (wheels sit on the kerb they are drawn on); physics stays flat.
+  surfaceOffset(s, d) {
+    const ad = Math.abs(d);
+    const hw = this.halfWidth;
+    if (ad <= KERB.profile[0][0] + hw) return 0;
+    if (this.rampHeight(s, d) > 0 || this.onBridge(s)) return 0;
+    if (ad < hw + KERB.profile[KERB.profile.length - 1][0] && this.inKerb(s)) {
+      const p = KERB.profile;
+      for (let i = 0; i < p.length - 1; i++) {
+        const a = hw + p[i][0];
+        const b = hw + p[i + 1][0];
+        if (ad <= b) return KERB.lift + p[i][1] + ((p[i + 1][1] - p[i][1]) * (ad - a)) / (b - a);
+      }
+    }
+    if (ad <= hw) return 0;
+    const gv = SHOULDER.gravel;
+    if (ad <= hw + gv) return (SHOULDER.gravelDrop * (ad - hw)) / gv;
+    if (this.def.urban) return SHOULDER.gravelDrop;
+    const t = Math.min(1, (ad - hw - gv) / Math.max(0.1, this.shoulder - gv));
+    return SHOULDER.gravelDrop + (SHOULDER.vergeDrop - SHOULDER.gravelDrop) * t;
+  }
+
   // The corner whose apex window contains s, turning the way `dir` drifts (or any way if 0).
   apexAt(s, dir = 0) {
     for (const c of this.corners) {
@@ -303,13 +362,28 @@ export class Track {
     return this.vmax[this.index(s).i];
   }
 
+  // Jump ramp surface: rises along its length over [from, to] across the road, and falls away
+  // to the road over RAMP_SIDE metres beyond either edge (a side slope, never a vertical step,
+  // so a wheel or a car coming in from the side rides up and down it).
   rampHeight(s, d) {
+    for (const r of this.ramps) {
+      if (d <= r.from - RAMP_SIDE || d >= r.to + RAMP_SIDE) continue;
+      const ds = this.delta(r.s0, s);
+      if (ds < 0 || ds > r.length) continue;
+      const k = Math.min(1, (d - (r.from - RAMP_SIDE)) / RAMP_SIDE, (r.to + RAMP_SIDE - d) / RAMP_SIDE);
+      return r.height * (ds / r.length) * k;
+    }
+    return 0;
+  }
+
+  // On a ramp's climbing face (its full-height width, side slopes excluded).
+  onRampFace(s, d) {
     for (const r of this.ramps) {
       if (d < r.from || d > r.to) continue;
       const ds = this.delta(r.s0, s);
-      if (ds >= 0 && ds <= r.length) return r.height * (ds / r.length);
+      if (ds >= 0 && ds <= r.length) return true;
     }
-    return 0;
+    return false;
   }
 
   roadY(s) {
@@ -336,6 +410,24 @@ export class Track {
         if (d2 < bestD) {
           bestD = d2;
           best = i;
+        }
+      }
+    }
+    if (hint >= 0 && bestD <= 900) {
+      // The window may have stopped short of the nearest sample (a hint far behind, e.g. from
+      // a trail's lap mapping): walk on downhill until no neighbour is closer.
+      for (let moved = true; moved; ) {
+        moved = false;
+        for (let step = -1; step <= 1; step += 2) {
+          const i = (best + step + n) % n;
+          const dx = this.px[i] - x;
+          const dz = this.pz[i] - z;
+          const d2 = dx * dx + dz * dz;
+          if (d2 < bestD) {
+            bestD = d2;
+            best = i;
+            moved = true;
+          }
         }
       }
     }

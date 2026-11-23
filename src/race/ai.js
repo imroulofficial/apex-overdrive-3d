@@ -197,7 +197,9 @@ export class AIDriver {
     if (ctx.racing && speed < 2.5) {
       this.stuck += dt;
       if (this.stuck > 2.5) {
-        v.reset(pr.s, clamp(pr.d, -4, 4));
+        // Back on the road it is on: a trail car stays on its trail.
+        if (pr.trail) v.reset(pr.s, clamp(pr.d, -2, 2), pr.trail);
+        else v.reset(pr.s, clamp(pr.d, -4, 4));
         v.nitro = 20;
         this.stuck = 0;
       }

@@ -22,6 +22,11 @@ export const TRAIL = {
   handle: 0.55, // Hermite handle length as a share of the highway stretch it replaces
   gap: 1.5, // clear ground needed between highway rail and trail fence to close the Y
   lateralAccel: 30, // m/s², AI cornering budget on dirt
+  profileBlend: 30, // metres past the fork zone (and before the merge zone) to reach the grade, x sqrt(height to make up)
+  profileSmooth: 40, // smoothing passes over the trail's height outside the zones
+  profileHold: 14, // metres into a zone over which the trail settles onto the highway's height
+  blendWidth: 6, // metres of lateral offset over which the ground hands over highway <-> trail
+  tie: 25, // metres past the fork zone (before the merge zone) over which the trail lets go of the highway's surface
 };
 
 const smooth = (a, b, x) => {
@@ -134,6 +139,86 @@ export class Trail {
     // from s0 to forkEndS and from mergeStartS to s1 (race/trackMeshes.js).
     this.forkEndS = along[i0];
     this.mergeStartS = Math.max(this.forkEndS, along[i1]);
+
+    // Height profile at the fork and the merge: while the trail still overlaps the highway it
+    // runs at the highway's own height beside it (the road it peels off), then eases onto its
+    // grade over TRAIL.profileBlend metres. Otherwise the two surfaces a car straddles there
+    // sit up to ~4 m apart and the ground jumps when the car switches between them. Arc
+    // lengths (s, length) keep the original curve's, so progress and AI speeds are unchanged.
+    // The ease is long enough for the height it has to make up (a few metres takes ~50 m) and
+    // then smoothed, so no crest along it is sharp enough to throw a car off the ground.
+    this.highwayY = new Float32Array(n);
+    const diff = new Float32Array(n);
+    for (let i = 0; i < n; i++) this.highwayY[i] = track.roadY(along[i]);
+    // Trail samples project onto the highway unevenly where the two run at an angle: smooth the
+    // highway height they read (ends kept), or its 2 m steps make the ground judder.
+    const hy = this.highwayY;
+    const buf = new Float32Array(n);
+    for (let pass = 0; pass < 6; pass++) {
+      for (let i = 0; i < n; i++) buf[i] = i === 0 || i === n - 1 ? hy[i] : 0.25 * hy[i - 1] + 0.5 * hy[i] + 0.25 * hy[i + 1];
+      hy.set(buf);
+    }
+    for (let i = 0; i < n; i++) diff[i] = this.py[i] - hy[i];
+    const room = Math.max(4, (this.mergeStart - this.forkEnd) / 2);
+    const reach = (from, dir) => {
+      let d = 0;
+      for (let i = 0; i < n; i++) if ((this.s[i] - from) * dir >= 0 && Math.abs(this.s[i] - from) <= room) d = Math.max(d, Math.abs(diff[i]));
+      return Math.min(room, Math.max(TRAIL.profileBlend, TRAIL.profileBlend * Math.sqrt(d)));
+    };
+    const fork = reach(this.forkEnd, 1);
+    const merge = reach(this.mergeStart, -1);
+    const inZone = (i) => this.s[i] <= this.forkEnd || this.s[i] >= this.mergeStart;
+    const y = this.py;
+    for (let i = 0; i < n; i++) {
+      const ls = this.s[i];
+      const m = inZone(i) ? 1 : Math.max(1 - smooth(this.forkEnd, this.forkEnd + fork, ls), smooth(this.mergeStart - merge, this.mergeStart, ls));
+      y[i] += (this.highwayY[i] - y[i]) * m;
+    }
+    // Smooth the eased stretch. Deep in a zone the trail stays on the highway's height; over
+    // the last few metres to the zone's edge it may give a little, so the grade bends into the
+    // ease gradually instead of kinking at the edge.
+    const hold = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const into = Math.max(this.forkEnd - this.s[i], this.s[i] - this.mergeStart);
+      hold[i] = i === 0 || i === n - 1 ? 1 : into < 0 ? 0 : smooth(0, TRAIL.profileHold, into);
+    }
+    const tmp = new Float32Array(n);
+    for (let pass = 0; pass < TRAIL.profileSmooth; pass++) {
+      for (let i = 0; i < n; i++) {
+        const sm = i === 0 || i === n - 1 ? y[i] : 0.25 * y[i - 1] + 0.5 * y[i] + 0.25 * y[i + 1];
+        tmp[i] = sm + (this.highwayY[i] - sm) * hold[i];
+      }
+      y.set(tmp);
+    }
+  }
+
+  // Does the trail's inner log fence (the side facing the highway) stand at ls? It does
+  // wherever it is off the highway's surface (race/setPieces.js draws it by the same test);
+  // over the highway, at the very start of a fork or end of a merge, there is none.
+  innerFenced(ls) {
+    if (!this.fenced) {
+      const track = this.track;
+      const pr = {};
+      const f = {};
+      let hint = -1;
+      this.fenced = new Uint8Array(this.n);
+      for (let i = 0; i < this.n; i++) {
+        this.frame(this.s[i], f);
+        const d = -this.side * (this.halfWidthAt(this.s[i]) + 0.3);
+        track.project(f.x + f.rx * d, f.z + f.rz * d, hint, pr);
+        hint = pr.i;
+        this.fenced[i] = Math.abs(pr.d) >= track.halfWidth + VERGE - 0.2 ? 1 : 0;
+      }
+    }
+    return this.fenced[this.index(ls).i] === 1;
+  }
+
+  // 0..1 in a fork or merge zone: how much of the ground under a car belongs to the trail
+  // rather than the highway, from how far it is from either centre line (dMain, dTrail). The
+  // physics and the trail ribbon both use it, so they agree where the two roads overlap.
+  static weight(dMain, dTrail) {
+    const t = Math.min(1, Math.max(0, 0.5 + (Math.abs(dMain) - Math.abs(dTrail)) / TRAIL.blendWidth));
+    return t * t * (3 - 2 * t);
   }
 
   // Corridor half width (to the fences): road plus verge where it meets the highway, the dirt
@@ -162,11 +247,13 @@ export class Trail {
     return s >= this.s0 && s <= this.s1;
   }
 
-  // In a fork or merge zone: s in highway metres.
+  // In a fork or merge zone: s in highway metres, measured where the highway actually is
+  // (forkEndS/mergeStartS, the same points where the rail on the trail's side ends and starts
+  // again). The trail's lap mapping (localS) runs ahead of that on a shortcut, which let a car
+  // on the highway drive through the drawn rail and then be thrown back (C4, C6).
   inZone(s) {
     if (!this.covers(s)) return false;
-    const ls = this.localS(s);
-    return ls <= this.forkEnd || ls >= this.mergeStart;
+    return s <= this.forkEndS || s >= this.mergeStartS;
   }
 
   index(ls) {
@@ -209,6 +296,30 @@ export class Trail {
     return this.roadY(ls);
   }
 
+  // The highway's height where this trail's centre meets it (what the profile settles on in
+  // the zones).
+  highwayAt(ls) {
+    const { i, t } = this.index(ls);
+    return this.highwayY[i] + (this.highwayY[i + 1] - this.highwayY[i]) * t;
+  }
+
+  // 1 in the fork and merge zones, easing to 0 over TRAIL.tie metres beyond them: how much the
+  // trail's surface follows the highway's own surface across its width.
+  tieAt(ls) {
+    return Math.max(1 - smooth(this.forkEnd, this.forkEnd + TRAIL.tie, ls), smooth(this.mergeStart - TRAIL.tie, this.mergeStart, ls));
+  }
+
+  // Height of the trail's surface at distance ls, at a point where the highway (projected from
+  // that same point) is at height `mainY`. Where the two roads meet the trail is the highway's
+  // surface extended, so a car between them is on one flat road whichever line it follows. A
+  // trail that leaves at an angle would otherwise sit above or below the highway beside it by
+  // the highway's grade times the offset (C1: the reverse Redwood fork threw cars at 6-15 m/s).
+  surfaceAt(ls, mainY) {
+    const k = this.tieAt(ls);
+    const y = this.roadY(ls);
+    return k > 0 ? y + (mainY - this.highwayAt(ls)) * k : y;
+  }
+
   speedAt(ls) {
     return this.vmax[this.index(ls).i];
   }
@@ -234,27 +345,44 @@ export class Trail {
         }
       }
     };
-    if (hint >= 0 && hint < n) scan(Math.max(0, hint - 14), Math.min(n - 1, hint + 14));
-    if (hint < 0 || hint >= n || bestD > 900) scan(0, n - 1);
-    let a = Math.min(best, n - 2);
-    let t = this.segT(a, x, z);
-    if (t < 0 && a > 0) {
-      a -= 1;
-      t = this.segT(a, x, z);
+    if (hint >= 0 && hint < n) {
+      scan(Math.max(0, hint - 14), Math.min(n - 1, hint + 14));
+      // Walk on if the window stopped short of the nearest sample.
+      while (best > 0 && best < n - 1 && bestD <= 900) {
+        const before = best;
+        scan(best - 1, best + 1);
+        if (best === before) break;
+      }
     }
-    const raw = t;
-    t = Math.min(1, Math.max(0, t));
+    if (hint < 0 || hint >= n || bestD > 900) scan(0, n - 1);
+    // Between the lines through each sample square to the trail's own (smoothed) tangent:
+    // the car sits between samples a and a + 1 where f(a) >= 0 > f(a + 1), and u runs 0..1
+    // across that strip. Unlike the nearest point on a polyline segment this is continuous
+    // round a bend, so `ls` (and the height read from it) never jumps as the car slides
+    // between segments well off the centre line.
+    const f = (i) => (x - this.px[i]) * this.tx[i] + (z - this.pz[i]) * this.tz[i];
+    let a = Math.min(best, n - 2);
+    if (f(a) < 0 && a > 0) a -= 1;
+    else if (f(a + 1) >= 0 && a < n - 2) a += 1;
+    const fa = f(a);
+    const fb = f(a + 1);
     const b = a + 1;
-    const sx = this.px[b] - this.px[a];
-    const sz = this.pz[b] - this.pz[a];
-    const len = Math.hypot(sx, sz) || 1;
-    const tx = sx / len;
-    const tz = sz / len;
-    const cx = this.px[a] + sx * t;
-    const cz = this.pz[a] + sz * t;
+    let u = fa / (fa - fb || 1);
+    let ls;
+    if (fa < 0 && a === 0) ls = fa; // before the fork: the lane carries straight on
+    else if (fb >= 0 && b === n - 1) ls = this.s[b] + fb; // past the merge
+    else ls = this.s[a] + (this.s[b] - this.s[a]) * Math.min(1, Math.max(0, u));
+    u = Math.min(1, Math.max(0, u));
+    let tx = this.tx[a] + (this.tx[b] - this.tx[a]) * u;
+    let tz = this.tz[a] + (this.tz[b] - this.tz[a]) * u;
+    const len = Math.hypot(tx, tz) || 1;
+    tx /= len;
+    tz /= len;
+    const cx = this.px[a] + (this.px[b] - this.px[a]) * u;
+    const cz = this.pz[a] + (this.pz[b] - this.pz[a]) * u;
     // Past either end the lane carries straight on, so overshooting the merge still reads as
     // ahead (callers hand the car back to the highway there).
-    out.ls = this.s[a] + (this.s[b] - this.s[a]) * raw;
+    out.ls = ls;
     out.i = a;
     out.s = this.mainS(out.ls);
     out.tx = tx;
@@ -262,7 +390,7 @@ export class Trail {
     out.rx = -tz;
     out.rz = tx;
     out.d = (x - cx) * out.rx + (z - cz) * out.rz;
-    out.roadY = this.py[a] + (this.py[b] - this.py[a]) * t;
+    out.roadY = this.py[a] + (this.py[b] - this.py[a]) * u;
     out.y = out.roadY;
     out.trail = this;
     return out;
