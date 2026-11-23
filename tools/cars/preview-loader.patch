@@ -1,0 +1,77 @@
+diff --git a/src/assets/modelLoader.js b/src/assets/modelLoader.js
+index 15b73b2..e90bd0a 100644
+--- a/src/assets/modelLoader.js
++++ b/src/assets/modelLoader.js
+@@ -84,7 +84,21 @@ export function evictModel(def, lod = 'garage') {
+ 
+ // Spawns a car rig for a catalog entry at `lod` ('garage' | 'drive' | 'race'). A missing LOD
+ // file falls back to the next more detailed one; a car with no loadable file at all throws.
++// PILOT: preloads the formula cockpit parts for the driver view.
++export async function loadPilotCockpit() {
++  const g = await fetchGltf(resolveUrl('assets/pilot/tm_tempesta_cockpit.glb'));
++  globalThis.__pilotCockpit = g ? g.scene : true;
++}
++
+ export async function loadCar(def, { paintColor, finish, lod = 'garage', rim } = {}) {
++  // PILOT (temporary, not committed): new Blender Tempesta from assets/pilot/ when the page
++  // sets localStorage 'apex.pilot' = 'new'.
++  let pilot = false;
++  try {
++    pilot = def.id === 'tm-tempesta' && localStorage.getItem('apex.pilot') === 'new';
++  } catch {}
++  if (pilot && globalThis.__pilotEye && !globalThis.__pilotCockpit) await loadPilotCockpit();
++  if (pilot) def = { ...def, model: { ...def.model, url: 'assets/pilot/tm_tempesta.glb', driveUrl: 'assets/pilot/tm_tempesta_drive.glb', raceUrl: 'assets/pilot/tm_tempesta_race.glb' } };
+   const order = ['race', 'drive', 'garage'];
+   const urls = order.slice(order.indexOf(lod)).map((k) => def.model?.[LOD_URL[k]]).filter(Boolean);
+   for (const url of urls) {
+@@ -147,6 +161,15 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', url }) {
+   // Inner group carries the normalisation (orientation, scale, centring), so the rig's own
+   // root keeps an identity transform.
+   const model = source.clone(true);
++  // PILOT: driver view of the formula car: no driver or exterior wheel, the car's own cockpit
++  // parts (wheel with display, hands, inner panel) added in the same car frame.
++  if (globalThis.__pilotCockpit && /assets\/pilot\//.test(url ?? '')) {
++    for (const n of ['driver', 'steering_wheel']) {
++      const o = model.getObjectByName(n);
++      if (o) o.visible = false, o.parent.remove(o);
++    }
++    if (globalThis.__pilotCockpit.isObject3D) model.add(globalThis.__pilotCockpit.clone(true));
++  }
+   const fit = new THREE.Group();
+   fit.add(model);
+   car.add(fit);
+@@ -243,6 +266,7 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', url }) {
+     const wb = new THREE.Box3().setFromObject(node);
+     const wheel = new THREE.Group();
+     wb.getCenter(wheel.position);
++    if (!node.isMesh && node.children.length) node.getWorldPosition(wheel.position); // PILOT: origin on the axis
+     car.add(wheel);
+     const spin = new THREE.Group();
+     wheel.add(spin);
+diff --git a/src/race/Race.js b/src/race/Race.js
+index 4da40ee..004ace7 100644
+--- a/src/race/Race.js
++++ b/src/race/Race.js
+@@ -1307,8 +1307,8 @@ export class Race {
+     const shown = chase.view === 'cockpit' && chase.mode !== 'orbit' && this.camera.position.distanceToSquared(chase.pos) < 0.36;
+     if (shown !== this.cockpitShown) {
+       this.cockpitShown = shown;
+-      this.cockpit.setVisible(shown);
+-      this.player.visual.root.visible = !shown;
++      this.cockpit.setVisible(shown && !globalThis.__pilotEye);
++      this.player.visual.root.visible = !shown || !!globalThis.__pilotEye; // PILOT
+       for (const m of this.factory.sharedMeshes) m.visible = !shown;
+       // Rain: drops run on the windscreen, and no falling streaks inside the cabin.
+       this.lens.setGlass(shown);
+diff --git a/src/race/chaseCamera.js b/src/race/chaseCamera.js
+index 2f3c781..82b66b8 100644
+--- a/src/race/chaseCamera.js
++++ b/src/race/chaseCamera.js
+@@ -63,6 +63,7 @@ const smooth01 = (a, b, x) => {
+ // Eye point of the driver view in the car's frame (x forward, y up, z right), from the car's
+ // measured nose and roof (shared with race/cockpit.js, which builds the cabin round it).
+ export function cockpitEye(size, out = { x: 0, y: 0, z: 0 }) {
++  if (globalThis.__pilotEye) return Object.assign(out, globalThis.__pilotEye); // PILOT
+   out.x = Math.max(COCKPIT.minX, size.nose - COCKPIT.back);
+   out.y = clamp(size.roof - COCKPIT.below, COCKPIT.minY, COCKPIT.maxY);
+   out.z = COCKPIT.side;
