@@ -2,9 +2,9 @@
  {
   "lod": "showroom",
   "file": "ag_aurelia.glb",
-  "bytes": 1669632,
+  "bytes": 1710184,
   "maxBytes": 1800000,
-  "tris": 137756,
+  "tris": 124128,
   "maxTris": 150000,
   "materials": [
    "Body",
@@ -21,22 +21,22 @@
    "Tyre"
   ],
   "textures": [
-   "Body_base 2048² (150 KB)",
-   "Body_orm 1024² (140 KB)",
-   "Body_normal 1024² (136 KB)",
-   "Interior_base 512² (16 KB)",
-   "Interior_orm 512² (38 KB)",
-   "Interior_normal 512² (26 KB)",
+   "Body_base 2048² (169 KB)",
+   "Body_orm 1024² (164 KB)",
+   "Body_normal 1024² (162 KB)",
+   "Interior_base 512² (20 KB)",
+   "Interior_orm 512² (46 KB)",
+   "Interior_normal 512² (37 KB)",
    "Gauges_base 512² (28 KB)",
-   "CarPaint_base 1024² (25 KB)",
+   "CarPaint_base 1024² (24 KB)",
    "Driver_base 512² (8 KB)",
-   "Driver_orm 512² (41 KB)",
-   "Driver_normal 512² (24 KB)",
+   "Driver_orm 512² (36 KB)",
+   "Driver_normal 512² (19 KB)",
    "Rim_base 512² (35 KB)",
-   "Rim_orm 512² (53 KB)",
+   "Rim_orm 512² (54 KB)",
    "Rim_normal 512² (49 KB)",
    "Tyre_base 1024² (13 KB)",
-   "Tyre_orm 1024² (18 KB)",
+   "Tyre_orm 1024² (19 KB)",
    "Tyre_normal 1024² (4 KB)"
   ],
   "openEdges": 0,
@@ -90,12 +90,12 @@
    "min": [
     -2.3,
     0,
-    -0.941
+    -0.914
    ],
    "max": [
     2.3,
-    1.345,
-    0.941
+    1.36,
+    0.914
    ]
   },
   "nodes": [
@@ -139,9 +139,9 @@
  {
   "lod": "drive",
   "file": "ag_aurelia_drive.glb",
-  "bytes": 596272,
+  "bytes": 572648,
   "maxBytes": 650000,
-  "tris": 37448,
+  "tris": 35456,
   "maxTris": 40000,
   "materials": [
    "Body",
@@ -157,14 +157,14 @@
    "Tyre"
   ],
   "textures": [
-   "Body_base 1024² (90 KB)",
-   "Body_orm 512² (69 KB)",
-   "Body_normal 256² (24 KB)",
+   "Body_base 1024² (81 KB)",
+   "Body_orm 512² (64 KB)",
+   "Body_normal 256² (22 KB)",
    "Interior_base 256² (5 KB)",
-   "Interior_normal 256² (9 KB)",
+   "Interior_normal 256² (11 KB)",
    "CarPaint_base 512² (10 KB)",
    "Driver_base 256² (3 KB)",
-   "Driver_normal 256² (4 KB)",
+   "Driver_normal 256² (3 KB)",
    "Rim_base 256² (6 KB)",
    "Rim_orm 256² (12 KB)",
    "Rim_normal 256² (9 KB)",
@@ -222,12 +222,12 @@
    "min": [
     -2.3,
     0,
-    -0.939
+    -0.914
    ],
    "max": [
     2.3,
-    1.344,
-    0.939
+    1.36,
+    0.914
    ]
   },
   "nodes": [
@@ -271,9 +271,9 @@
  {
   "lod": "race",
   "file": "ag_aurelia_race.glb",
-  "bytes": 110176,
+  "bytes": 115056,
   "maxBytes": 330000,
-  "tris": 7592,
+  "tris": 7924,
   "maxTris": 8000,
   "materials": [
    "Body",
@@ -336,12 +336,12 @@
    "min": [
     -2.3,
     0,
-    -0.935
+    -0.907
    ],
    "max": [
     2.3,
-    1.336,
-    0.935
+    1.345,
+    0.907
    ]
   },
   "nodes": [
@@ -385,9 +385,9 @@
  {
   "lod": "cockpit",
   "file": "ag_aurelia_cockpit.glb",
-  "bytes": 520124,
+  "bytes": 555052,
   "maxBytes": 1500000,
-  "tris": 30932,
+  "tris": 31892,
   "maxTris": 60000,
   "materials": [
    "ClearGlass",
@@ -396,10 +396,10 @@
    "MirrorGlass"
   ],
   "textures": [
-   "Cockpit_base 1024² (55 KB)",
-   "Cockpit_orm 512² (71 KB)",
-   "Cockpit_normal 512² (62 KB)",
-   "Cockpit_glow 512² (15 KB)",
+   "Cockpit_base 1024² (66 KB)",
+   "Cockpit_orm 512² (76 KB)",
+   "Cockpit_normal 512² (67 KB)",
+   "Cockpit_glow 512² (17 KB)",
    "Gauges_base 1024² (62 KB)"
   ],
   "openEdges": 0,
@@ -416,12 +416,12 @@
    "min": [
     -1.621,
     0.22,
-    -0.817
+    -0.786
    ],
    "max": [
     0.671,
-    1.319,
-    0.817
+    1.334,
+    0.786
    ]
   },
   "nodes": [
