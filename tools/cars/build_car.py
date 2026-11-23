@@ -69,11 +69,16 @@ os.makedirs(OUT, exist_ok=True)
 
 # Detail level and texture sizes per LOD (contract: PHASE0-AUDIT section 2.5).
 LODS = {
-    'showroom': dict(q=1.0, tex={'Body': 2048, 'Tyre': 1024, 'Rim': 512, 'Driver': 512}, orm=True),
-    'drive': dict(q=0.43, tex={'Body': 1024, 'Tyre': 512, 'Rim': 256, 'Driver': 256}, orm=False),
-    'race': dict(q=0.075, tex=None, orm=False),
-    'cockpit': dict(q=1.0, tex={'Cockpit': 1024}, orm=True),
+    'showroom': dict(q=1.0, tex={'Body': 2048, 'CarPaint': 1024, 'Carbon': 1024, 'Tyre': 1024, 'Rim': 512, 'Driver': 512},
+                     orm={'Body', 'Carbon', 'Tyre', 'Rim', 'Driver'}),
+    'drive': dict(q=0.43, tex={'Body': 1024, 'CarPaint': 512, 'Carbon': 512, 'Tyre': 512, 'Rim': 256, 'Driver': 256},
+                  orm={'Carbon'}),
+    'race': dict(q=0.075, tex=None, orm=set()),
+    'cockpit': dict(q=1.0, tex={'Cockpit': 1024, 'Carbon': 512}, orm={'Cockpit', 'Carbon'}),
 }
+# Carbon fibre is not baked into an atlas: a tiling 2x2 twill (albedo + normal) on a second UV
+# set in metres (TEXCOORD_1, box-projected per face), with the baked AO / roughness on UV 0.
+WEAVE_TILE = 0.024   # metres per texture repeat (two twill periods of four 3 mm tows)
 SUFFIX = {'showroom': '', 'drive': '_drive', 'race': '_race', 'cockpit': '_cockpit'}
 
 B3 = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]], dtype=np.float64)  # game -> Blender
@@ -108,19 +113,20 @@ def rot_z(a):
 # ---------------------------------------------------------------------------------------------
 
 def group_of(key, lod):
-    if lod == 'cockpit':
-        return 'Glass' if key == 'glass' else 'Cockpit'
-    if key == 'paint':
-        return 'CarPaint'
     head = key.split(':')[0]
-    return {'body': 'Body', 'tyre': 'Tyre', 'rim': 'Rim', 'driver': 'Driver', 'glass': 'Glass'}.get(head, key)
+    if lod == 'cockpit':
+        return {'glass': 'Glass', 'carbon': 'Carbon', 'mirror': 'MirrorGlass'}.get(head, 'Cockpit')
+    return {'paint': 'CarPaint', 'carbon': 'Carbon', 'mirror': 'MirrorGlass', 'body': 'Body', 'tyre': 'Tyre',
+            'rim': 'Rim', 'driver': 'Driver', 'glass': 'Glass'}.get(head, key)
 
 
-BAKED = {'Body', 'Tyre', 'Rim', 'Driver', 'Cockpit'}
+BAKED = {'Body', 'Tyre', 'Rim', 'Driver', 'Cockpit', 'Carbon'}  # race LOD: vertex colours
 
 # Plain export materials (base colour linear RGBA, roughness, metalness, emissive).
 PLAIN = {
     'CarPaint': ((0.62, 0.025, 0.02, 1), 0.3, 0.0, None),
+    'MirrorGlass': ((0.62, 0.64, 0.68, 1), 0.03, 1.0, None),
+    'Carbon': ((1, 1, 1, 1), 0.3, 0.0, None),
     'Glass': ((0.03, 0.03, 0.035, 0.72), 0.05, 0.3, None),
     'headlight_lens': ((0.85, 0.88, 0.92, 1), 0.1, 0.0, (0.0, 0.0, 0.0)),
     'taillight_lens': ((0.30, 0.01, 0.01, 1), 0.15, 0.0, (0.25, 0.0, 0.0)),
@@ -290,9 +296,9 @@ def make_key_material(key):
     col, rough, metal, height = (0.02, 0.02, 0.02), 0.5, 0.0, None
     coat = 0.0
 
-    if key == 'paint':
-        col, rough, coat = (0.62, 0.025, 0.02), 0.3, 1.0
-    elif key == 'body:carbon':
+    if key.startswith('paint'):
+        col, rough, coat = tuple(getattr(car, 'FACTORY_PAINT', (0.62, 0.025, 0.02))), 0.3, 1.0
+    elif key.startswith('carbon'):
         # 2x2 twill, 9 mm tows, with a glossy clear coat
         sx = k.math('MULTIPLY', ox, 1 / 0.009)
         sy = k.math('MULTIPLY', k.math('ADD', oy, oz), 1 / 0.009)
@@ -301,8 +307,15 @@ def make_key_material(key):
         n = k.noise(vec, 40.0, 2.0)
         col = k.mix(weave, srgb((0.050, 0.051, 0.055)), srgb((0.085, 0.087, 0.093)))
         col = k.mix(k.math('MULTIPLY', n, 0.25), col, srgb((0.03, 0.03, 0.03)))
-        rough = k.mixf(weave, 0.22, 0.30)
+        rough = k.mixf(weave, 0.40, 0.50) if key == 'carbon:satin' else k.mixf(weave, 0.17, 0.24)
         height = k.math('MULTIPLY', weave, 0.3)
+        coat = 0.0 if key == 'carbon:satin' else 1.0
+    elif key == 'body:white':
+        col, rough, coat = srgb((0.90, 0.90, 0.88)), 0.22, 1.0
+    elif key == 'body:gloss':
+        col, rough, coat = srgb((0.035, 0.036, 0.04)), 0.12, 1.0
+    elif key == 'mirror':
+        col, rough, metal = (0.62, 0.64, 0.68), 0.03, 1.0
     elif key == 'body:satin':
         n = k.noise(vec, 160.0, 3.0)
         col, rough = srgb((0.055, 0.056, 0.06)), k.mixf(n, 0.48, 0.62)
@@ -311,11 +324,28 @@ def make_key_material(key):
     elif key == 'body:mirror':
         col, rough, metal = (0.92, 0.93, 0.95), 0.04, 1.0
     elif key == 'body:disc':
+        # ventilated, cross-drilled disc (wheel frame, Blender local: axis along y)
+        r = k.node('ShaderNodeVectorMath', operation='LENGTH')
+        cxy = k.node('ShaderNodeCombineXYZ')
+        k.feed(cxy.inputs[0], ox)
+        k.feed(cxy.inputs[1], oz)
+        k.l.new(cxy.outputs[0], r.inputs[0])
+        rr = r.outputs['Value']
+        az = k.node('ShaderNodeMath', operation='ARCTAN2')
+        k.feed(az.inputs[0], oz)
+        k.feed(az.inputs[1], ox)
+        a = k.math('SUBTRACT', k.math('FRACT', k.math('MULTIPLY', az.outputs[0], 36 / math.tau)), 0.5)
+        b = k.math('SUBTRACT', k.math('FRACT', k.math('MULTIPLY', k.math('SUBTRACT', rr, 0.092), 1 / 0.019)), 0.5)
+        d = k.math('SQRT', k.math('ADD', k.math('MULTIPLY', a, a), k.math('MULTIPLY', b, b)))
+        hole = k.math('MULTIPLY', k.smooth(0.27, 0.20, d), k.math('MULTIPLY', k.smooth(0.098, 0.104, rr),
+                                                                     k.smooth(0.162, 0.156, rr)))
         n = k.noise(vec, 90.0, 4.0)
-        col = k.mix(n, srgb((0.10, 0.10, 0.105)), srgb((0.22, 0.21, 0.20)))
-        rough = 0.65
+        col = k.mix(n, srgb((0.20, 0.20, 0.205)), srgb((0.34, 0.33, 0.32)))
+        col = k.mix(hole, col, srgb((0.02, 0.02, 0.02)))
+        rough = 0.6
+        height = k.math('MULTIPLY', hole, -1.0)
     elif key == 'body:caliper':
-        col, rough = srgb((0.78, 0.06, 0.04)), 0.35
+        col, rough, coat = srgb((0.85, 0.08, 0.05)), 0.30, 1.0
     elif key == 'body:padding':
         n = k.noise(vec, 300.0, 4.0, 0.7)
         col = k.mix(n, srgb((0.07, 0.07, 0.075)), srgb((0.11, 0.11, 0.115)))
@@ -363,15 +393,20 @@ def make_key_material(key):
         rough = k.mixf(tread, 0.88, 0.72)
         height = k.math('ADD', k.math('MULTIPLY', letters, 0.6), k.math('MULTIPLY', band, 0.3))
     elif key == 'rim:alloy':
+        # satin gunmetal, polished barrel lip
         r = k.node('ShaderNodeVectorMath', operation='LENGTH')
         cxy = k.node('ShaderNodeCombineXYZ')
         k.feed(cxy.inputs[0], ox)
         k.feed(cxy.inputs[1], oz)
         k.l.new(cxy.outputs[0], r.inputs[0])
         lip = k.smooth(0.2285, 0.231, r.outputs['Value'])
-        col = k.mix(lip, srgb((0.11, 0.11, 0.12)), srgb((0.70, 0.70, 0.72)))
-        rough = k.mixf(lip, 0.38, 0.18)
+        col = k.mix(lip, srgb((0.40, 0.41, 0.43)), srgb((0.80, 0.80, 0.82)))
+        rough = k.mixf(lip, 0.34, 0.16)
         metal = 1.0
+    elif key == 'rim:spoke':
+        n = k.noise(vec, 400.0, 2.0)
+        col = k.mix(k.math('MULTIPLY', n, 0.3), srgb((0.42, 0.43, 0.45)), srgb((0.50, 0.51, 0.53)))
+        rough, metal = 0.30, 1.0
     elif key == 'rim:nut':
         col, rough, metal = (0.80, 0.55, 0.20), 0.28, 1.0
     elif key == 'driver:helmet':
@@ -422,6 +457,16 @@ def make_key_material(key):
     em = k.node('ShaderNodeEmission')
     em.name = 'metal_emit'
     k.l.new(mv.outputs[0], em.inputs['Color'])
+    # world position / normal (float bakes the livery is painted from, see bake_livery)
+    geo = k.node('ShaderNodeNewGeometry')
+    for nm, sock, sc_ in (('pos_emit', 'Position', 0.1), ('nrm_emit', 'Normal', 0.5)):
+        enc = k.node('ShaderNodeVectorMath', operation='MULTIPLY_ADD')   # into 0..1 (emission > 0)
+        k.l.new(geo.outputs[sock], enc.inputs[0])
+        enc.inputs[1].default_value = (sc_, sc_, sc_)
+        enc.inputs[2].default_value = (0.5, 0.5, 0.5)
+        e = k.node('ShaderNodeEmission')
+        e.name = nm
+        k.l.new(enc.outputs[0], e.inputs['Color'])
     m['bsdf'] = bsdf.name
     MATS[key] = m
     return m
@@ -626,9 +671,9 @@ def unwrap(objs, margin):
         print(f'    uv {o.name}: {uv.min(0).round(3)} .. {uv.max(0).round(3)}', flush=True)
 
 
-def new_image(name, size, data=False):
-    img = bpy.data.images.new(name, size, size, alpha=False, float_buffer=False)
-    img.colorspace_settings.name = 'Non-Color' if data else 'sRGB'
+def new_image(name, size, data=False, float_buffer=False):
+    img = bpy.data.images.new(name, size, size, alpha=False, float_buffer=float_buffer)
+    img.colorspace_settings.name = 'Non-Color' if (data or float_buffer) else 'sRGB'
     return img
 
 
@@ -685,6 +730,10 @@ def bake(kind, objs, img, mats, samples=1, target='IMAGE_TEXTURES'):
     elif kind == 'AO':
         sc.world.light_settings.distance = 0.6
         bpy.ops.object.bake(type='AO')
+    elif kind in ('POS', 'NRM'):
+        route(mats, kind.lower())
+        bpy.ops.object.bake(type='EMIT')
+        route(mats, False)
     elif kind == 'METAL':
         route(mats, 'metal')
         bpy.ops.object.bake(type='EMIT')
@@ -709,6 +758,119 @@ def save_png(path, arr, srgb_encode=False):
     Image.fromarray(a).save(path)
 
 
+def to_lin(c):
+    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+
+
+def lum(c):
+    return c[..., 0] * 0.2126 + c[..., 1] * 0.7152 + c[..., 2] * 0.0722
+
+
+def livery_inputs(objs, mats, size):
+    """Per-texel car-frame position and normal (game axes) of an atlas, plus a coverage mask."""
+    pos = new_image('_pos', size, float_buffer=True)
+    nrm = new_image('_nrm', size, float_buffer=True)
+    bake('POS', objs, pos, mats, samples=1)
+    bake('NRM', objs, nrm, mats, samples=1)
+    Pb = (pixels(pos)[..., :3] - 0.5) / 0.1
+    Nb = (pixels(nrm)[..., :3] - 0.5) / 0.5
+    valid = np.abs(pixels(pos)[..., :3]).sum(-1) > 1e-6
+    to_game = lambda A: np.stack([A[..., 0], A[..., 2], -A[..., 1]], -1)   # Blender (x, -z, y) -> game
+    return to_game(Pb), to_game(Nb), valid
+
+
+def weave_uv(objs):
+    """Second UV set 'Weave' for carbon: per-face box projection in metres / WEAVE_TILE."""
+    for o in objs:
+        me = o.data
+        if 'Weave' in me.uv_layers:
+            continue
+        V = np.empty(len(me.vertices) * 3)
+        me.vertices.foreach_get('co', V)
+        V = V.reshape(-1, 3)
+        Ns = np.empty(len(me.polygons) * 3)
+        me.polygons.foreach_get('normal', Ns)
+        Ns = np.abs(Ns.reshape(-1, 3))
+        lv = np.empty(len(me.loops), dtype=np.int64)
+        me.loops.foreach_get('vertex_index', lv)
+        start = np.empty(len(me.polygons), dtype=np.int64)
+        tot = np.empty(len(me.polygons), dtype=np.int64)
+        me.polygons.foreach_get('loop_start', start)
+        me.polygons.foreach_get('loop_total', tot)
+        axis = np.repeat(Ns.argmax(1), tot)
+        P = V[lv]
+        u = np.where(axis == 0, P[:, 1], P[:, 0])
+        v = np.where(axis == 2, P[:, 1], P[:, 2])
+        layer = me.uv_layers.new(name='Weave')
+        layer.data.foreach_set('uv', (np.stack([u, v], -1) / WEAVE_TILE).ravel())
+        me.uv_layers.active = me.uv_layers[0]
+        me.uv_layers[0].active_render = True
+
+
+def planar_uv(objs):
+    """Mirror glass: 0..1 per glass (u along the car's z, v up), for the game's live mirror
+    (render target) or its low-tier sky gradient (reads uv.y)."""
+    for o in objs:
+        me = o.data
+        V = np.empty(len(me.vertices) * 3)
+        me.vertices.foreach_get('co', V)
+        V = V.reshape(-1, 3)
+        gz, gy = -V[:, 1], V[:, 2]
+        uv = np.zeros((len(V), 2))
+        for side in (gz < 0, gz >= 0):
+            if side.any():
+                z0, z1 = gz[side].min(), gz[side].max()
+                y0, y1 = gy[side].min(), gy[side].max()
+                uv[side, 0] = (gz[side] - z0) / max(z1 - z0, 1e-6)
+                uv[side, 1] = (gy[side] - y0) / max(y1 - y0, 1e-6)
+        lv = np.empty(len(me.loops), dtype=np.int64)
+        me.loops.foreach_get('vertex_index', lv)
+        if not me.uv_layers:
+            me.uv_layers.new(name='UVMap')
+        me.uv_layers.active.data.foreach_set('uv', uv[lv].ravel())
+
+
+def weave_textures():
+    """2x2 twill tile (albedo sRGB + tangent normal), generated once per build."""
+    path_b, path_n = os.path.join(OUT, 'weave_base.png'), os.path.join(OUT, 'weave_normal.png')
+    if os.path.exists(path_b) and os.path.exists(path_n):
+        return path_b, path_n
+    from PIL import Image
+    S, T = 512, 8                       # pixels, tows per tile
+    c = (np.arange(S) + 0.5) / S * T
+    X, Y = np.meshgrid(c, c)
+    i, j = np.floor(X).astype(int), np.floor(Y).astype(int)
+    fx, fy = X - i, Y - j
+    warp = ((i + j) % 4) < 2            # warp (along v) on top, else weft (along u)
+    across = np.where(warp, fx, fy)     # position across the visible tow
+    along = np.where(warp, fy, fx)
+    prof = np.sin(np.clip(across, 0, 1) * np.pi)          # tow crown
+    gap = np.clip(1 - np.abs(across - 0.5) * 2.0, 0, 1) ** 0.25
+    rng = np.random.default_rng(7)
+    fil = rng.normal(0, 1, (S, S))
+    from numpy.fft import fft2, ifft2
+    k = np.fft.fftfreq(S)
+    KX, KY = np.meshgrid(k, k)
+    filament = np.real(ifft2(fft2(fil) * np.exp(-(KX ** 2 * 900 + KY ** 2 * 4))))
+    filament2 = np.real(ifft2(fft2(fil) * np.exp(-(KX ** 2 * 4 + KY ** 2 * 900))))
+    fil_s = np.where(warp, filament, filament2)
+    fil_s = fil_s / (np.abs(fil_s).max() + 1e-9)
+    tone = np.where(warp, 0.050, 0.042) + 0.012 * prof + 0.005 * fil_s - 0.012 * (1 - gap)
+    tone *= 0.85 + 0.15 * np.sin(np.clip(along, 0, 1) * np.pi)
+    base = np.stack([tone, tone * 1.01, tone * 1.06], -1)
+    # normals: tow curvature across its width, a dip where it dives under the next one
+    h = prof * 0.6 + 0.4 * np.sin(np.clip(along, 0, 1) * np.pi) * gap
+    gy_, gx_ = np.gradient(h * 3.5)
+    nrm = norm(np.stack([-gx_, gy_, np.ones_like(h) * 1.0], -1))
+    Image.fromarray((np.clip(base, 0, 1) ** (1 / 2.2) * 255 + 0.5).astype(np.uint8)).save(path_b)
+    Image.fromarray(((nrm * 0.5 + 0.5) * 255 + 0.5).astype(np.uint8)).save(path_n)
+    return path_b, path_n
+
+
+def norm(a):
+    return a / np.maximum(np.linalg.norm(a, axis=-1, keepdims=True), 1e-9)
+
+
 def bake_textures(b, lod):
     cfg = LODS[lod]
     files = {}
@@ -720,35 +882,74 @@ def bake_textures(b, lod):
         print(f'  {lod} {g}: {len(objs)} objects, {sum(len(o.data.polygons) for o in objs)} faces, {size}px', flush=True)
         unwrap(objs, 0.004 if size >= 1024 else 0.008)
         if args.no_bake:
+            if g == 'Carbon':
+                weave_uv(objs)
             continue
         mats = mats_of(objs)
-        base = new_image(f'{g}_base', size)
+        stem = os.path.join(OUT, f'{car.FILE}{SUFFIX[lod]}_{g}')
         ao = new_image(f'{g}_ao', size, True)
+        bake('AO', objs, ao, mats, samples=args.samples)
+        A = pixels(ao)[..., 0]
+        if g == 'CarPaint':
+            # Factory livery map: the factory colour shaded by soft AO, panel lines and the
+            # car's black decals. The game reads it as a shading layer under any paint
+            # (texel luminance / factoryLum), so a player's colour comes out clean.
+            fac = np.array(getattr(car, 'FACTORY_PAINT', (0.62, 0.025, 0.02)))
+            shade = 0.55 + 0.45 * A
+            if hasattr(car, 'livery'):
+                P, N, valid = livery_inputs(objs, mats, size)
+                shade = shade * car.livery('CarPaint', P, N, valid)['shade']
+            lin = fac[None, None, :] * shade[..., None]
+            save_png(stem + '_base.png', lin, srgb_encode=True)
+            files[g] = {'base': stem + '_base.png', 'factoryLum': float(lum(fac))}
+            print(f'    check {g}: shade mean {shade.mean():.3f}', flush=True)
+            continue
         rough = new_image(f'{g}_rough', size, True)
         metal = new_image(f'{g}_metal', size, True)
-        nrm = new_image(f'{g}_normal', size, True)
-        bake('BASE', objs, base, mats, samples=4)
-        bake('AO', objs, ao, mats, samples=args.samples)
         bake('ROUGHNESS', objs, rough, mats, samples=4)
         bake('METAL', objs, metal, mats, samples=1)
+        R, Mt = pixels(rough)[..., 0], pixels(metal)[..., 0]
+        if g == 'Carbon':
+            wb, wn = weave_textures()
+            save_png(stem + '_orm.png', np.stack([A, R, Mt], -1))
+            files[g] = {'orm': stem + '_orm.png', 'weave_base': wb, 'weave_normal': wn, 'weaveTile': WEAVE_TILE}
+            weave_uv(objs)
+            print(f'    check {g}: ao {A.mean():.3f} rough {R.mean():.3f}', flush=True)
+            continue
+        base = new_image(f'{g}_base', size)
+        nrm = new_image(f'{g}_normal', size, True)
+        bake('BASE', objs, base, mats, samples=4)
         bake('NORMAL', objs, nrm, mats, samples=4)
-        B, A, R, Mt, N = (pixels(i) for i in (base, ao, rough, metal, nrm))
-        print(f'    check {g}: base mean {B[..., :3].mean():.3f} ao {A[..., 0].mean():.3f}', flush=True)
-        stem = os.path.join(OUT, f'{car.FILE}{SUFFIX[lod]}_{g}')
-        if cfg['orm']:
-            save_png(stem + '_base.png', B[..., :3])  # Blender stores sRGB images display-encoded
-            orm = np.stack([A[..., 0], R[..., 0], Mt[..., 0]], -1)
-            save_png(stem + '_orm.png', orm)
+        B, Nn = pixels(base)[..., :3], pixels(nrm)[..., :3]
+        if g == 'Body' and hasattr(car, 'livery'):
+            P, N, valid = livery_inputs(objs, mats, size)
+            L = car.livery('Body', P, N, valid)
+            lin = to_lin(B)
+            for mask, col, rgh in L.get('layers', []):
+                m = np.clip(mask, 0, 1) * valid
+                if col is not None:
+                    lin = lin * (1 - m[..., None]) + np.asarray(col)[None, None, :] * m[..., None]
+                if rgh is not None:
+                    R = R * (1 - m) + rgh * m
+            if 'shade' in L:
+                lin = lin * L['shade'][..., None]
+            B = np.where(lin <= 0.0031308, lin * 12.92, 1.055 * np.clip(lin, 0, None) ** (1 / 2.4) - 0.055)
+        print(f'    check {g}: base mean {B.mean():.3f} ao {A.mean():.3f}', flush=True)
+        if g in cfg['orm']:
+            save_png(stem + '_base.png', B)  # Blender stores sRGB images display-encoded
+            save_png(stem + '_orm.png', np.stack([A, R, Mt], -1))
             files[g] = {'base': stem + '_base.png', 'orm': stem + '_orm.png', 'normal': stem + '_normal.png'}
         else:
             # AO multiplied into the albedo (decode sRGB, multiply, encode)
-            lin = np.where(B[..., :3] <= 0.04045, B[..., :3] / 12.92, ((B[..., :3] + 0.055) / 1.055) ** 2.4)
-            lin = lin * (0.25 + 0.75 * A[..., :1])
+            lin = to_lin(B) * (0.25 + 0.75 * A[..., None])
             save_png(stem + '_base.png', lin, srgb_encode=True)
-            orm = np.stack([A[..., 0], R[..., 0], Mt[..., 0]], -1)
-            save_png(stem + '_orm.png', orm)
+            save_png(stem + '_orm.png', np.stack([A, R, Mt], -1))
             files[g] = {'base': stem + '_base.png', 'orm': stem + '_orm.png', 'normal': stem + '_normal.png'}
-        save_png(stem + '_normal.png', N[..., :3])
+        save_png(stem + '_normal.png', Nn)
+    for g in ('MirrorGlass',):
+        objs = [o for (_, gg, o) in b.parts if gg == g]
+        if objs:
+            planar_uv(objs)
     return files
 
 

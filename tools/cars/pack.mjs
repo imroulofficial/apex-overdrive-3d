@@ -16,7 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { NodeIO, getBounds } from '@gltf-transform/core';
-import { ALL_EXTENSIONS, EXTTextureWebP } from '@gltf-transform/extensions';
+import { ALL_EXTENSIONS, EXTTextureWebP, KHRTextureTransform } from '@gltf-transform/extensions';
 import { meshopt, prune, dedup } from '@gltf-transform/functions';
 import { MeshoptEncoder, MeshoptDecoder } from 'meshoptimizer';
 
@@ -32,10 +32,10 @@ const io = new NodeIO()
   .registerDependencies({ 'meshopt.encoder': MeshoptEncoder, 'meshopt.decoder': MeshoptDecoder });
 
 const LODS = [
-  { lod: 'showroom', suffix: '', maxTris: 150000, maxBytes: 1.8e6, tex: { base: 2048, orm: 1024, normal: 1024 } },
-  { lod: 'drive', suffix: '_drive', maxTris: 40000, maxBytes: 0.65e6, tex: { base: 1024, normal: 512 } },
+  { lod: 'showroom', suffix: '', maxTris: 150000, maxBytes: 1.8e6, tex: { base: 2048, orm: 1024, normal: 1024, paint: 1024, carbon: 512 } },
+  { lod: 'drive', suffix: '_drive', maxTris: 40000, maxBytes: 0.65e6, tex: { base: 1024, normal: 512, paint: 512, carbon: 512 } },
   { lod: 'race', suffix: '_race', maxTris: 8000, maxBytes: 0.33e6, tex: null },
-  { lod: 'cockpit', suffix: '_cockpit', maxTris: 60000, maxBytes: 1.5e6, tex: { base: 1024, orm: 512, normal: 512 } },
+  { lod: 'cockpit', suffix: '_cockpit', maxTris: 60000, maxBytes: 1.5e6, tex: { base: 1024, orm: 512, normal: 512, paint: 512, carbon: 512 } },
 ];
 // Per material, the largest texture size used (smaller atlases stay at their own size).
 const QUALITY = { base: 84, orm: 88, normal: 90 };
@@ -43,9 +43,12 @@ const QUALITY = { base: 84, orm: 88, normal: 90 };
 async function webp(file, size, kind) {
   const meta = await sharp(file).metadata();
   const s = Math.min(size, meta.width);
-  return sharp(file)
-    .resize(s, s, { kernel: 'lanczos3' })
-    .webp({ quality: QUALITY[kind], effort: 6, smartSubsample: kind === 'base' })
+  let img = sharp(file).resize(s, s, { kernel: 'lanczos3' });
+  // Carbon: the bake gives clear-coat roughness (~0.1). Without a clear-coat lobe three.js
+  // turns that into a mirror of the environment (green verges in the race), so lift it.
+  if (kind === 'orm-carbon') img = img.removeAlpha().linear([1, 0.8, 1], [0, 56, 0]);
+  return img
+    .webp({ quality: QUALITY[kind] ?? QUALITY.orm, effort: 6, smartSubsample: kind === 'base' })
     .toBuffer();
 }
 
@@ -122,44 +125,97 @@ for (const L of LODS) {
 
   // Textures per material.
   const texCount = [];
+  const tex = async (name, file, size, kind) => {
+    const buf = await webp(file, size, kind);
+    const t = doc.createTexture(name).setImage(buf).setMimeType('image/webp');
+    const m = await sharp(buf).metadata();
+    texCount.push(`${name} ${m.width}² (${(buf.length / 1024).toFixed(0)} KB)`);
+    return t;
+  };
   for (const mat of root.listMaterials()) {
-    const files = info.textures?.[mat.getName()];
+    const name = mat.getName();
+    const files = info.textures?.[name];
     if (!files || !L.tex) continue;
+    if (name === 'CarPaint') {
+      // Factory livery map: the game's paint keeps it as a shading layer (carPaint.js
+      // liveryPaint: texel luminance / factoryLum), and the Factory finish shows it as is.
+      mat.setBaseColorFactor([1, 1, 1, 1]).setBaseColorTexture(await tex('CarPaint_base', files.base, L.tex.paint, 'base'));
+      mat.setExtras({ ...mat.getExtras(), factoryLum: files.factoryLum });
+      continue;
+    }
+    if (files.weave_base) {
+      // Carbon: tiling twill on TEXCOORD_1 (metres / weaveTile), baked AO + roughness on UV 0.
+      mat.setBaseColorFactor([1, 1, 1, 1]).setRoughnessFactor(1).setMetallicFactor(1);
+      mat.setBaseColorTexture(await tex('Carbon_weave', files.weave_base, 512, 'base'));
+      mat.getBaseColorTextureInfo().setTexCoord(1);
+      mat.setNormalTexture(await tex('Carbon_weave_normal', files.weave_normal, 512, 'normal'));
+      mat.getNormalTextureInfo().setTexCoord(1);
+      mat.setNormalScale(0.45);
+      const orm = await tex('Carbon_orm', files.orm, L.tex.carbon, 'orm-carbon');
+      mat.setMetallicRoughnessTexture(orm);
+      mat.setOcclusionTexture(orm);
+      continue;
+    }
     mat.setBaseColorFactor([1, 1, 1, 1]).setRoughnessFactor(1).setMetallicFactor(1);
-    const add = async (kind, size) => {
-      const buf = await webp(files[kind], size, kind);
-      const t = doc.createTexture(`${mat.getName()}_${kind}`).setImage(buf).setMimeType('image/webp');
-      const m = await sharp(buf).metadata();
-      texCount.push(`${mat.getName()} ${kind} ${m.width}² (${(buf.length / 1024).toFixed(0)} KB)`);
-      return t;
-    };
-    mat.setBaseColorTexture(await add('base', L.tex.base));
+    mat.setBaseColorTexture(await tex(`${name}_base`, files.base, L.tex.base, 'base'));
     if (L.tex.orm) {
-      const orm = await add('orm', L.tex.orm);
+      const orm = await tex(`${name}_orm`, files.orm, L.tex.orm, 'orm');
       mat.setMetallicRoughnessTexture(orm);
       mat.setOcclusionTexture(orm);
     } else {
       // drive: AO is in the albedo; roughness/metal from the ORM's average per material
-      mat.setRoughnessFactor(mat.getName() === 'Tyre' ? 0.85 : mat.getName() === 'Rim' ? 0.35 : 0.42);
-      mat.setMetallicFactor(mat.getName() === 'Rim' ? 0.8 : 0.1);
+      mat.setRoughnessFactor(name === 'Tyre' ? 0.85 : name === 'Rim' ? 0.32 : 0.45);
+      mat.setMetallicFactor(name === 'Rim' ? 0.85 : 0.05);
     }
-    mat.setNormalTexture(await add('normal', L.tex.normal));
+    mat.setNormalTexture(await tex(`${name}_normal`, files.normal, L.tex.normal, 'normal'));
   }
   if (L.lod === 'race') {
     // CarPaint must not carry vertex colours (the loader would take them as a livery).
     for (const mesh of root.listMeshes())
       for (const p of mesh.listPrimitives()) {
         const m = p.getMaterial()?.getName() ?? '';
-        if (!['Body', 'Tyre', 'Rim', 'Driver'].includes(m)) {
+        if (!['Body', 'Tyre', 'Rim', 'Driver', 'Carbon'].includes(m)) {
           const c = p.getAttribute('COLOR_0');
           if (c) p.setAttribute('COLOR_0', null);
         }
         if (!p.getAttribute('COLOR_0')) p.setAttribute('TEXCOORD_0', null);
       }
     for (const mat of root.listMaterials()) {
-      if (['Body', 'Tyre', 'Rim', 'Driver'].includes(mat.getName())) mat.setBaseColorFactor([1, 1, 1, 1]);
+      if (['Body', 'Tyre', 'Rim', 'Driver', 'Carbon'].includes(mat.getName())) mat.setBaseColorFactor([1, 1, 1, 1]);
     }
     for (const mesh of root.listMeshes()) for (const p of mesh.listPrimitives()) p.setAttribute('TEXCOORD_0', null);
+  }
+  // TEXCOORD_1 (weave) only where a texture reads it.
+  for (const mesh of root.listMeshes())
+    for (const p of mesh.listPrimitives()) {
+      const m = p.getMaterial();
+      if (!(m?.getBaseColorTextureInfo()?.getTexCoord() === 1 && m.getBaseColorTexture())) p.setAttribute('TEXCOORD_1', null);
+    }
+  // Weave UVs are in tiles (metres / weaveTile), far outside 0..1, so meshopt would leave them
+  // as float32. Shift by whole tiles (the weave repeats) and divide by K into 0..1, then scale
+  // back with KHR_texture_transform: 16-bit UVs at < 1/200 of a tile error.
+  {
+    let lo = Infinity, hi = -Infinity;
+    const uv1 = [];
+    for (const mesh of root.listMeshes())
+      for (const p of mesh.listPrimitives()) {
+        const a = p.getAttribute('TEXCOORD_1');
+        if (!a || uv1.some((x) => x === a)) continue;
+        uv1.push(a);
+        const arr = a.getArray();
+        for (let i = 0; i < arr.length; i++) (lo = Math.min(lo, arr[i]), hi = Math.max(hi, arr[i]));
+      }
+    if (uv1.length) {
+      const m0 = Math.floor(lo);
+      const K = Math.ceil(hi - m0);
+      for (const a of uv1) a.setArray(Float32Array.from(a.getArray(), (v) => (v - m0) / K));
+      const tt = doc.createExtension(KHRTextureTransform);
+      for (const mat of root.listMaterials())
+        for (const info of [mat.getBaseColorTextureInfo(), mat.getNormalTextureInfo()])
+          if (info && info.getTexCoord() === 1)
+            info.setExtension('KHR_texture_transform', tt.createTransform().setScale([K, K]).setTexCoord(1));
+      console.log(`  weave uv: ${K} tiles -> 0..1`);
+    }
   }
   if (!texCount.length) webpExt.dispose();
 
@@ -178,7 +234,7 @@ for (const L of LODS) {
   }
   const bounds = getBounds(root.listScenes()[0]);
 
-  await doc.transform(dedup(), prune({ keepAttributes: true }), meshopt({ encoder: MeshoptEncoder, level: 'medium' }));
+  await doc.transform(dedup(), prune({ keepAttributes: true }), meshopt({ encoder: MeshoptEncoder, level: 'high' }));
   const out = path.join(OUT, `${FILE}${L.suffix}.glb`);
   await io.write(out, doc);
   const bytes = (await fs.stat(out)).size;

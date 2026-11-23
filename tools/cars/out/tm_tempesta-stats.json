@@ -2,34 +2,40 @@
  {
   "lod": "showroom",
   "file": "tm_tempesta.glb",
-  "bytes": 1614520,
+  "bytes": 1679120,
   "maxBytes": 1800000,
-  "tris": 146820,
+  "tris": 136928,
   "maxTris": 150000,
   "materials": [
    "exhaust",
    "headlight_lens",
    "taillight_lens",
-   "CarPaint",
    "Body",
+   "Carbon",
+   "CarPaint",
+   "MirrorGlass",
    "Driver",
    "Glass",
    "Rim",
    "Tyre"
   ],
   "textures": [
-   "Body base 2048² (138 KB)",
-   "Body orm 1024² (183 KB)",
-   "Body normal 1024² (122 KB)",
-   "Driver base 512² (17 KB)",
-   "Driver orm 512² (32 KB)",
-   "Driver normal 512² (18 KB)",
-   "Rim base 512² (19 KB)",
-   "Rim orm 512² (41 KB)",
-   "Rim normal 512² (25 KB)",
-   "Tyre base 1024² (15 KB)",
-   "Tyre orm 1024² (13 KB)",
-   "Tyre normal 1024² (3 KB)"
+   "Body_base 2048² (110 KB)",
+   "Body_orm 1024² (142 KB)",
+   "Body_normal 1024² (111 KB)",
+   "Carbon_weave 512² (3 KB)",
+   "Carbon_weave_normal 512² (11 KB)",
+   "Carbon_orm 512² (56 KB)",
+   "CarPaint_base 1024² (33 KB)",
+   "Driver_base 512² (15 KB)",
+   "Driver_orm 512² (30 KB)",
+   "Driver_normal 512² (16 KB)",
+   "Rim_base 512² (31 KB)",
+   "Rim_orm 512² (58 KB)",
+   "Rim_normal 512² (42 KB)",
+   "Tyre_base 1024² (15 KB)",
+   "Tyre_orm 1024² (22 KB)",
+   "Tyre_normal 1024² (3 KB)"
   ],
   "openEdges": 0,
   "openByMesh": {
@@ -59,31 +65,31 @@
   "wheels": {
    "tyre_FL": {
     "radius": 0.3700000181128919,
-    "roundness": 0.9936997299184516
+    "roundness": 0.9955893209530643
    },
    "tyre_FR": {
     "radius": 0.3700000181128919,
-    "roundness": 0.9936997299184516
+    "roundness": 0.9955893209530643
    },
    "tyre_RL": {
     "radius": 0.35500001334561804,
-    "roundness": 0.995865419039918
+    "roundness": 0.9904619085300194
    },
    "tyre_RR": {
     "radius": 0.35500001334561804,
-    "roundness": 0.995865419039918
+    "roundness": 0.9904619085300194
    }
   },
   "bounds": {
    "min": [
     -2.6,
     0,
-    -1.037
+    -1.039
    ],
    "max": [
     2.6,
-    1.216,
-    1.037
+    1.21,
+    1.039
    ]
   },
   "nodes": [
@@ -123,30 +129,36 @@
  {
   "lod": "drive",
   "file": "tm_tempesta_drive.glb",
-  "bytes": 467528,
+  "bytes": 618528,
   "maxBytes": 650000,
-  "tris": 37356,
+  "tris": 38972,
   "maxTris": 40000,
   "materials": [
    "exhaust",
    "headlight_lens",
    "taillight_lens",
-   "CarPaint",
    "Body",
+   "Carbon",
+   "CarPaint",
+   "MirrorGlass",
    "Driver",
    "Glass",
    "Rim",
    "Tyre"
   ],
   "textures": [
-   "Body base 1024² (41 KB)",
-   "Body normal 512² (52 KB)",
-   "Driver base 256² (7 KB)",
-   "Driver normal 256² (4 KB)",
-   "Rim base 256² (7 KB)",
-   "Rim normal 256² (3 KB)",
-   "Tyre base 512² (7 KB)",
-   "Tyre normal 512² (1 KB)"
+   "Body_base 1024² (53 KB)",
+   "Body_normal 512² (49 KB)",
+   "Carbon_weave 512² (3 KB)",
+   "Carbon_weave_normal 512² (11 KB)",
+   "Carbon_orm 512² (52 KB)",
+   "CarPaint_base 512² (14 KB)",
+   "Driver_base 256² (7 KB)",
+   "Driver_normal 256² (4 KB)",
+   "Rim_base 256² (7 KB)",
+   "Rim_normal 256² (3 KB)",
+   "Tyre_base 512² (7 KB)",
+   "Tyre_normal 512² (1 KB)"
   ],
   "openEdges": 0,
   "openByMesh": {
@@ -176,31 +188,31 @@
   "wheels": {
    "tyre_FL": {
     "radius": 0.3700000181128919,
-    "roundness": 0.9978523964956911
+    "roundness": 0.9977405812424065
    },
    "tyre_FR": {
     "radius": 0.3700000181128919,
-    "roundness": 0.9978523964956911
+    "roundness": 0.9977405812424065
    },
    "tyre_RL": {
     "radius": 0.35500000616416405,
-    "roundness": 0.9940260041702816
+    "roundness": 0.9965012437767246
    },
    "tyre_RR": {
     "radius": 0.35500000616416405,
-    "roundness": 0.9940260041702816
+    "roundness": 0.9965012437767246
    }
   },
   "bounds": {
    "min": [
     -2.6,
     0,
-    -1.037
+    -1.039
    ],
    "max": [
     2.6,
-    1.216,
-    1.037
+    1.21,
+    1.039
    ]
   },
   "nodes": [
@@ -240,16 +252,18 @@
  {
   "lod": "race",
   "file": "tm_tempesta_race.glb",
-  "bytes": 121700,
+  "bytes": 106340,
   "maxBytes": 330000,
-  "tris": 6794,
+  "tris": 7574,
   "maxTris": 8000,
   "materials": [
    "exhaust",
    "headlight_lens",
    "taillight_lens",
-   "CarPaint",
    "Body",
+   "Carbon",
+   "CarPaint",
+   "MirrorGlass",
    "Driver",
    "Glass",
    "Rim",
@@ -303,7 +317,7 @@
    ],
    "max": [
     2.6,
-    1.216,
+    1.21,
     1.037
    ]
   },
@@ -344,17 +358,21 @@
  {
   "lod": "cockpit",
   "file": "tm_tempesta_cockpit.glb",
-  "bytes": 241120,
+  "bytes": 295404,
   "maxBytes": 1500000,
   "tris": 7844,
   "maxTris": 60000,
   "materials": [
+   "Carbon",
    "Cockpit"
   ],
   "textures": [
-   "Cockpit base 1024² (40 KB)",
-   "Cockpit orm 512² (60 KB)",
-   "Cockpit normal 512² (39 KB)"
+   "Carbon_weave 512² (3 KB)",
+   "Carbon_weave_normal 512² (11 KB)",
+   "Carbon_orm 512² (21 KB)",
+   "Cockpit_base 1024² (50 KB)",
+   "Cockpit_orm 512² (71 KB)",
+   "Cockpit_normal 512² (52 KB)"
   ],
   "openEdges": 0,
   "openByMesh": {
@@ -365,13 +383,13 @@
   "wheels": {},
   "bounds": {
    "min": [
-    0.121,
+    0.09,
     0.53,
     -0.204
    ],
    "max": [
-    0.289,
-    0.722,
+    0.262,
+    0.781,
     0.204
    ]
   },

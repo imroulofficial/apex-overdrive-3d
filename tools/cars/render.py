@@ -24,7 +24,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument('--glb', required=True)
 ap.add_argument('--tex')
 ap.add_argument('--cockpit')
-ap.add_argument('--paint', default='0.62,0.025,0.02')
+ap.add_argument('--paint', default='factory', help="'factory' (the livery map as is) or linear r,g,b")
 ap.add_argument('--repaint', action='store_true')
 ap.add_argument('--env', default='studio')
 ap.add_argument('--views', default='f34,r34,side,top,front,rear')
@@ -94,18 +94,78 @@ def paint_material(rgb):
     return m
 
 
-def textured_material(name, files):
+def textured_material(name, files, uv1=None):
     m = bpy.data.materials.new('render_' + name)
     m.use_nodes = True
     nt = m.node_tree
     b = nt.nodes['Principled BSDF']
 
-    def img(path, data):
+    def img(path, data, uv=None):
         nd = nt.nodes.new('ShaderNodeTexImage')
         nd.image = bpy.data.images.load(path, check_existing=True)
         nd.image.colorspace_settings.name = 'Non-Color' if data else 'sRGB'
+        if uv:
+            um = nt.nodes.new('ShaderNodeUVMap')
+            um.uv_map = uv
+            nt.links.new(um.outputs['UV'], nd.inputs['Vector'])
         return nd
 
+    if name == 'CarPaint':
+        # The game's paint over the livery map: factory = the map as is; a player colour =
+        # colour x clamp(luminance(map) / factoryLum, 0, 1.6) (carPaint.js liveryPaint).
+        base = img(files['base'], False)
+        if args.paint == 'factory':
+            nt.links.new(base.outputs['Color'], b.inputs['Base Color'])
+        else:
+            rgb = nt.nodes.new('ShaderNodeRGBToBW')
+            nt.links.new(base.outputs['Color'], rgb.inputs[0])
+            sh = nt.nodes.new('ShaderNodeMath')
+            sh.operation = 'DIVIDE'
+            sh.use_clamp = False
+            nt.links.new(rgb.outputs[0], sh.inputs[0])
+            sh.inputs[1].default_value = files['factoryLum']
+            mix = nt.nodes.new('ShaderNodeMix')
+            mix.data_type = 'RGBA'
+            mix.blend_type = 'MULTIPLY'
+            mix.inputs['Factor'].default_value = 1.0
+            mix.inputs[6].default_value = (*(float(v) for v in args.paint.split(',')), 1)
+            cl = nt.nodes.new('ShaderNodeClamp')
+            nt.links.new(sh.outputs[0], cl.inputs['Value'])
+            cl.inputs['Max'].default_value = 1.6
+            cmb = nt.nodes.new('ShaderNodeCombineColor')
+            for i in range(3):
+                nt.links.new(cl.outputs[0], cmb.inputs[i])
+            nt.links.new(cmb.outputs[0], mix.inputs[7])
+            nt.links.new(mix.outputs[2], b.inputs['Base Color'])
+        b.inputs['Metallic'].default_value = 0.25
+        b.inputs['Roughness'].default_value = 0.32
+        b.inputs['Coat Weight'].default_value = 1.0
+        b.inputs['Coat Roughness'].default_value = 0.03
+        return m
+    if 'weave_base' in files:
+        base = img(files['weave_base'], False, uv1)
+        nt.links.new(base.outputs['Color'], b.inputs['Base Color'])
+        nm = img(files['weave_normal'], True, uv1)
+        nmap = nt.nodes.new('ShaderNodeNormalMap')
+        nmap.uv_map = uv1 or ''
+        nmap.inputs['Strength'].default_value = 0.45
+        nt.links.new(nm.outputs['Color'], nmap.inputs['Color'])
+        nt.links.new(nmap.outputs['Normal'], b.inputs['Normal'])
+        orm = img(files['orm'], True)
+        sep = nt.nodes.new('ShaderNodeSeparateColor')
+        nt.links.new(orm.outputs['Color'], sep.inputs[0])
+        nt.links.new(sep.outputs[1], b.inputs['Roughness'])
+        # AO as a multiply on the weave (Cycles makes its own occlusion; keep it subtle)
+        mix = nt.nodes.new('ShaderNodeMix')
+        mix.data_type = 'RGBA'
+        mix.blend_type = 'MULTIPLY'
+        mix.inputs['Factor'].default_value = 0.5
+        nt.links.new(base.outputs['Color'], mix.inputs[6])
+        nt.links.new(sep.outputs[0], mix.inputs[7])
+        nt.links.new(mix.outputs[2], b.inputs['Base Color'])
+        b.inputs['Coat Weight'].default_value = 0.8
+        b.inputs['Coat Roughness'].default_value = 0.06
+        return m
     base = img(files['base'], False)
     nt.links.new(base.outputs['Color'], b.inputs['Base Color'])
     if os.path.exists(files.get('orm', '')):
@@ -120,7 +180,7 @@ def textured_material(name, files):
         nt.links.new(nm.outputs['Color'], nmap.inputs['Color'])
         nt.links.new(nmap.outputs['Normal'], b.inputs['Normal'])
     if name in ('Body', 'Cockpit'):
-        b.inputs['Coat Weight'].default_value = 0.35
+        b.inputs['Coat Weight'].default_value = 0.25
         b.inputs['Coat Roughness'].default_value = 0.08
     return m
 
@@ -142,17 +202,24 @@ def plain(name, col, rough, metal, emit=None, alpha=1.0):
 
 def apply_materials(objs, tex_json):
     info = json.load(open(tex_json))
-    paint = paint_material(tuple(float(v) for v in args.paint.split(',')))
+    paint = paint_material((0.62, 0.025, 0.02) if args.paint == 'factory' else tuple(float(v) for v in args.paint.split(',')))
     mats = {
         'CarPaint': paint,
         'Glass': plain('Glass', (0.02, 0.02, 0.025), 0.03, 0.4, alpha=0.82),
+        'MirrorGlass': plain('MirrorGlass', (0.85, 0.87, 0.9), 0.02, 1.0),
         'headlight_lens': plain('head', (0.8, 0.85, 0.9), 0.05, 0.0, ((0.9, 0.95, 1.0), 1.5)),
         'taillight_lens': plain('tail', (0.25, 0.005, 0.005), 0.1, 0.0, ((1.0, 0.03, 0.02), 2.5)),
         'exhaust': plain('exhaust', (0.55, 0.45, 0.35), 0.32, 1.0),
     }
+    uv1 = None
+    for o in objs:
+        if o.type == 'MESH' and len(o.data.uv_layers) > 1:
+            uv1 = o.data.uv_layers[1].name
+            break
     for g, files in info['textures'].items():
-        mats[g] = textured_material(g, files)
-    for g, (r, mt) in {'Body': (0.45, 0.15), 'Tyre': (0.85, 0.0), 'Rim': (0.35, 0.7), 'Driver': (0.6, 0.0)}.items():
+        mats[g] = textured_material(g, files, uv1)
+    for g, (r, mt) in {'Body': (0.45, 0.15), 'Tyre': (0.85, 0.0), 'Rim': (0.35, 0.7), 'Driver': (0.6, 0.0),
+                       'Carbon': (0.3, 0.0)}.items():
         if g not in mats:  # race LOD: albedo x AO in the vertex colours
             m = plain(g, (1, 1, 1), r, mt)
             nt = m.node_tree
@@ -296,8 +363,31 @@ VIEWS = {
     'rear_corner': ((-2.9, -1.9, 0.75), (-1.95, -0.6, 0.40), 50, None),
     'driver': ((0.9, 1.25, 1.55), (-0.15, 0, 0.82), 50, None),
     'halo': ((1.1, -0.9, 1.35), (-0.05, 0, 0.88), 45, None),
-    'cockpit': ((-0.175, 0.0, 0.900), (1.0, 0.0, 0.70), 24, None),
+    # the game's driver view: eye from the build's META, looking 30 m down the nose 0.9 m lower,
+    # 70 degrees vertical field of view (chaseCamera.js COCKPIT / BASE_FOV)
+    'cockpit': (None, None, 'fov70', None),
+    'aero': ((1.55, -2.0, 0.95), (0.35, -0.55, 0.32), 42, None),
+    'sidepod': ((0.2, -2.6, 1.55), (-0.45, -0.45, 0.42), 40, None),
+    'front_wing': ((3.35, -1.55, 0.55), (2.25, -0.55, 0.18), 45, None),
+    'rear_wing': ((-3.3, -1.75, 1.25), (-2.35, -0.55, 0.72), 45, None),
+    'diffuser': ((-3.6, -0.9, 0.18), (-2.0, 0.0, 0.25), 38, None),
 }
+EYE = (-0.175, 0.0, 0.900)
+_meta = None
+for _p in (args.tex, args.cockpit):
+    if _p:
+        try:
+            _meta = json.load(open(_p)).get('meta')
+        except Exception:
+            pass
+        if _meta:
+            break
+if _meta and 'eye' in _meta:
+    ex, ey, ez = _meta['eye']
+    EYE = (ex, -ez, ey)
+    VIEWS['cockpit'] = (EYE, (ex + 30, -ez, ey - 0.9), 'fov70', None)
+else:
+    VIEWS['cockpit'] = (EYE, (EYE[0] + 30, 0, EYE[2] - 0.9), 'fov70', None)
 
 cam_data = bpy.data.cameras.new('cam')
 cam = bpy.data.objects.new('cam', cam_data)
@@ -314,8 +404,13 @@ for v in args.views.split(','):
     if ortho:
         cam_data.type = 'ORTHO'
         cam_data.ortho_scale = ortho
+    elif lens == 'fov70':
+        cam_data.type = 'PERSP'
+        cam_data.sensor_fit = 'VERTICAL'
+        cam_data.angle_y = math.radians(70)
     else:
         cam_data.type = 'PERSP'
+        cam_data.sensor_fit = 'AUTO'
         cam_data.lens = lens
     sc.render.filepath = os.path.join(args.out, f'{args.prefix}{v}.png')
     bpy.ops.render.render(write_still=True)

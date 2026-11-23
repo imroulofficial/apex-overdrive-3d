@@ -49,10 +49,54 @@ index 15b73b2..e90bd0a 100644
      const spin = new THREE.Group();
      wheel.add(spin);
 diff --git a/src/race/Race.js b/src/race/Race.js
-index 4da40ee..004ace7 100644
+index 4da40ee..e3d9a1c 100644
 --- a/src/race/Race.js
 +++ b/src/race/Race.js
-@@ -1307,8 +1307,8 @@ export class Race {
+@@ -76,6 +76,33 @@ const puff = (color, size, life, grow, alpha) => {
+ // World builders by track biome (data/tracks.js `biome`); the coast is the default.
+ const SCENERY = { coast: buildScenery, alpine: buildAlpineScenery, neon: buildNeonScenery };
+ 
++// PILOT (temporary, not committed): the formula car's own mirror glass (material MirrorGlass,
++// uv 0..1 per glass) shows the cockpit's live rear view on mid/high tiers and a sky gradient on
++// low, like the shared cabin's mirrors.
++function pilotMirrorGlass(root, cockpit) {
++  const glass = [];
++  root.traverse((o) => o.isMesh && o.material?.name === 'MirrorGlass' && glass.push(o));
++  for (const o of glass) {
++    const g = o.geometry.clone();
++    const uv = g.attributes.uv;
++    if (cockpit.liveMirror) {
++      for (let i = 0; i < uv.count; i++) uv.setX(i, 1 - uv.getX(i));
++      o.material = new THREE.MeshBasicMaterial({ map: cockpit.mirrorTarget.texture });
++    } else {
++      const col = new Float32Array(uv.count * 3);
++      const top = new THREE.Color(0xa9bfd3), low = new THREE.Color(0x4b545e), c = new THREE.Color();
++      for (let i = 0; i < uv.count; i++) {
++        c.copy(low).lerp(top, Math.min(1, Math.max(0, uv.getY(i))));
++        col.set([c.r, c.g, c.b], i * 3);
++      }
++      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
++      o.material = new THREE.MeshBasicMaterial({ vertexColors: true });
++    }
++    o.geometry = g;
++  }
++  return glass;
++}
++
+ export class Race {
+   // lowEnd: a low-end GPU (render/gpuTier.js), which gets the low cockpit tier.
+   constructor(renderer, def, { onFps, lowEnd = false } = {}) {
+@@ -655,7 +682,8 @@ export class Race {
+ 
+   // One frame on screen: the cockpit's live mirror when it is due, then the scene through bloom.
+   render() {
+-    if (this.cockpitShown) this.cockpit.renderMirror(this.renderer, this.scene);
++    if (this.cockpitShown && this.pilotMirrors) this.cockpit.renderMirror(this.renderer, this.scene, (this.pilotFrame = (this.pilotFrame ?? 0) + 1) % 2 === 0); // PILOT
++    else if (this.cockpitShown) this.cockpit.renderMirror(this.renderer, this.scene);
+     this.bloom.render(this.scene, this.camera);
+   }
+ 
+@@ -1307,8 +1335,9 @@ export class Race {
      const shown = chase.view === 'cockpit' && chase.mode !== 'orbit' && this.camera.position.distanceToSquared(chase.pos) < 0.36;
      if (shown !== this.cockpitShown) {
        this.cockpitShown = shown;
@@ -60,6 +104,7 @@ index 4da40ee..004ace7 100644
 -      this.player.visual.root.visible = !shown;
 +      this.cockpit.setVisible(shown && !globalThis.__pilotEye);
 +      this.player.visual.root.visible = !shown || !!globalThis.__pilotEye; // PILOT
++      if (globalThis.__pilotEye && !this.pilotMirrors) this.pilotMirrors = pilotMirrorGlass(this.player.visual.root, this.cockpit);
        for (const m of this.factory.sharedMeshes) m.visible = !shown;
        // Rain: drops run on the windscreen, and no falling streaks inside the cabin.
        this.lens.setGlass(shown);

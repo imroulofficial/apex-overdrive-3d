@@ -610,3 +610,64 @@ def wing(span_pts, chord, aoa, sec, mat='default', cap='flat', le_dir=(-1, 0, 0)
         ch = chord(t) if callable(chord) else chord
         rings.append(P[i] + ch * (sec[:, :1] * cd + sec[:, 1:2] * ud))
     return loft(np.array(rings), mat, cap0=cap, cap1=cap)
+
+
+def fillet_poly(ctrl, radii, edge_n, arc_n, density=None):
+    """Closed 2-D section with rounded corners and a FIXED point count, so sections built from
+    the same control layout at different stations loft cleanly (same topology).
+
+    ctrl    (K, 2) corners in order; radii (K,) fillet radius per corner (small = crisp edge)
+    edge_n  points strictly inside each edge i (corner i -> i+1); arc_n points per corner arc
+    density optional fn(edge_i, t) -> weight, to bunch an edge's points (t in 0..1)
+    Returns (points (M, 2), starts) where starts[i] is the index of corner i's arc middle, which
+    is a stable row for material zones (a paint line exactly on a crease).
+    """
+    P = np.asarray(ctrl, dtype=np.float64)
+    K = len(P)
+    radii = np.broadcast_to(np.asarray(radii, dtype=np.float64), (K,))
+    edge_n = np.broadcast_to(np.asarray(edge_n), (K,))
+    arc_n = np.broadcast_to(np.asarray(arc_n), (K,))
+    T1, T2, arcs = [], [], []
+    for i in range(K):
+        p0, p1, p2 = P[i - 1], P[i], P[(i + 1) % K]
+        la, lb = np.linalg.norm(p0 - p1), np.linalg.norm(p2 - p1)
+        a, b = (p0 - p1) / la, (p2 - p1) / lb
+        cosang = np.clip(np.dot(a, b), -0.9999, 0.9999)
+        half = math.acos(cosang) / 2
+        r = float(radii[i])
+        d = r / max(math.tan(half), 1e-6)
+        dmax = 0.45 * min(la, lb)
+        if d > dmax:
+            d = dmax
+            r = d * math.tan(half)
+        t1, t2 = p1 + a * d, p1 + b * d
+        n = int(arc_n[i])
+        if r < 1e-6 or n < 2:
+            pts = np.repeat(p1[None], max(n, 1), 0) if n > 0 else np.zeros((0, 2))
+        else:
+            bis = norm(a + b)
+            c = p1 + bis * (r / math.sin(half))
+            a1 = math.atan2(*(t1 - c)[::-1])
+            a2 = math.atan2(*(t2 - c)[::-1])
+            da = (a2 - a1 + math.pi) % TAU - math.pi
+            ang = a1 + da * np.linspace(0, 1, n)
+            pts = c + r * np.stack([np.cos(ang), np.sin(ang)], -1)
+        T1.append(t1)
+        T2.append(t2)
+        arcs.append(pts)
+    out, starts = [], []
+    for i in range(K):
+        starts.append(sum(len(x) for x in out) + len(arcs[i]) // 2)
+        out.append(arcs[i])
+        n = int(edge_n[i])
+        if n > 0:
+            a, b = T2[i], T1[(i + 1) % K]
+            t = np.linspace(0, 1, n + 2)[1:-1]
+            if density is not None:
+                tt = np.linspace(0, 1, 401)
+                w = np.array([density(i, x) for x in (tt[1:] + tt[:-1]) / 2])
+                acc = np.concatenate([[0], np.cumsum(w)])
+                acc /= acc[-1]
+                t = np.interp(t, acc, tt)
+            out.append(a + (b - a) * t[:, None])
+    return np.vstack(out), starts
