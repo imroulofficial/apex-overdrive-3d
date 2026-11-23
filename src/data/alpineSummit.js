@@ -113,7 +113,9 @@ export const ALPINE_SUMMIT = {
   ramps: [
     { at: 0.03, length: 13, height: 1.6, from: -7.1, to: 2.5 }, // village bridge hump
     { at: 0.43, length: 14, height: 2.2, from: -7.1, to: 7.1 }, // snow kicker on the top leg
-    { at: 0.868, length: 16, height: 2.6, from: -7.1, to: 7.1 }, // canyon straight
+    // Canyon straight: down the canyon a full-height kicker; driven the other way it is met
+    // climbing at full speed and lowered so it does not throw cars up at 15+ m/s (C12).
+    { at: 0.868, length: 16, height: 2.6, reverseHeight: 2.2, from: -7.1, to: 7.1 },
   ],
   slaloms: [0.14, 0.33, 0.627, 0.73, 0.95],
   barricades: [0.183, 0.275, 0.37, 0.68, 0.775, 0.915],

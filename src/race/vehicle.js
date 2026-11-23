@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { surfaceMix, blendSurface, dominantSurface, trailMix, deckMix, ICE } from './surface.js';
 import { proximityFactor, PROXIMITY } from './modes/rules.js';
-import { TRAIL } from './trails.js';
+import { TRAIL, Trail } from './trails.js';
 import { wetGrip, PUDDLE } from '../data/weather.js';
 
 // Arcade vehicle model. Velocity lives in world space; each step it is split into forward and
@@ -67,6 +67,20 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 // At a fork the car follows whichever centre line is closer, once it is closer by this much
 // (metres), so it does not flicker between two lines that still overlap.
 const SWITCH_MARGIN = 0.6;
+// Where a zone ends a car caught between the two corridors goes to the one it is inside
+// (within this many metres of that road's wall limit) instead of being pushed through a fence.
+const HANDOVER = 0.8;
+// Grounded, a change in road height bigger than this over one step (metres, plus a share of
+// the distance travelled: a ~24 degree grade) is a seam between two surfaces, not a slope:
+// the car follows it without picking up vertical speed, so it cannot launch off it. Ramp
+// faces are real slopes and always count.
+const SEAM = { base: 0.06, grade: 0.45 };
+// The trail's dirt ribbon is drawn this far under its driving height (race/setPieces.js).
+export const TRAIL_SURFACE = -0.035;
+// Wall contact moves the car back by at most this much per step (metres); the rest is taken
+// out of its velocity and resolved over the next steps, so a corridor that suddenly narrows
+// (a trail fence, a fork zone ending) never teleports it sideways.
+const WALL_PUSH = 0.3;
 
 export class Vehicle {
   // skills: the player's car, which can earn Perfect Exits.
@@ -90,6 +104,9 @@ export class Vehicle {
     // Footprint for car-to-car contact: two discs along the car (`offset` metres either side
     // of the centre, `radius` = half the width). Race.js fits it to the car's model.
     this.collider = { offset: 1.15, radius: 1 };
+    // Half length and half width of the body on the ground (Race.js fits them to the model):
+    // the fences hold its corners, not just its centre, and cars and props hit its outline.
+    this.size = { halfLength: 2.3, halfWidth: 1.0 };
     this.reset(0, 0);
   }
 
@@ -97,21 +114,96 @@ export class Vehicle {
   // (a point on the car's floor plan, not the road's). The visual suspension (raceCars.js
   // CarVisual) casts its wheel, nose and tail rays with it.
   groundAt(along, lateral = 0) {
+    return this.groundUnder(along, lateral, false);
+  }
+
+  // The same point on the surface as it is drawn: on the kerb hump through a corner, a few
+  // centimetres down on the gravel and grass, just under the trail's dirt (Track
+  // surfaceOffset). The visual suspension rests the wheels and body on this.
+  visualGroundAt(along, lateral = 0) {
+    return this.groundUnder(along, lateral, true);
+  }
+
+  groundUnder(along, lateral, visual) {
     const pr = this.proj;
     const fx = Math.cos(this.heading);
     const fz = -Math.sin(this.heading);
     // The car's right in the ground plane (nose +X, right +Z in car space).
     const rx = -fz;
     const rz = fx;
+    if (this.overlap) {
+      // Fork or merge zone: both roads, blended as the physics does (groundHeight()).
+      const mp = this.mainProj;
+      const tp = this.trailProj;
+      const ms = along * (fx * mp.tx + fz * mp.tz) + lateral * (rx * mp.tx + rz * mp.tz);
+      const md = along * (fx * mp.rx + fz * mp.rz) + lateral * (rx * mp.rx + rz * mp.rz);
+      const ts = along * (fx * tp.tx + fz * tp.tz) + lateral * (rx * tp.tx + rz * tp.tz);
+      const td = along * (fx * tp.rx + fz * tp.rz) + lateral * (rx * tp.rx + rz * tp.rz);
+      let hy = this.track.heightAt(mp.s + ms, mp.d + md);
+      let ty = tp.trail.surfaceAt(tp.ls + ts, this.track.roadY(mp.s + ms));
+      if (visual) {
+        hy += this.track.surfaceOffset(mp.s + ms, mp.d + md);
+        ty += TRAIL_SURFACE;
+      }
+      return hy + (ty - hy) * Trail.weight(mp.d + md, tp.d + td);
+    }
     const ds = along * (fx * pr.tx + fz * pr.tz) + lateral * (rx * pr.tx + rz * pr.tz);
-    if (pr.trail) return pr.trail.heightAt(pr.ls + ds);
+    if (pr.trail) {
+      let y = pr.trail.heightAt(pr.ls + ds);
+      if (this.mainFresh && pr.trail.tieAt(pr.ls + ds) > 0) {
+        const mp = this.mainProj;
+        const ms = along * (fx * mp.tx + fz * mp.tz) + lateral * (rx * mp.tx + rz * mp.tz);
+        y = pr.trail.surfaceAt(pr.ls + ds, this.track.roadY(mp.s + ms));
+      }
+      return y + (visual ? TRAIL_SURFACE : 0);
+    }
     const dd = along * (fx * pr.rx + fz * pr.rz) + lateral * (rx * pr.rx + rz * pr.rz);
-    return this.track.heightAt(pr.s + ds, pr.d + dd);
+    const y = this.track.heightAt(pr.s + ds, pr.d + dd);
+    return visual ? y + this.track.surfaceOffset(pr.s + ds, pr.d + dd) : y;
   }
 
-  reset(s, d) {
-    const f = this.track.routeFrame(s, {});
-    this.pos.set(f.x + f.rx * d, this.track.routeHeight(s, d), f.z + f.rz * d);
+  // Height of the ground under the car's centre. In a fork or merge zone the highway and the
+  // trail overlap and the car can be on either: the ground hands over smoothly between them
+  // (Trail.weight), so switching which centre line it follows never steps the road height.
+  groundHeight() {
+    if (!this.overlap) return this.proj.y;
+    const mp = this.mainProj;
+    const tp = this.trailProj;
+    return mp.y + (tp.y - mp.y) * Trail.weight(mp.d, tp.d);
+  }
+
+  // On the climbing face of a jump ramp (not its side slopes): the one place a steep rise in
+  // the road is meant to throw the car into the air.
+  get onRampFace() {
+    const pr = this.proj;
+    return !pr.trail && this.track.onRampFace(pr.s, pr.d);
+  }
+
+  // How far the car's body reaches across projection p's road from its centre: half its width
+  // when straight, up to half its length when sideways (yaw relative to the road).
+  reachAcross(p) {
+    const fx = Math.cos(this.heading);
+    const fz = -Math.sin(this.heading);
+    const along = Math.abs(fx * p.tx + fz * p.tz); // |cos| of the yaw to the road
+    const across = Math.abs(fx * p.rx + fz * p.rz); // |sin|
+    return across * this.size.halfLength + along * this.size.halfWidth;
+  }
+
+  // `trail`: put it back on that trail (s is then the trail's lap mapping, proj.s on a trail)
+  // rather than on the highway beside it, which on a shortcut is tens of metres away (C4).
+  reset(s, d, trail = null) {
+    let f;
+    let y;
+    if (trail) {
+      const ls = trail.localS(s);
+      f = trail.frame(ls, {});
+      f.trail = trail;
+      y = trail.heightAt(ls);
+    } else {
+      f = this.track.routeFrame(s, {});
+      y = this.track.routeHeight(s, d);
+    }
+    this.pos.set(f.x + f.rx * d, y, f.z + f.rz * d);
     this.heading = Math.atan2(-f.tz, f.tx);
     this.vel.set(0, 0);
     this.vy = 0;
@@ -172,6 +264,8 @@ export class Vehicle {
     const tp = this.trailProj;
     const x = this.pos.x;
     const z = this.pos.z;
+    this.mainWasFresh = this.mainFresh;
+    this.mainFresh = false;
     this.zone = null;
     this.overlap = false; // the highway projection is fresh too (fork and merge zones)
     let t = this.trail;
@@ -186,8 +280,13 @@ export class Vehicle {
           this.zone = t;
           if (Math.abs(mp.d) < Math.abs(tp.d) - SWITCH_MARGIN) t = null;
         }
+      } else if (!track.forced && Math.abs(tp.d) > t.wallLimitAt(tp.ls) + HANDOVER) {
+        // Past the zone but outside the trail's corridor, inside the highway's: it was on the
+        // highway side of the Y when the zone ended. It belongs there, not thrown back.
+        this.projectMain(tp.s);
+        if (Math.abs(mp.d) <= track.wallLimit + HANDOVER) t = null;
       }
-      if (!t && !this.overlap) this.projectMain(tp.s);
+      if (!t && !this.mainFresh) this.projectMain(tp.s);
     } else {
       this.projectMain(-1);
       const c = track.trailAt(mp.s);
@@ -202,6 +301,20 @@ export class Vehicle {
             if (Math.abs(tp.d) < Math.abs(mp.d) - SWITCH_MARGIN) t = c;
           }
         }
+      } else if (c && mp.d * c.side > track.wallLimit + HANDOVER) {
+        // Past the zone but beyond the highway's rail on the trail's side: it was on the trail
+        // side of the Y when the zone ended, so it follows the trail.
+        c.project(x, z, Math.round(c.localS(mp.s) / c.spacing), tp);
+        this.trailHint = tp.i;
+        if (tp.ls > 0 && tp.ls < c.length && Math.abs(tp.d) <= c.wallLimitAt(tp.ls) + HANDOVER) t = c;
+      }
+    }
+    // Near the fork and merge the trail's surface follows the highway's (Trail.surfaceAt).
+    if (t || this.overlap) {
+      const tr = tp.trail;
+      if (tr.tieAt(tp.ls) > 0) {
+        if (!this.mainFresh) this.projectMain(tp.s);
+        tp.y = tr.surfaceAt(tp.ls, mp.roadY);
       }
     }
     this.trail = t;
@@ -209,9 +322,11 @@ export class Vehicle {
     return this.proj;
   }
 
-  // Highway projection; `nearS` seeds the search when coming off a trail.
+  // Highway projection; `nearS` seeds the search when coming off a trail (unless the highway
+  // projection was kept up to date last step, which is the better seed).
   projectMain(nearS) {
-    if (nearS >= 0) this.hint = this.track.index(nearS).i;
+    if (nearS >= 0 && !this.mainWasFresh) this.hint = this.track.index(nearS).i;
+    this.mainFresh = true;
     this.track.project(this.pos.x, this.pos.z, this.hint, this.mainProj);
     this.hint = this.mainProj.i;
   }
@@ -266,11 +381,17 @@ export class Vehicle {
   }
 
   // Keeps the car inside one wall: `side` +1 = the right of projection p, -1 = the left.
+  // `limit` is where the centre of a car `carHalfWidth` wide stops (track.wallLimit); the
+  // car's own reach across the road at its current yaw moves that in or out, so a long car
+  // sideways stops with its corner at the rail instead of through it. The narrowest reach
+  // stays the old 1.0 m, so a car driving straight meets the wall exactly where it did.
   wall(p, side, limit) {
-    const over = p.d * side - limit;
+    const reach = Math.max(this.track.carHalfWidth, this.reachAcross(p));
+    const over = p.d * side - (limit + this.track.carHalfWidth - reach);
     if (over <= 0) return;
-    this.pos.x -= p.rx * side * over;
-    this.pos.z -= p.rz * side * over;
+    const push = Math.min(over, WALL_PUSH);
+    this.pos.x -= p.rx * side * push;
+    this.pos.z -= p.rz * side * push;
     const vn = (this.vel.x * p.rx + this.vel.y * p.rz) * side;
     if (vn > 0) {
       this.vel.x -= p.rx * side * vn * 1.25;
@@ -285,6 +406,15 @@ export class Vehicle {
       if (vn > 9 && this.drifting) this.endDrift('wall');
       this.emit('wall', vn);
       this.wallScrape = 0.15;
+    }
+    if (over > push) {
+      // Still outside after the capped push: stop moving outward and come back in over the
+      // next steps instead of jumping there.
+      const out = (this.vel.x * p.rx + this.vel.y * p.rz) * side;
+      if (out > -2) {
+        this.vel.x -= p.rx * side * (out + 2);
+        this.vel.y -= p.rz * side * (out + 2);
+      }
     }
   }
 
@@ -508,9 +638,11 @@ export class Vehicle {
     this.pos.x += this.vel.x * dt;
     this.pos.z += this.vel.y * dt;
     pr = this.locate();
+    const run = Math.hypot(this.vel.x, this.vel.y) * dt;
 
     // Vertical: follow the ground or fly.
-    const ground = pr.y;
+    const lastGround = this.groundY ?? this.pos.y;
+    const ground = this.groundHeight();
     this.groundY = ground; // for the contact shadow (raceCars.js)
     if (!this.airborne) {
       const predicted = this.pos.y + this.vy * dt - 0.5 * GRAVITY * dt * dt;
@@ -520,7 +652,9 @@ export class Vehicle {
         if (this.drifting) this.endDrift('air');
         this.emit('takeoff', this.vy);
       } else {
-        this.vy = clamp((ground - this.pos.y) / dt, -30, 30);
+        const rise = ground - this.pos.y;
+        // A seam (two surfaces meeting a little apart): follow it, keep the slope speed.
+        if (Math.abs(rise) <= SEAM.base + SEAM.grade * run || this.onRampFace) this.vy = clamp(rise / dt, -30, 30);
         this.pos.y = ground;
       }
     }
@@ -529,7 +663,10 @@ export class Vehicle {
       this.vy -= GRAVITY * dt;
       this.pos.y += this.vy * dt;
       if (this.pos.y <= ground) {
-        const impact = -this.vy;
+        // How hard it lands is how fast it meets the ground, not how fast it falls: coming
+        // down onto a slope that falls away under it (a jump on a descent) it lands softer,
+        // onto one that rises, harder (C11).
+        const impact = Math.max(0, -this.vy + (ground - lastGround) / dt);
         this.pos.y = ground;
         this.vy = 0;
         this.airborne = false;
@@ -538,12 +675,36 @@ export class Vehicle {
       }
     }
 
-    // Barrier fences. In a fork or merge zone only the two outer walls of the Y hold the car.
+    // Barrier fences. In a fork or merge zone the two outer walls of the Y hold the car, and
+    // the inner ones only where they are actually built.
     this.wallScrape = Math.max(0, this.wallScrape - dt);
     const zone = this.zone;
     if (zone) {
-      this.wall(this.mainProj, -zone.side, track.wallLimit);
-      this.wall(this.trailProj, zone.side, zone.wallLimitAt(this.trailProj.ls));
+      const mp = this.mainProj;
+      const tp = this.trailProj;
+      const side = zone.side;
+      const tLimit = zone.wallLimitAt(tp.ls);
+      this.wall(mp, -side, track.wallLimit);
+      this.wall(tp, side, tLimit);
+      // The inner walls, where they stand: the highway's rail on the trail's side outside its
+      // gap, and the trail's inner log fence once it is off the highway. Each holds only a car
+      // on its own side of it.
+      const mainRail = mp.s > zone.forkEndS && mp.s < zone.mergeStartS;
+      const onMain = mp.d * side <= track.fenceOffset;
+      const trailFence = zone.innerFenced(tp.ls);
+      const onTrail = -tp.d * side <= zone.halfWidthAt(tp.ls) + 0.3;
+      if (mainRail && onMain) this.wall(mp, side, track.wallLimit);
+      else if (trailFence && onTrail) this.wall(tp, -side, tLimit);
+      else {
+        // The gore between the two arms of the Y is fenced off: a car outside both corridors
+        // goes back into the nearer one instead of running down it into a rail's end.
+        const eMain = mp.d * side - track.wallLimit;
+        const eTrail = -tp.d * side - tLimit;
+        if (eMain > 0 && eTrail > 0) {
+          if (eMain <= eTrail) this.wall(mp, side, track.wallLimit);
+          else this.wall(tp, -side, tLimit);
+        }
+      }
     } else if (this.trail) {
       const limit = this.trail.wallLimitAt(pr.ls);
       this.wall(pr, 1, limit);

@@ -1,5 +1,6 @@
 // Road contact: the visual suspension (raceCars.js CarVisual.suspend) keeps every tyre and
-// every bit of bodywork on or above the road through each track's crests, dips and ramps,
+// every bit of bodywork on or above the road as it is drawn (kerb humps and verges included,
+// Vehicle.visualGroundAt) through each track's crests, dips and ramps,
 // while the car still sits on its tyres instead of hovering.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -49,7 +50,7 @@ function clip(v, y, pitch, roll) {
   let worst = -Infinity;
   for (const p of chassis.points) {
     const body = y + p.a * Math.sin(pitch) - p.l * Math.sin(roll) + p.c;
-    worst = Math.max(worst, v.groundAt(p.a, p.l) - body);
+    worst = Math.max(worst, v.visualGroundAt(p.a, p.l) - body);
   }
   return worst;
 }
@@ -81,7 +82,7 @@ for (const def of TRACKS) {
           // On the ground the lowest tyre touches the road.
           const gaps = [0, 1, 2, 3].map((i) => {
             const p = chassis.points[i];
-            return r.position.y + p.a * Math.sin(r.rotation.z) - p.l * Math.sin(r.rotation.x) - v.groundAt(p.a, p.l);
+            return r.position.y + p.a * Math.sin(r.rotation.z) - p.l * Math.sin(r.rotation.x) - v.visualGroundAt(p.a, p.l);
           });
           rest += Math.min(...gaps);
           restFrames++;

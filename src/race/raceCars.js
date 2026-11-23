@@ -453,7 +453,7 @@ export class CarVisual {
     const r = this.ride;
     const hs = this.ground;
     const pts = ch.points;
-    for (let i = 0; i < pts.length; i++) hs[i] = v.groundAt(pts[i].a, pts[i].l);
+    for (let i = 0; i < pts.length; i++) hs[i] = v.visualGroundAt ? v.visualGroundAt(pts[i].a, pts[i].l) : v.groundAt(pts[i].a, pts[i].l);
     let pitch = v.pitch;
     let roll = 0;
     if (!v.airborne) {

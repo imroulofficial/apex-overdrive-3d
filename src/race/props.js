@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { canvasTexture, mulberry32 } from './noise.js';
+import { pointInBox } from './contact.js';
 
 // Smashable roadside props. Traffic cones and wooden barricades are instanced for a single
 // draw call per type; once hit they become simple rigid bodies that tumble, bounce on the road
@@ -9,6 +10,18 @@ import { canvasTexture, mulberry32 } from './noise.js';
 // glass). None of them slow the car down.
 
 const GRAVITY = 22;
+// A struck cone or barricade flies at most this fast (m/s, along the ground) and rises at most
+// this fast (a ~1.8 m arc); it leaves the car's body at `escape` m/s faster than the body.
+export const PROP_FLIGHT = { maxSpeed: 40, maxRise: 9, escape: 5 };
+export function capFlight(v, rise = PROP_FLIGHT.maxRise) {
+  const h = Math.hypot(v.x, v.z);
+  if (h > PROP_FLIGHT.maxSpeed) {
+    v.x *= PROP_FLIGHT.maxSpeed / h;
+    v.z *= PROP_FLIGHT.maxSpeed / h;
+  }
+  if (v.y > rise) v.y = rise;
+  return v;
+}
 const NEON_COLORS = [0xff2bd6, 0x22e8ff, 0xb6ff3a, 0xffb020];
 const FRUIT_COLORS = [0xff8a1c, 0xe8261f, 0xffd52e, 0x5fbf2a, 0xff8a1c, 0xb3123d];
 const WOOD_COLORS = [0x9a6a3c, 0x7d5530, 0xb07d48];
@@ -357,37 +370,70 @@ export class SmashProps {
     for (const mesh of p.meshes) mesh.setMatrixAt(p.slot, this._m);
   }
 
-  // Returns the props this car hit this step (each prop at most once per hit).
+  // Returns the props this car hit this step (each prop at most once per hit). The car is the
+  // box of its real length and width (Vehicle.size); a barricade is its beam (a segment of
+  // half length `half`) while it stands. A prop already flying that the car runs into again is
+  // pushed out of the body instead of being left inside it.
   collide(car, hits) {
     hits.length = 0;
-    const L = this.track.length;
+    const { halfLength, halfWidth } = car.size;
     for (const p of this.items) {
-      if (p.cool > 0 || p.state === 'broken') continue;
-      let ds = Math.abs(p.s - car.proj.s);
-      if (ds > L / 2) ds = L - ds;
-      if (p.state === 'idle' && ds > 8) continue;
-      if (p.state !== 'idle' && p.pos.distanceToSquared(car.pos) > 64) continue;
+      if (p.state === 'broken') continue;
+      // By distance, not lap position: a car on a trail runs beside the highway's props.
+      if (p.pos.distanceToSquared(car.pos) > 64) continue;
       if (p.pos.y > car.pos.y + 1.6 || p.pos.y < car.pos.y - 1.5) continue;
-      // Car as two circles along its heading.
-      let hit = false;
-      for (let off = 1.2; off > -2; off -= 2.4) {
-        const cx = car.pos.x + Math.cos(car.heading) * off;
-        const cz = car.pos.z - Math.sin(car.heading) * off;
-        let dx = p.pos.x - cx;
-        let dz = p.pos.z - cz;
-        if (p.half && p.state === 'idle') {
-          const t = Math.max(-p.half, Math.min(p.half, dx * p.axis.x + dz * p.axis.y));
-          dx -= p.axis.x * t;
-          dz -= p.axis.y * t;
+      let hit = null;
+      if (p.half && p.state === 'idle') {
+        for (let k = -2; k <= 2 && !hit; k++) {
+          const t = (k / 2) * p.half;
+          hit = pointInBox(p.pos.x + p.axis.x * t, p.pos.z + p.axis.y * t, car.pos.x, car.pos.z, car.heading, halfLength, halfWidth, p.radius);
         }
-        if (dx * dx + dz * dz < (1.0 + p.radius) ** 2) hit = true;
+      } else {
+        hit = pointInBox(p.pos.x, p.pos.z, car.pos.x, car.pos.z, car.heading, halfLength, halfWidth, p.radius);
       }
       if (!hit) continue;
+      if (p.cool > 0 || p.state === 'flying') {
+        if (p.state === 'flying') this.pushOut(p, car, hit);
+        continue;
+      }
       if (p.breaks) this.shatter(p, car);
-      else this.launch(p, car);
+      else {
+        this.launch(p, car, hit);
+        this.pushOut(p, car, hit);
+      }
       hits.push(p);
     }
     return hits;
+  }
+
+  // Moves a flying prop out of the car's body through the nearest side and makes sure it is
+  // moving away from it. Faster than PROP_FLIGHT.maxSpeed the car would just catch it again
+  // through the nose, so then it is deflected off a flank instead (the wedge of the bodywork).
+  pushOut(p, car, hit) {
+    let { nx, nz, depth } = hit;
+    const speed = Math.hypot(car.vel.x, car.vel.y);
+    const fx = Math.cos(car.heading);
+    const fz = -Math.sin(car.heading);
+    if (speed > PROP_FLIGHT.maxSpeed * 0.8 && nx * fx + nz * fz > 0.5) {
+      // Hit by the nose at speed: out through the nearer flank.
+      const side = (p.pos.x - car.pos.x) * -fz + (p.pos.z - car.pos.z) * fx >= 0 ? 1 : -1;
+      nx = -fz * side;
+      nz = fx * side;
+      const l = Math.abs((p.pos.x - car.pos.x) * -fz + (p.pos.z - car.pos.z) * fx);
+      depth = car.size.halfWidth + p.radius - l;
+    }
+    depth = Math.max(0, depth) + 0.02;
+    p.pos.x += nx * depth;
+    p.pos.z += nz * depth;
+    const away = p.vel.x * nx + p.vel.z * nz;
+    const carAway = car.vel.x * nx + car.vel.y * nz;
+    const need = Math.max(carAway, 0) + PROP_FLIGHT.escape;
+    if (away < need) {
+      p.vel.x += nx * (need - away);
+      p.vel.z += nz * (need - away);
+    }
+    capFlight(p.vel);
+    this.write(p);
   }
 
   launch(p, car) {
@@ -406,6 +452,7 @@ export class SmashProps {
     const k = p.type === 'cone' ? 1.15 : 0.85;
     const r = Math.random;
     p.vel.set(vx * k + ox * 4, (p.type === 'cone' ? 4 : 2.5) + speed * (p.type === 'cone' ? 0.12 : 0.07) + r() * 2, vz * k + oz * 4);
+    capFlight(p.vel, p.type === 'cone' ? PROP_FLIGHT.maxRise : PROP_FLIGHT.maxRise * 0.7);
     const spin = p.type === 'cone' ? 12 : 5;
     p.spin.set((r() - 0.5) * spin, (r() - 0.5) * spin, (r() - 0.5) * spin);
     p.first = first;
@@ -429,6 +476,7 @@ export class SmashProps {
         at.x += (r() - 0.5) * spread;
         at.z += (r() - 0.5) * spread;
         v.set(car.vel.x * (0.5 + r() * 0.6) + (r() - 0.5) * 9, 3 + r() * 6, car.vel.y * (0.5 + r() * 0.6) + (r() - 0.5) * 9);
+        capFlight(v);
         pool.spawn(at, v, colorAt(k), size * (0.7 + r() * 0.6), hint);
       }
     };

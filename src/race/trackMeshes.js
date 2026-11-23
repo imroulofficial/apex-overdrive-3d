@@ -4,6 +4,7 @@ import { canvasTexture, mulberry32 } from './noise.js';
 import { asphaltTextures } from '../render/textures.js';
 import { bothFaces, createVertexPbrMaterial, mergePainted, paintVertices, stamp } from '../render/vertexPbr.js';
 import { LAYOUT } from './surface.js';
+import { RAMP_SIDE, KERB, SHOULDER } from './track.js';
 
 // Render geometry generated from the race spline: asphalt with a rubbered-in racing line,
 // gravel shoulders and grass verges (core/surface.js), raised rumble-strip kerbs, embankment, steel guardrails, lamp posts, chevron
@@ -302,6 +303,7 @@ export function buildTrackMeshes(track, renderer, { groundMaterial, env = null }
   }
   const road = new THREE.Mesh(ribbons(track, [[-hw, 0, 0], [0, 0, 0.5], [hw, 0, 1]], noRoad), roadMaterial);
   wettable(road.material, wet, { darken: 0.5, key: env?.tex.asphalt ? 'road-photo' : 'road' });
+  road.name = 'road';
   road.receiveShadow = true;
   group.add(road);
   group.add(buildRacingLine(track, noRoad, wet));
@@ -324,10 +326,11 @@ export function buildTrackMeshes(track, renderer, { groundMaterial, env = null }
   }
   const gravel = wettable(gravelMat, wet, { darken: 0.4, key: urban ? 'pavement' : 'gravel' });
   const shoulders = mergeGeometries([
-    ribbons(track, [[hw, 0, 0], [hw + gv, -0.02, 1]], noRoad, { vScale: 8 }),
-    ribbons(track, [[-hw - gv, -0.02, 1], [-hw, 0, 0]], noRoad, { vScale: 8 }),
+    ribbons(track, [[hw, 0, 0], [hw + gv, SHOULDER.gravelDrop, 1]], noRoad, { vScale: 8 }),
+    ribbons(track, [[-hw - gv, SHOULDER.gravelDrop, 1], [-hw, 0, 0]], noRoad, { vScale: 8 }),
   ]);
   const shoulderMesh = new THREE.Mesh(shoulders, gravel);
+  shoulderMesh.name = 'shoulders';
   shoulderMesh.receiveShadow = true;
   group.add(shoulderMesh);
 
@@ -340,32 +343,28 @@ export function buildTrackMeshes(track, renderer, { groundMaterial, env = null }
     ribbons(track, [[-hw - sh - 6.5, -4.2, 0], [-hw - sh - 2, -0.6, 0.5], [-hw - sh, -0.05, 0.8], [-hw - gv, -0.02, 1]], noRoad, { step: 2, vScale: 10 }),
   ]);
   const bankMesh = new THREE.Mesh(bank, urban ? gravel : groundMaterial ?? new THREE.MeshLambertMaterial({ color: 0x5f7f3a }));
+  bankMesh.name = 'bank';
   bankMesh.receiveShadow = true;
   group.add(bankMesh);
 
   // Raised red/white rumble strips through the corners: a 7 cm hump with 1 m stripes.
+  // The spans and the profile are the track's (race/track.js KERB), which the cars' visual
+  // suspension also reads, so wheels ride up onto the kerb they are drawn on.
   const kerbGeos = [];
-  let start = -1;
-  const sharp = (i) => Math.abs(track.curv[i]) > 1 / 150;
+  const us = [0, 0.3, 0.7, 1];
   const kerbProfile = (side) => {
-    const cols = [[hw - 0.2, 0.0, 0], [hw + 0.05, 0.06, 0.3], [hw + 0.55, 0.07, 0.7], [hw + 0.95, 0.0, 1]];
+    const cols = KERB.profile.map(([d, dy], i) => [hw + d, dy, us[i]]);
     return side > 0 ? cols : cols.map(([d, dy, u]) => [-d, dy, 1 - u]).reverse();
   };
-  for (let i = 0; i <= track.n; i++) {
-    const on = i < track.n && sharp(i) && !inGaps(noRoad, track.s[i]);
-    if (on && start < 0) start = i;
-    if (!on && start >= 0) {
-      const from = Math.max(0, start - 8);
-      const to = Math.min(track.n, i + 8);
-      for (const side of [1, -1]) kerbGeos.push(fixUpNormals(ribbon(track, kerbProfile(side), { from, to, vScale: 2, lift: 0.015 })));
-      start = -1;
-    }
+  for (const { from, to } of track.kerbSpans) {
+    for (const side of [1, -1]) kerbGeos.push(fixUpNormals(ribbon(track, kerbProfile(side), { from, to, vScale: 2, lift: KERB.lift })));
   }
   if (kerbGeos.length) {
     const kerbs = new THREE.Mesh(
       mergeGeometries(kerbGeos),
       wettable(new THREE.MeshStandardMaterial({ map: stripeTexture('#c8102e', '#f2f2ee'), roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -2 }), wet, { darken: 0.3, key: 'kerb' })
     );
+    kerbs.name = 'kerbs';
     kerbs.receiveShadow = true;
     group.add(kerbs);
   }
@@ -581,10 +580,56 @@ function buildChevrons(track) {
   return mesh;
 }
 
-// All jump ramps in one mesh: hazard-striped tops and steel sides (2 draw calls in total).
+// Steel deck plate for the ramp sides and back: a raised diamond pattern over brushed grey
+// with a hazard band along the top edge (u runs along the ramp, v up the side).
+function rampSideTexture() {
+  const tex = canvasTexture(THREE, 128, 128, (g, w, h) => {
+    g.fillStyle = '#6d7178';
+    g.fillRect(0, 0, w, h);
+    const rand = mulberry32(5);
+    for (let i = 0; i < 900; i++) {
+      const v = 95 + rand() * 40;
+      g.fillStyle = `rgba(${v},${v + 3},${v + 8},0.35)`;
+      g.fillRect(rand() * w, rand() * h, 1 + rand() * 6, 1);
+    }
+    for (let y = 0; y < h; y += 16) {
+      for (let x = (y / 16) % 2 ? 8 : 0; x < w; x += 16) {
+        g.fillStyle = 'rgba(210,214,220,0.55)';
+        g.beginPath();
+        g.ellipse(x + 4, y + 4, 4.5, 1.4, Math.PI / 4, 0, Math.PI * 2);
+        g.fill();
+        g.fillStyle = 'rgba(30,32,36,0.45)';
+        g.beginPath();
+        g.ellipse(x + 5, y + 5.5, 4.5, 1.2, Math.PI / 4, 0, Math.PI * 2);
+        g.fill();
+      }
+    }
+    // Hazard band at the top (v = 1 is the top edge of every side face).
+    for (let x = -h; x < w; x += 24) {
+      g.fillStyle = '#f5c400';
+      g.beginPath();
+      g.moveTo(x, 0);
+      g.lineTo(x + 12, 0);
+      g.lineTo(x + 24, 14);
+      g.lineTo(x + 12, 14);
+      g.closePath();
+      g.fill();
+    }
+    g.fillStyle = 'rgba(20,20,22,0.85)';
+    g.fillRect(0, 14, w, 2);
+  });
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+// All jump ramps in one mesh: hazard-striped tops and steel-plate sides (2 draw calls in
+// total). The surface is exactly the physics' (race/track.js rampHeight): the striped face
+// over [from, to], a plated side slope RAMP_SIDE metres wide falling to the road along each
+// edge, and a plated back wall under the lip.
 function buildRamps(track) {
   const top = new THREE.MeshStandardMaterial({ map: rampTexture(), roughness: 0.6, metalness: 0.1 });
-  const side = new THREE.MeshStandardMaterial({ color: 0x2a2c31, roughness: 0.7, metalness: 0.4 });
+  const sideMap = rampSideTexture();
+  const side = new THREE.MeshStandardMaterial({ map: sideMap, roughness: 0.55, metalness: 0.35, color: 0xd6d9de });
   const a = new THREE.Vector3();
   const tops = { pos: [], uv: [] };
   const sides = { pos: [], uv: [] };
@@ -592,27 +637,42 @@ function buildRamps(track) {
     out.pos.push(...p0, ...p1, ...p2, ...p0, ...p2, ...p3);
     out.uv.push(...uvs[0], ...uvs[1], ...uvs[2], ...uvs[0], ...uvs[2], ...uvs[3]);
   };
-  const zero = [[0, 0], [0, 0], [0, 0], [0, 0]];
   for (const r of track.ramps) {
     const steps = Math.ceil(r.length);
-    const pt = (ds, d, onTop) => {
+    const pt = (ds, d, h) => {
       const s = r.s0 + ds;
       track.point(s, d, a);
-      a.y = track.roadY(s) + (onTop ? (r.height * ds) / r.length : 0) + 0.015;
+      a.y = track.roadY(s) + h + 0.015;
       return [a.x, a.y, a.z];
     };
+    const rise = (ds) => (r.height * ds) / r.length;
     const width = r.to - r.from;
+    const lo = r.from - RAMP_SIDE;
+    const hi = r.to + RAMP_SIDE;
     for (let k = 0; k < steps; k++) {
       const s0 = (k / steps) * r.length;
       const s1 = ((k + 1) / steps) * r.length;
-      quad(tops, pt(s0, r.from, true), pt(s0, r.to, true), pt(s1, r.to, true), pt(s1, r.from, true), [
+      quad(tops, pt(s0, r.from, rise(s0)), pt(s0, r.to, rise(s0)), pt(s1, r.to, rise(s1)), pt(s1, r.from, rise(s1)), [
         [0, s0 / 4], [width / 4, s0 / 4], [width / 4, s1 / 4], [0, s1 / 4],
       ]);
-      quad(sides, pt(s0, r.from, false), pt(s1, r.from, false), pt(s1, r.from, true), pt(s0, r.from, true), zero);
-      quad(sides, pt(s0, r.to, true), pt(s1, r.to, true), pt(s1, r.to, false), pt(s0, r.to, false), zero);
+      // Side slopes: road level at the outer edge, the face's height at the inner one.
+      const u0 = s0 / 3;
+      const u1 = s1 / 3;
+      quad(sides, pt(s0, lo, 0), pt(s0, r.from, rise(s0)), pt(s1, r.from, rise(s1)), pt(s1, lo, 0), [[u0, 0], [u0, 1], [u1, 1], [u1, 0]]);
+      quad(sides, pt(s0, r.to, rise(s0)), pt(s0, hi, 0), pt(s1, hi, 0), pt(s1, r.to, rise(s1)), [[u0, 1], [u0, 0], [u1, 0], [u1, 1]]);
     }
+    // Back wall under the lip, following the slopes down at either end.
     const L = r.length;
-    quad(sides, pt(L, r.from, false), pt(L, r.to, false), pt(L, r.to, true), pt(L, r.from, true), zero);
+    const H = r.height;
+    const v = H / 3;
+    const cols = [[lo, 0], [r.from, H], [r.to, H], [hi, 0]];
+    for (let j = 0; j < cols.length - 1; j++) {
+      const [d0, h0] = cols[j];
+      const [d1, h1] = cols[j + 1];
+      quad(sides, pt(L, d0, 0), pt(L, d1, 0), pt(L, d1, h1), pt(L, d0, h0), [
+        [d0 / 3, 1 - v], [d1 / 3, 1 - v], [d1 / 3, 1 - v + h1 / 3], [d0 / 3, 1 - v + h0 / 3],
+      ]);
+    }
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute([...tops.pos, ...sides.pos], 3));
