@@ -57,6 +57,7 @@ TYRE_BLOCKS = 0
 TYRE_NP_MIN = 10
 TYRE_TEXT_R = (0.060, 0.026)
 GLOVE = (0.34, 0.20, 0.11)             # light brown driving gloves
+RIM_TUBE = 0.0135                   # the Aurelia wood-rim wheel
 HEADLINER = (0.045, 0.045, 0.048)
 METAL = (0.66, 0.66, 0.67)
 METAL_RM = (0.36, 0.55)

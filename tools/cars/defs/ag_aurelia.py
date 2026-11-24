@@ -1386,62 +1386,30 @@ def steering_wheel(q):
     return m
 
 
+RIM_TUBE = 0.0135                # the rim tube's largest half-section (the gloves wrap round it)
+GRIP_DEG = 40                   # hands at ten to two
+
+
 def hands(q):
-    """Black-brown leather driving gloves on the rim at ten to two (wheel frame: x along the
-    column toward the nose, the driver at -x). Each hand: the palm and back of the hand behind
-    and outside the rim, four separate fingers wrapping round the rim from the outside over its
-    front, their tips showing on the inside, the thumb lying along the rim's rear face toward the
-    top of the wheel, then the wrist into a short gauntlet cuff and the jacket sleeve."""
+    """Gloved hands on the rim at ten to two (wheel frame: x along the column toward the nose,
+    the driver at -x): one smooth anatomical glove per hand from tools/cars/hand.py (palm, four
+    three-segment fingers curled round the rim, the thumb on the rim's driver face, knuckles,
+    wrist, gauntlet cuff, stitched seams), then the sleeve toward the elbow."""
+    from hand import glove
     m = Mesh()
-    n = seg(12, q, 6)
     X = np.array([1.0, 0, 0])
-    RR = 0.0135                                   # rim tube radius (see steering_wheel)
     for s in (-1, 1):
-        a = math.radians(40)
+        a = math.radians(GRIP_DEG)
         radial = np.array([0.0, math.sin(a), s * math.cos(a)])
         tang = norm(np.cross(X, radial))
         tup = tang if tang[1] > 0 else -tang      # along the rim toward twelve o'clock
         c = radial * WHEEL_R
-
-        def round_rim(th, r):
-            """Point at angle th (deg) round the rim tube: 0 outward, 90 the front, 180 inside,
-            270 toward the driver."""
-            t = math.radians(th)
-            return c + radial * (math.cos(t) * r) + X * (math.sin(t) * r)
-
-        # the hand lies on the outside of the rim, palm toward it: its long axis runs from the
-        # knuckles (level with the rim's centre) back to the wrist behind the rim
-        L = norm(-X * 0.97 + radial * 0.10 - tup * 0.20)
-        Nn = norm(np.cross(L, tup))
-        if np.dot(Nn, radial) < 0:
-            Nn = -Nn
-        Rh = np.stack([L, norm(np.cross(Nn, L)), Nn], -1)
-        hc = c + radial * (RR + 0.0155) + L * 0.046
-        m += blob(hc, (0.047, 0.041, 0.0135), n=seg(18, q, 8), rings=seg(10, q, 5), e1=0.40, e2=0.55,
-                  mat='driver:glove', R=Rh)
-        # knuckle ridge over the finger roots
-        m += blob(c + radial * (RR + 0.019) + L * 0.006, (0.009, 0.040, 0.0115), n=seg(14, q, 6), rings=seg(6, q, 4),
-                  e1=0.6, e2=0.6, mat='driver:glove', R=Rh)
-        # four fingers side by side (index toward the top of the wheel) curling over the rim's
-        # front, their tips back on the inside
-        for k, (off, rad, tip) in enumerate(((0.0255, 0.0082, 212), (0.0085, 0.0086, 226), (-0.0085, 0.0083, 220),
-                                             (-0.0245, 0.0072, 200))):
-            ang = np.linspace(-14, tip, seg(12, q, 6))
-            rr = np.linspace(RR + 0.0165, RR + rad + 0.0006, len(ang))
-            pts = [round_rim(t, r_) + tup * off - L * 0.004 for t, r_ in zip(ang, rr)]
-            m += tube(pts, rad, n=n, mat='driver:glove', samples=seg(16, q, 6),
-                      radius_fn=lambda t: lerp(1.06, 0.86, t))
-        # thumb: from the side of the palm round the rim's rear face (toward the driver), opposing
-        # the fingers
-        m += tube([c + radial * (RR + 0.012) + L * 0.040 + tup * 0.036, round_rim(282, RR + 0.0105) + tup * 0.034,
-                   round_rim(242, RR + 0.0095) + tup * 0.026, round_rim(214, RR + 0.0090) + tup * 0.017],
-                  0.0100, n=n, mat='driver:glove', samples=seg(10, q, 4), radius_fn=lambda t: lerp(1.25, 0.82, t))
-        # wrist, gauntlet cuff and the sleeve back toward the elbow (inboard and below)
-        w0 = hc + L * 0.042
-        m += tube([w0, w0 + L * 0.048], 0.023, n=n, mat='driver:glove', samples=seg(3, q, 2),
-                  radius_fn=lambda t: lerp(0.95, 1.25, t))
-        m += tube([w0 + L * 0.044, w0 + L * 0.20 - radial * 0.10 + np.array([0, -0.05, 0])], 0.032, n=n,
-                  mat='driver:jacket', samples=seg(6, q, 3), radius_fn=lambda t: lerp(1.0, 1.2, t))
+        g = glove(q, c, radial, X, tup, RIM_TUBE)
+        m += g
+        cb = g.cuff_end
+        Lw = g.forearm
+        m += tube([cb - Lw * 0.012, cb + Lw * 0.10 - radial * 0.05 + np.array([0, -0.05, 0])], 0.034,
+                  n=seg(14, q, 8), mat='driver:jacket', samples=seg(6, q, 3), radius_fn=lambda t: lerp(1.0, 1.15, t))
     return m
 
 

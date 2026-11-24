@@ -509,10 +509,17 @@ def make_key_material(key):
         rough = 0.9
         height = k.math('MULTIPLY', n, 0.2)
     elif key == 'driver:glove' and getattr(car, 'GLOVE', None):
-        n = k.noise(vec, 300.0, 3.0)
-        col = k.mix(k.math('MULTIPLY', n, 0.5), srgb(car.GLOVE), srgb(tuple(v * 1.25 for v in car.GLOVE)))
+        # soft leather: fine grain, a satin sheen
+        n = k.noise(vec, 520.0, 4.0, 0.6)
+        col = k.mix(k.math('MULTIPLY', n, 0.5), srgb(car.GLOVE), srgb(tuple(v * 1.22 for v in car.GLOVE)))
+        rough = k.mixf(n, 0.48, 0.62)
+        height = k.math('MULTIPLY', n, 0.22)
+    elif key == 'driver:seam':
+        # glove seams and wrist strap: the glove's leather, darker
+        g = tuple(getattr(car, 'GLOVE', None) or (0.08, 0.08, 0.085))
+        n = k.noise(vec, 900.0, 3.0)
+        col = k.mix(k.math('MULTIPLY', n, 0.4), srgb(tuple(v * 0.42 for v in g)), srgb(tuple(v * 0.55 for v in g)))
         rough = 0.6
-        height = k.math('MULTIPLY', n, 0.15)
     elif key == 'driver:glove':
         n = k.noise(vec, 260.0, 3.0)
         col = k.mix(k.math('MULTIPLY', n, 0.4), srgb((0.05, 0.05, 0.055)), srgb((0.12, 0.12, 0.13)))
@@ -540,6 +547,17 @@ def make_key_material(key):
         col, rough, coat = srgb((0.05, 0.10, 0.30)), 0.25, 1.0
     elif key == 'body:amber':
         col, rough, coat = srgb((0.95, 0.45, 0.05)), 0.15, 1.0
+    elif key == 'body:accent':
+        # coloured hard parts (tow hooks, recovery points): the car's ACCENT, glossy powder coat
+        col, rough, coat = srgb(tuple(getattr(car, 'ACCENT', (0.90, 0.30, 0.04)))), 0.30, 0.5
+    elif key == 'body:tyre':
+        # a tyre carried on the body (spare): rubber with a fine scrub, no wheel-frame lettering
+        n = k.noise(vec, 300.0, 3.0)
+        col, rough = k.mix(n, srgb((0.030, 0.030, 0.032)), srgb((0.045, 0.045, 0.048))), 0.85
+        height = k.math('MULTIPLY', n, 0.3)
+    elif key == 'body:smoke':
+        # smoked lamp interiors: glossy near-black
+        col, rough, coat = srgb((0.012, 0.012, 0.014)), 0.12, 1.0
     elif key == 'int:leather':
         n = k.noise(vec, 260.0, 5.0, 0.7)
         c0 = tuple(getattr(car, 'LEATHER', (0.30, 0.09, 0.05)))
@@ -580,6 +598,22 @@ def make_key_material(key):
         col, rough, metal = (k.mix(n, srgb(getattr(car, 'METAL', (0.62, 0.62, 0.63))),
                                    srgb(tuple(min(1, v * 1.12) for v in getattr(car, 'METAL', (0.62, 0.62, 0.63))))),
                              *getattr(car, 'METAL_RM', (0.28, 1.0)))
+    elif key == 'int:screen':
+        # centre touch screen: a dark map with roads and a few UI tiles (it glows at night)
+        n = k.noise(vec, 40.0, 5.0, 0.6)
+        road = k.smooth(0.47, 0.50, k.math('ABSOLUTE', k.math('SUBTRACT', k.math('FRACT', k.math('MULTIPLY', n, 6.0)), 0.5)))
+        base = k.mix(n, srgb((0.010, 0.022, 0.040)), srgb((0.020, 0.040, 0.065)))
+        col = k.mix(road, base, srgb((0.10, 0.36, 0.46)))
+        rough = 0.08
+    elif key == 'int:cage':
+        # powder-coated roll cage: satin dark grey
+        n = k.noise(vec, 700.0, 3.0)
+        col, rough = k.mix(k.math('MULTIPLY', n, 0.4), srgb((0.055, 0.057, 0.062)), srgb((0.075, 0.077, 0.083))), 0.45
+    elif key == 'int:pad':
+        # black cage padding foam in a textile sleeve
+        n = k.noise(vec, 400.0, 3.0)
+        col, rough = k.mix(n, srgb((0.018, 0.018, 0.020)), srgb((0.030, 0.030, 0.033))), 0.92
+        height = k.math('MULTIPLY', n, 0.3)
     elif key == 'int:gauge':
         # dial faces: a generated dial atlas on a planar UV (group Gauges, see gauge_uv)
         col, rough = srgb((0.03, 0.03, 0.03)), 0.2

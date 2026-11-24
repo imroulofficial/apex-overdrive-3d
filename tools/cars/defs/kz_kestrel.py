@@ -58,7 +58,8 @@ TYRE_BAND = None
 TYRE_BLOCKS = 40                      # gravel tread blocks
 TYRE_TEXT_R = (0.088, 0.026)
 TYRE_NP_MIN = 10
-GLOVE = (0.46, 0.085, 0.050)          # red rally gloves: they read against the black rim by day and night
+GLOVE = (0.58, 0.59, 0.62)            # light grey rally gloves: read against the red suit, the black rim, day and night
+RIM_TUBE = 0.0140                   # the rally wheel's suede rim (half-section)
 HEADLINER = (0.050, 0.050, 0.053)
 METAL = (0.55, 0.56, 0.57)            # roll cage, brushed alloy panel
 METAL_RM = (0.40, 0.55)
@@ -699,41 +700,103 @@ def _seat(q, z, x0=-0.40, front=True):
     return seat(q, z, x0, front).transform(t=(0, KDY, 0))
 
 
-def roll_cage(q):
-    """Bolted-in roll cage (int:metal): main hoop behind the front seats, A-pillar legs along the
-    windscreen sides, roof rails, a diagonal and rear stays."""
-    m = Mesh()
-    n = seg(10, q, 5)
-    r = 0.019
-    inset = 0.055
+def bent(points, bend):
+    """Polyline with every inner corner replaced by a circular bend of radius `bend` (a bent
+    tube: straight runs, clean constant-radius bends). Returns a dense point list."""
+    P = [np.asarray(p, float) for p in points]
+    out = [P[0]]
+    for i in range(1, len(P) - 1):
+        a, b, c = P[i - 1], P[i], P[i + 1]
+        u, v = norm(a - b), norm(c - b)
+        ang = math.acos(np.clip(u @ v, -1, 1))
+        if ang > math.pi - 1e-3:
+            out.append(b)
+            continue
+        d = min(bend / math.tan(ang / 2), 0.45 * np.linalg.norm(a - b), 0.45 * np.linalg.norm(c - b))
+        r = d * math.tan(ang / 2)
+        p0, p1 = b + u * d, b + v * d
+        cen = b + norm(u + v) * (r / math.sin(ang / 2))
+        e0, e1 = p0 - cen, p1 - cen
+        k = max(3, int((math.pi - ang) / 0.18) + 1)
+        th = math.acos(np.clip(norm(e0) @ norm(e1), -1, 1))
+        for t in np.linspace(0, 1, k):
+            w0 = math.sin((1 - t) * th) / math.sin(th)
+            w1 = math.sin(t * th) / math.sin(th)
+            out.append(cen + e0 * w0 + e1 * w1)
+    out.append(P[-1])
+    # resample evenly so the swept tube stays straight on the runs
+    Q = np.array(out)
+    L = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(Q, axis=0), axis=1))])
+    s_ = np.linspace(0, L[-1], max(4, int(L[-1] / 0.02) + 2))
+    return np.stack([np.interp(s_, L, Q[:, i]) for i in range(3)], -1)
 
-    def pt(x, t, d=inset):
+
+CAGE_R = 0.0190                 # 38 mm tube (main hoop 45 mm)
+CAGE_BEND = 0.10                # centre-line bend radius (about 2.5 x the tube diameter)
+
+
+def _cage_tube(pts, r, q, mat='int:cage'):
+    path = bent(pts, CAGE_BEND)
+    n = seg(12, q, 6)
+    return sweep(path, lambda i, t: ellipse(r, r, n), mat, cap0='flat', cap1='flat')
+
+
+def roll_cage(q):
+    """Bolted-in rally cage in satin dark grey: a 45 mm main hoop behind the front seats, 38 mm
+    A-pillar legs that run straight down behind the real A-pillars (placed on the line from the
+    driver's eye to the pillar, so they hide behind it), straight roof rails with clean bends,
+    door bars, a diagonal and rear stays. Black foam padding only where a helmet can touch: the
+    driver's roof rail and the main hoop beside the head."""
+    m = Mesh()
+    eye = np.array(EYE, float)
+    rh = 0.0225
+
+    def under(x, t, d):
         return canopy(x, t) - canopy_normal(x, t) * d
 
-    def leg(x, s, top_t=0.88):
-        ci = float(ci_c(np.clip(x, -1.42, 0.70)))
-        top = pt(x, s * top_t)
-        low = np.array([x, TUB_FLOOR + 0.04, s * (ci - 0.035)])
-        mid = np.array([x, float(crown(x, gb_c(np.clip(x, GH_X[0], GH_X[1])))) - 0.06, s * (ci - 0.035)])
-        return [top, mid, low]
+    def behind(x, t, r):
+        g = canopy(x, t) - canopy_normal(x, t) * 0.010
+        return g - norm(g - eye) * (r + 0.012)
 
     xh = B_X - 0.06
-    # main hoop: floor -> up the B-pillar -> across under the roof -> down the other side
-    hoop = leg(xh, -1)[::-1] + [pt(xh, -0.60), pt(xh, -0.30), pt(xh, 0.0), pt(xh, 0.30), pt(xh, 0.60)] + leg(xh, 1)
-    m += tube(hoop, r, n=n, mat='int:metal', samples=seg(40, q, 12))
+    # main hoop: straight legs up from the floor, one bend each into the roof span
+    top_l, top_r = under(xh, -0.56, rh + 0.03), under(xh, 0.56, rh + 0.03)
+    ci = float(ci_c(np.clip(xh, -1.42, 0.70)))
+    foot = lambda s_: np.array([xh, TUB_FLOOR + 0.02, s_ * (ci - 0.040)])
+    belt = lambda s_: np.array([xh, float(crown(xh, gb_c(np.clip(xh, GH_X[0], GH_X[1])))) - 0.02,
+                                s_ * (ci - 0.040)])
+    m += _cage_tube([foot(-1), belt(-1), top_l, top_r, belt(1), foot(1)], rh, q)
     for s in (-1, 1):
-        # roof rail from the hoop to the header, then down the A-pillar to the footwell
-        xa = A_TOP + 0.02
-        rail = [pt(xh, s * 0.60), pt(-0.20, s * 0.60), pt(xa - 0.10, s * 0.62), pt(xa + 0.06, s * t_apillar(xa + 0.06)),
-                pt(0.30, s * t_apillar(0.30)), pt(0.48, s * t_apillar(0.48)),
-                np.array([0.52, 0.80 + KDY, s * (float(ci_c(0.52)) - 0.04)]),
-                np.array([0.50, TUB_FLOOR + 0.06, s * (float(ci_c(0.50)) - 0.05)])]
-        m += tube(rail, r, n=n, mat='int:metal', samples=seg(30, q, 10))
-        # rear stay from the hoop's top back to the floor behind the rear seat
-        m += tube([pt(xh, s * 0.58), pt(-1.05, s * 0.66, 0.07), np.array([-1.30, TUB_FLOOR + 0.20, s * 0.55])], r * 0.9,
-                  n=n, mat='int:metal', samples=seg(12, q, 5))
+        # A-pillar leg: from the header corner straight down behind the pillar to the scuttle,
+        # then down the footwell to the floor
+        xa0, xa1 = A_TOP + 0.03, A_BASE - 0.10
+        a0 = behind(xa0, s * t_apillar(xa0), CAGE_R)
+        a1 = behind(xa1, s * t_apillar(xa1), CAGE_R)
+        ci1 = float(ci_c(np.clip(xa1 + 0.05, -1.42, 0.70)))
+        fw = np.array([xa1 + 0.02, TUB_FLOOR + 0.04, s * (ci1 - 0.045)])
+        corner = under(xh + 0.02, s * 0.56, rh + 0.03)
+        hc = under(A_TOP - 0.06, s * 0.57, CAGE_R + 0.03)
+        m += _cage_tube([corner, hc, a0, a1, fw], CAGE_R, q)
+        # door bar: a straight diagonal in the door below the window line
+        ci2 = float(ci_c(-0.10))
+        yb = float(crown(-0.10, gb_c(-0.10)))
+        d0 = np.array([xh + 0.03, yb - 0.10, s * (ci2 - 0.05)])
+        d1 = np.array([xa1 - 0.02, TUB_FLOOR + 0.16, s * (ci2 - 0.06)])
+        m += _cage_tube([d0, d1], CAGE_R * 0.95, q)
+        # rear stay from the hoop top back to the floor behind the rear seat
+        m += _cage_tube([top_r if s > 0 else top_l, np.array([-1.30, TUB_FLOOR + 0.20, s * 0.55])],
+                        CAGE_R * 0.95, q)
+        if q >= 0.2 and s < 0:
+            # padding where the helmet can reach: the driver's roof rail and the hoop beside the head
+            pr = np.array(bent([corner, hc], CAGE_BEND))
+            seg_ = pr[int(len(pr) * 0.15):int(len(pr) * 0.75)]
+            m += sweep(seg_, lambda i, t: ellipse(0.033, 0.033, seg(14, q, 8)), 'int:pad', cap0='flat', cap1='flat')
+            hp = np.array(bent([belt(-1), top_l, top_r], CAGE_BEND))
+            k0 = int(len(hp) * 0.08)
+            m += sweep(hp[k0:k0 + 12], lambda i, t: ellipse(0.034, 0.034, seg(14, q, 8)), 'int:pad', cap0='flat',
+                       cap1='flat')
     # diagonal across the hoop
-    m += tube([leg(xh, -1)[1], pt(xh, 0.45)], r * 0.9, n=n, mat='int:metal', samples=seg(8, q, 4))
+    m += _cage_tube([foot(-1) + [0, 0.05, 0.03], top_r - [0, 0.02, 0.04]], CAGE_R, q)
     return m
 
 
