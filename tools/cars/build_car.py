@@ -604,7 +604,8 @@ def make_key_material(key):
         road = k.smooth(0.47, 0.50, k.math('ABSOLUTE', k.math('SUBTRACT', k.math('FRACT', k.math('MULTIPLY', n, 6.0)), 0.5)))
         base = k.mix(n, srgb((0.010, 0.022, 0.040)), srgb((0.020, 0.040, 0.065)))
         col = k.mix(road, base, srgb((0.10, 0.36, 0.46)))
-        rough = 0.08
+        # anti-glare matte coating: at 0.08 the in-game sky reflection washed the screen out to grey
+        rough = 0.42
     elif key == 'int:cage':
         # powder-coated roll cage: satin dark grey
         n = k.noise(vec, 700.0, 3.0)

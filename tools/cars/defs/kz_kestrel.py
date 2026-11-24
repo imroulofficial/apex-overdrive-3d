@@ -737,6 +737,12 @@ CAGE_BEND = 0.10                # centre-line bend radius (about 2.5 x the tube 
 
 def _cage_tube(pts, r, q, mat='int:cage'):
     path = bent(pts, CAGE_BEND)
+    if q < 0.6:
+        # the outside LODs: a coarser path (the straight runs stay straight, the bends lose samples)
+        idx = list(range(0, len(path), 4))
+        if idx[-1] != len(path) - 1:
+            idx.append(len(path) - 1)
+        path = path[idx]
     n = seg(12, q, 6)
     return sweep(path, lambda i, t: ellipse(r, r, n), mat, cap0='flat', cap1='flat')
 

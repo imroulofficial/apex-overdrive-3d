@@ -2,7 +2,7 @@
  {
   "lod": "showroom",
   "file": "ag_aurelia.glb",
-  "bytes": 1703328,
+  "bytes": 1703296,
   "maxBytes": 1800000,
   "tris": 124128,
   "maxTris": 150000,
@@ -385,9 +385,9 @@
  {
   "lod": "cockpit",
   "file": "ag_aurelia_cockpit.glb",
-  "bytes": 562376,
+  "bytes": 624024,
   "maxBytes": 1500000,
-  "tris": 31892,
+  "tris": 40978,
   "maxTris": 60000,
   "materials": [
    "ClearGlass",
@@ -397,8 +397,8 @@
   ],
   "textures": [
    "Cockpit_base 1024² (71 KB)",
-   "Cockpit_orm 512² (77 KB)",
-   "Cockpit_normal 512² (67 KB)",
+   "Cockpit_orm 512² (76 KB)",
+   "Cockpit_normal 512² (68 KB)",
    "Cockpit_glow 512² (19 KB)",
    "Gauges_base 1024² (62 KB)"
   ],

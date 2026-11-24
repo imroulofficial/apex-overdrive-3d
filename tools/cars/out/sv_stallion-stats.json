@@ -2,7 +2,7 @@
  {
   "lod": "showroom",
   "file": "sv_stallion.glb",
-  "bytes": 1541492,
+  "bytes": 1542448,
   "maxBytes": 1800000,
   "tris": 118652,
   "maxTris": 150000,
@@ -30,7 +30,7 @@
    "Gauges_base 512² (29 KB)",
    "CarPaint_base 1024² (26 KB)",
    "Driver_base 512² (9 KB)",
-   "Driver_orm 512² (41 KB)",
+   "Driver_orm 512² (42 KB)",
    "Driver_normal 512² (22 KB)",
    "Rim_base 512² (27 KB)",
    "Rim_orm 512² (42 KB)",
@@ -139,7 +139,7 @@
  {
   "lod": "drive",
   "file": "sv_stallion_drive.glb",
-  "bytes": 591804,
+  "bytes": 591964,
   "maxBytes": 650000,
   "tris": 34480,
   "maxTris": 40000,
@@ -385,9 +385,9 @@
  {
   "lod": "cockpit",
   "file": "sv_stallion_cockpit.glb",
-  "bytes": 499064,
+  "bytes": 559656,
   "maxBytes": 1500000,
-  "tris": 30980,
+  "tris": 40066,
   "maxTris": 60000,
   "materials": [
    "ClearGlass",

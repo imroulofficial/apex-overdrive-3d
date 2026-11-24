@@ -1408,8 +1408,10 @@ def hands(q):
         m += g
         cb = g.cuff_end
         Lw = g.forearm
-        m += tube([cb - Lw * 0.012, cb + Lw * 0.10 - radial * 0.05 + np.array([0, -0.05, 0])], 0.034,
-                  n=seg(14, q, 8), mat='driver:jacket', samples=seg(6, q, 3), radius_fn=lambda t: lerp(1.0, 1.15, t))
+        # the jacket sleeve from over the cuff back toward the elbow (out of the cockpit view)
+        m += tube([cb - Lw * 0.014, cb + Lw * 0.12 - radial * 0.02 + np.array([0, -0.02, 0]),
+                   cb + Lw * 0.32 - radial * 0.07 + np.array([0, -0.10, 0])], 0.034,
+                  n=seg(14, q, 8), mat='driver:jacket', samples=seg(10, q, 4), radius_fn=lambda t: lerp(1.0, 1.35, t))
     return m
 
 

@@ -2,9 +2,9 @@
  {
   "lod": "showroom",
   "file": "rb_ridgeback.glb",
-  "bytes": 1563716,
+  "bytes": 1767740,
   "maxBytes": 1800000,
-  "tris": 131204,
+  "tris": 144644,
   "maxTris": 150000,
   "materials": [
    "Body",
@@ -15,29 +15,29 @@
    "Gauges",
    "taillight_lens",
    "CarPaint",
-   "Tyre",
    "Rim",
    "MirrorGlass",
-   "Driver"
+   "Driver",
+   "Tyre"
   ],
   "textures": [
-   "Body_base 2048² (70 KB)",
-   "Body_orm 1024² (163 KB)",
-   "Body_normal 1024² (142 KB)",
+   "Body_base 2048² (67 KB)",
+   "Body_orm 1024² (209 KB)",
+   "Body_normal 1024² (182 KB)",
    "Interior_base 512² (5 KB)",
-   "Interior_orm 512² (34 KB)",
-   "Interior_normal 512² (19 KB)",
+   "Interior_orm 512² (37 KB)",
+   "Interior_normal 512² (24 KB)",
    "Gauges_base 512² (29 KB)",
-   "CarPaint_base 1024² (22 KB)",
-   "Tyre_base 1024² (2 KB)",
-   "Tyre_orm 1024² (2 KB)",
-   "Tyre_normal 1024² (2 KB)",
-   "Rim_base 512² (39 KB)",
-   "Rim_orm 512² (69 KB)",
-   "Rim_normal 512² (68 KB)",
+   "CarPaint_base 1024² (16 KB)",
+   "Rim_base 512² (18 KB)",
+   "Rim_orm 512² (55 KB)",
+   "Rim_normal 512² (60 KB)",
    "Driver_base 512² (9 KB)",
-   "Driver_orm 512² (42 KB)",
-   "Driver_normal 512² (22 KB)"
+   "Driver_orm 512² (43 KB)",
+   "Driver_normal 512² (23 KB)",
+   "Tyre_base 1024² (18 KB)",
+   "Tyre_orm 1024² (52 KB)",
+   "Tyre_normal 1024² (7 KB)"
   ],
   "openEdges": 0,
   "openByMesh": {
@@ -70,32 +70,32 @@
   },
   "wheels": {
    "tyre_FL": {
-    "radius": 0.4330000170587567,
-    "roundness": 0.9962180107523869
+    "radius": 0.4430000089458679,
+    "roundness": 0.9999999536295562
    },
    "tyre_FR": {
-    "radius": 0.4330000170587567,
-    "roundness": 0.9962180107523869
+    "radius": 0.4430000089458679,
+    "roundness": 0.9999999536295562
    },
    "tyre_RL": {
-    "radius": 0.4310000138933537,
-    "roundness": 0.9963571223755461
+    "radius": 0.4410000132170643,
+    "roundness": 0.999999935426865
    },
    "tyre_RR": {
-    "radius": 0.4310000138933537,
-    "roundness": 0.9963571223755461
+    "radius": 0.4410000132170643,
+    "roundness": 0.999999935426865
    }
   },
   "bounds": {
    "min": [
     -2.4,
-    0,
-    -1.119
+    -0.01,
+    -1.235
    ],
    "max": [
     2.4,
-    1.962,
-    1.119
+    1.968,
+    1.235
    ]
   },
   "nodes": [
@@ -139,9 +139,9 @@
  {
   "lod": "drive",
   "file": "rb_ridgeback_drive.glb",
-  "bytes": 535492,
+  "bytes": 531848,
   "maxBytes": 650000,
-  "tris": 39660,
+  "tris": 39260,
   "maxTris": 40000,
   "materials": [
    "Body",
@@ -151,25 +151,25 @@
    "Interior",
    "taillight_lens",
    "CarPaint",
-   "Tyre",
    "Rim",
    "MirrorGlass",
-   "Driver"
+   "Driver",
+   "Tyre"
   ],
   "textures": [
-   "Body_base 1024² (24 KB)",
-   "Body_orm 512² (63 KB)",
-   "Body_normal 512² (45 KB)",
+   "Body_base 1024² (29 KB)",
+   "Body_orm 512² (64 KB)",
+   "Body_normal 512² (49 KB)",
    "Interior_base 256² (1 KB)",
-   "Interior_normal 256² (7 KB)",
-   "CarPaint_base 512² (12 KB)",
-   "Tyre_base 512² (1 KB)",
-   "Tyre_normal 512² (1 KB)",
-   "Rim_base 256² (8 KB)",
-   "Rim_orm 256² (17 KB)",
-   "Rim_normal 256² (4 KB)",
+   "Interior_normal 256² (8 KB)",
+   "CarPaint_base 512² (7 KB)",
+   "Rim_base 256² (4 KB)",
+   "Rim_orm 256² (14 KB)",
+   "Rim_normal 256² (2 KB)",
    "Driver_base 256² (3 KB)",
-   "Driver_normal 256² (4 KB)"
+   "Driver_normal 256² (3 KB)",
+   "Tyre_base 512² (6 KB)",
+   "Tyre_normal 512² (1 KB)"
   ],
   "openEdges": 0,
   "openByMesh": {
@@ -222,12 +222,12 @@
    "min": [
     -2.4,
     0,
-    -1.119
+    -1.235
    ],
    "max": [
     2.4,
-    1.96,
-    1.119
+    1.968,
+    1.235
    ]
   },
   "nodes": [
@@ -271,9 +271,9 @@
  {
   "lod": "race",
   "file": "rb_ridgeback_race.glb",
-  "bytes": 115112,
+  "bytes": 114704,
   "maxBytes": 330000,
-  "tris": 7848,
+  "tris": 7772,
   "maxTris": 8000,
   "materials": [
    "Body",
@@ -283,10 +283,10 @@
    "Interior",
    "taillight_lens",
    "CarPaint",
-   "Tyre",
    "Rim",
    "MirrorGlass",
-   "Driver"
+   "Driver",
+   "Tyre"
   ],
   "textures": [],
   "openEdges": 0,
@@ -336,12 +336,12 @@
    "min": [
     -2.4,
     0,
-    -1.024
+    -1.027
    ],
    "max": [
     2.4,
-    1.958,
-    1.024
+    1.968,
+    1.027
    ]
   },
   "nodes": [
@@ -385,9 +385,9 @@
  {
   "lod": "cockpit",
   "file": "rb_ridgeback_cockpit.glb",
-  "bytes": 482084,
+  "bytes": 538372,
   "maxBytes": 1500000,
-  "tris": 32084,
+  "tris": 40720,
   "maxTris": 60000,
   "materials": [
    "ClearGlass",
@@ -396,10 +396,10 @@
    "MirrorGlass"
   ],
   "textures": [
-   "Cockpit_base 1024² (33 KB)",
-   "Cockpit_orm 512² (62 KB)",
-   "Cockpit_normal 512² (53 KB)",
-   "Cockpit_glow 512² (15 KB)",
+   "Cockpit_base 1024² (30 KB)",
+   "Cockpit_orm 512² (63 KB)",
+   "Cockpit_normal 512² (54 KB)",
+   "Cockpit_glow 512² (14 KB)",
    "Gauges_base 1024² (61 KB)"
   ],
   "openEdges": 0,
@@ -414,13 +414,13 @@
   "wheels": {},
   "bounds": {
    "min": [
-    -2.18,
-    0.59,
+    -2.167,
+    0.65,
     -0.875
    ],
    "max": [
-    0.728,
-    1.862,
+    0.868,
+    1.851,
     0.875
    ]
   },

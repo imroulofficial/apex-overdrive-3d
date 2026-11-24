@@ -31,6 +31,9 @@ const CARS = {
   kz_kestrel: { id: 'kz-kestrel', eye: { x: -0.265, y: 1.225, z: -0.36 }, windows: true },
   sv_stallion: { id: 'sv-stallion', eye: { x: -0.3, y: 1.14, z: -0.375 }, windows: true },
   rb_ridgeback: { id: 'rb-ridgeback', eye: { x: -0.27, y: 1.5, z: -0.4 }, windows: true },
+  rp1_vanta: { id: 'rp1-vanta', eye: { x: -0.26, y: 1.25, z: -0.39 }, windows: true },
+  mz_monza: { id: 'mz-monza', eye: { x: -0.2, y: 1.06, z: -0.38 }, windows: true },
+  rpx_hyperion: { id: 'rpx-hyperion', eye: { x: -0.18, y: 0.9, z: -0.33 }, windows: true },
 };
 const FILE = arg('car', 'tm_tempesta');
 const CAR = CARS[FILE].id;

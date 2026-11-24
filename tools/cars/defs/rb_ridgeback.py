@@ -886,6 +886,9 @@ def glow(group, lod, P, N, valid):
     d = P - np.array([x, y, z])
     scr = (np.abs(d[..., 2]) < hw + 0.004) & (np.abs(d[..., 1]) < hh + 0.010) & (np.abs(d[..., 0]) < 0.03)
     gain = np.where(scr & valid, 1.4, gain).astype(np.float32)
+    # no floor on the screen: lifting its near-black map to the cabin floor turned it into a grey
+    # slab in game (day and night); now only its own map (roads, tiles) glows
+    floor = np.where(scr & valid, 0.0, floor).astype(np.float32)[..., None]
     return gain, floor
 
 
@@ -972,7 +975,7 @@ def livery(group, P, N, valid):
         layers = []
         xg = _mx() - 0.040 + 0.012 + 0.017
         layers.append((lv.stamp(P, N, valid, lv.text_mask('RIDGEBACK', oblique=False), (xg + 0.002, MOUTH[0] + MOUTH[2] * 0.62, 0.0),
-                                (0, 0, 1), (0, 1, 0), 0.30, facing=(1, 0, 0), min_dot=0.6, depth=0.02),
+                                (0, 0, -1), (0, 1, 0), 0.30, facing=(1, 0, 0), min_dot=0.6, depth=0.02),
                        (0.86, 0.86, 0.85), 0.3))
         p, nrm = tail_hit(1.150, -0.560)
         layers.append((lv.stamp(P, N, valid, lv.text_mask('RIDGEBACK', oblique=False), (fx(p[0]) - 0.004, 1.150, -0.560),

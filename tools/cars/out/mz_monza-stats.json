@@ -1,0 +1,449 @@
+[
+ {
+  "lod": "showroom",
+  "file": "mz_monza.glb",
+  "bytes": 1506472,
+  "maxBytes": 1800000,
+  "tris": 117104,
+  "maxTris": 150000,
+  "materials": [
+   "Body",
+   "Glass",
+   "ClearGlass",
+   "headlight_lens",
+   "Interior",
+   "Gauges",
+   "Carbon",
+   "taillight_lens",
+   "CarPaint",
+   "MirrorGlass",
+   "Driver",
+   "Rim",
+   "Tyre"
+  ],
+  "textures": [
+   "Body_base 2048² (60 KB)",
+   "Body_orm 1024² (146 KB)",
+   "Body_normal 1024² (146 KB)",
+   "Interior_base 512² (6 KB)",
+   "Interior_orm 512² (38 KB)",
+   "Interior_normal 512² (28 KB)",
+   "Gauges_base 512² (32 KB)",
+   "Carbon_weave 512² (3 KB)",
+   "Carbon_weave_normal 512² (11 KB)",
+   "Carbon_orm 512² (31 KB)",
+   "CarPaint_base 1024² (34 KB)",
+   "Driver_base 512² (8 KB)",
+   "Driver_orm 512² (38 KB)",
+   "Driver_normal 512² (21 KB)",
+   "Rim_base 512² (12 KB)",
+   "Rim_orm 512² (42 KB)",
+   "Rim_normal 512² (43 KB)",
+   "Tyre_base 1024² (11 KB)",
+   "Tyre_orm 1024² (19 KB)",
+   "Tyre_normal 1024² (3 KB)"
+  ],
+  "openEdges": 0,
+  "openByMesh": {
+   "exhaust": 0,
+   "glass": 0,
+   "headlight_lens": 0,
+   "interior": 0,
+   "taillight_lens": 0,
+   "window_L": 0,
+   "window_R": 0,
+   "body": 0,
+   "driver": 0,
+   "steering_wheel": 0,
+   "brake_disc_FL": 0,
+   "caliper_FL": 0,
+   "upright_FL": 0,
+   "brake_disc_FR": 0,
+   "caliper_FR": 0,
+   "upright_FR": 0,
+   "brake_disc_RL": 0,
+   "caliper_RL": 0,
+   "upright_RL": 0,
+   "brake_disc_RR": 0,
+   "caliper_RR": 0,
+   "upright_RR": 0,
+   "rim_FR": 0,
+   "tyre_FR": 0,
+   "rim_RR": 0,
+   "tyre_RR": 0
+  },
+  "wheels": {
+   "tyre_FL": {
+    "radius": 0.37600000647412524,
+    "roundness": 0.9898190226792192
+   },
+   "tyre_FR": {
+    "radius": 0.37600000647412524,
+    "roundness": 0.9898190226792192
+   },
+   "tyre_RL": {
+    "radius": 0.38100001215934753,
+    "roundness": 0.992162378369396
+   },
+   "tyre_RR": {
+    "radius": 0.38100001215934753,
+    "roundness": 0.992162378369396
+   }
+  },
+  "bounds": {
+   "min": [
+    -2.325,
+    0,
+    -1.047
+   ],
+   "max": [
+    2.325,
+    1.312,
+    1.047
+   ]
+  },
+  "nodes": [
+   "exhaust",
+   "glass",
+   "headlight_lens",
+   "interior",
+   "taillight_lens",
+   "window_L",
+   "window_R",
+   "body",
+   "driver",
+   "steering_wheel",
+   "brake_disc_FL",
+   "caliper_FL",
+   "upright_FL",
+   "brake_disc_FR",
+   "caliper_FR",
+   "upright_FR",
+   "brake_disc_RL",
+   "caliper_RL",
+   "upright_RL",
+   "brake_disc_RR",
+   "caliper_RR",
+   "upright_RR",
+   "rim_FL",
+   "tyre_FL",
+   "wheel_FL",
+   "rim_FR",
+   "tyre_FR",
+   "wheel_FR",
+   "rim_RL",
+   "tyre_RL",
+   "wheel_RL",
+   "rim_RR",
+   "tyre_RR",
+   "wheel_RR",
+   "mz_monza"
+  ]
+ },
+ {
+  "lod": "drive",
+  "file": "mz_monza_drive.glb",
+  "bytes": 566536,
+  "maxBytes": 650000,
+  "tris": 31388,
+  "maxTris": 40000,
+  "materials": [
+   "Body",
+   "Glass",
+   "ClearGlass",
+   "headlight_lens",
+   "Interior",
+   "Carbon",
+   "taillight_lens",
+   "CarPaint",
+   "MirrorGlass",
+   "Driver",
+   "Rim",
+   "Tyre"
+  ],
+  "textures": [
+   "Body_base 1024² (34 KB)",
+   "Body_orm 512² (65 KB)",
+   "Body_normal 512² (60 KB)",
+   "Interior_base 256² (1 KB)",
+   "Interior_normal 256² (7 KB)",
+   "Carbon_weave 512² (3 KB)",
+   "Carbon_weave_normal 512² (11 KB)",
+   "Carbon_orm 512² (33 KB)",
+   "CarPaint_base 512² (14 KB)",
+   "Driver_base 256² (3 KB)",
+   "Driver_normal 256² (5 KB)",
+   "Rim_base 256² (1 KB)",
+   "Rim_orm 256² (10 KB)",
+   "Rim_normal 256² (3 KB)",
+   "Tyre_base 512² (4 KB)",
+   "Tyre_normal 512² (1 KB)"
+  ],
+  "openEdges": 0,
+  "openByMesh": {
+   "exhaust": 0,
+   "glass": 0,
+   "headlight_lens": 0,
+   "interior": 0,
+   "taillight_lens": 0,
+   "window_L": 0,
+   "window_R": 0,
+   "body": 0,
+   "driver": 0,
+   "steering_wheel": 0,
+   "brake_disc_FL": 0,
+   "caliper_FL": 0,
+   "upright_FL": 0,
+   "brake_disc_FR": 0,
+   "caliper_FR": 0,
+   "upright_FR": 0,
+   "brake_disc_RL": 0,
+   "caliper_RL": 0,
+   "upright_RL": 0,
+   "brake_disc_RR": 0,
+   "caliper_RR": 0,
+   "upright_RR": 0,
+   "rim_FR": 0,
+   "tyre_FR": 0,
+   "rim_RR": 0,
+   "tyre_RR": 0
+  },
+  "wheels": {
+   "tyre_FL": {
+    "radius": 0.3760000126566514,
+    "roundness": 0.9989123345906059
+   },
+   "tyre_FR": {
+    "radius": 0.3760000126566514,
+    "roundness": 0.9989123345906059
+   },
+   "tyre_RL": {
+    "radius": 0.38100001215934753,
+    "roundness": 0.9976345381967552
+   },
+   "tyre_RR": {
+    "radius": 0.38100001215934753,
+    "roundness": 0.9976345381967552
+   }
+  },
+  "bounds": {
+   "min": [
+    -2.325,
+    0,
+    -1.047
+   ],
+   "max": [
+    2.325,
+    1.312,
+    1.047
+   ]
+  },
+  "nodes": [
+   "exhaust",
+   "glass",
+   "headlight_lens",
+   "interior",
+   "taillight_lens",
+   "window_L",
+   "window_R",
+   "body",
+   "driver",
+   "steering_wheel",
+   "brake_disc_FL",
+   "caliper_FL",
+   "upright_FL",
+   "brake_disc_FR",
+   "caliper_FR",
+   "upright_FR",
+   "brake_disc_RL",
+   "caliper_RL",
+   "upright_RL",
+   "brake_disc_RR",
+   "caliper_RR",
+   "upright_RR",
+   "rim_FL",
+   "tyre_FL",
+   "wheel_FL",
+   "rim_FR",
+   "tyre_FR",
+   "wheel_FR",
+   "rim_RL",
+   "tyre_RL",
+   "wheel_RL",
+   "rim_RR",
+   "tyre_RR",
+   "wheel_RR",
+   "mz_monza"
+  ]
+ },
+ {
+  "lod": "race",
+  "file": "mz_monza_race.glb",
+  "bytes": 104380,
+  "maxBytes": 330000,
+  "tris": 7030,
+  "maxTris": 8000,
+  "materials": [
+   "Body",
+   "Glass",
+   "ClearGlass",
+   "headlight_lens",
+   "Interior",
+   "taillight_lens",
+   "CarPaint",
+   "MirrorGlass",
+   "Driver",
+   "Rim",
+   "Tyre"
+  ],
+  "textures": [],
+  "openEdges": 0,
+  "openByMesh": {
+   "exhaust": 0,
+   "glass": 0,
+   "headlight_lens": 0,
+   "interior": 0,
+   "taillight_lens": 0,
+   "window_L": 0,
+   "window_R": 0,
+   "body": 0,
+   "driver": 0,
+   "steering_wheel": 0,
+   "brake_disc_FL": 0,
+   "caliper_FL": 0,
+   "brake_disc_FR": 0,
+   "caliper_FR": 0,
+   "brake_disc_RL": 0,
+   "caliper_RL": 0,
+   "brake_disc_RR": 0,
+   "caliper_RR": 0,
+   "rim_FR": 0,
+   "tyre_FR": 0,
+   "rim_RR": 0,
+   "tyre_RR": 0
+  },
+  "wheels": {
+   "tyre_FL": {
+    "radius": 0.37600000132005423,
+    "roundness": 0.9998011216295881
+   },
+   "tyre_FR": {
+    "radius": 0.37600000132005423,
+    "roundness": 0.9998011216295881
+   },
+   "tyre_RL": {
+    "radius": 0.38100001215934753,
+    "roundness": 0.9933434431988043
+   },
+   "tyre_RR": {
+    "radius": 0.38100001215934753,
+    "roundness": 0.9933434431988043
+   }
+  },
+  "bounds": {
+   "min": [
+    -2.325,
+    0,
+    -1.047
+   ],
+   "max": [
+    2.325,
+    1.299,
+    1.047
+   ]
+  },
+  "nodes": [
+   "exhaust",
+   "glass",
+   "headlight_lens",
+   "interior",
+   "taillight_lens",
+   "window_L",
+   "window_R",
+   "body",
+   "driver",
+   "steering_wheel",
+   "brake_disc_FL",
+   "caliper_FL",
+   "upright_FL",
+   "brake_disc_FR",
+   "caliper_FR",
+   "upright_FR",
+   "brake_disc_RL",
+   "caliper_RL",
+   "upright_RL",
+   "brake_disc_RR",
+   "caliper_RR",
+   "upright_RR",
+   "rim_FL",
+   "tyre_FL",
+   "wheel_FL",
+   "rim_FR",
+   "tyre_FR",
+   "wheel_FR",
+   "rim_RL",
+   "tyre_RL",
+   "wheel_RL",
+   "rim_RR",
+   "tyre_RR",
+   "wheel_RR",
+   "mz_monza"
+  ]
+ },
+ {
+  "lod": "cockpit",
+  "file": "mz_monza_cockpit.glb",
+  "bytes": 599656,
+  "maxBytes": 1500000,
+  "tris": 38934,
+  "maxTris": 60000,
+  "materials": [
+   "ClearGlass",
+   "Cockpit",
+   "Gauges",
+   "Carbon",
+   "MirrorGlass"
+  ],
+  "textures": [
+   "Cockpit_base 1024² (30 KB)",
+   "Cockpit_orm 512² (65 KB)",
+   "Cockpit_normal 512² (56 KB)",
+   "Cockpit_glow 512² (15 KB)",
+   "Gauges_base 1024² (68 KB)",
+   "Carbon_weave 512² (3 KB)",
+   "Carbon_weave_normal 512² (11 KB)",
+   "Carbon_orm 512² (39 KB)"
+  ],
+  "openEdges": 0,
+  "openByMesh": {
+   "cabin_glass": 0,
+   "cockpit_shell": 0,
+   "hands": 0,
+   "steering_wheel": 0,
+   "window_L": 0,
+   "window_R": 0
+  },
+  "wheels": {},
+  "bounds": {
+   "min": [
+    -1.015,
+    0.2,
+    -0.836
+   ],
+   "max": [
+    1.052,
+    1.286,
+    0.836
+   ]
+  },
+  "nodes": [
+   "cabin_glass",
+   "cockpit_shell",
+   "hands",
+   "steering_wheel",
+   "window_L",
+   "window_R",
+   "cockpit"
+  ]
+ }
+]
