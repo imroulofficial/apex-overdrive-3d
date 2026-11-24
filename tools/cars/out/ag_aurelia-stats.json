@@ -2,7 +2,7 @@
  {
   "lod": "showroom",
   "file": "ag_aurelia.glb",
-  "bytes": 1710184,
+  "bytes": 1703328,
   "maxBytes": 1800000,
   "tris": 124128,
   "maxTris": 150000,
@@ -21,14 +21,14 @@
    "Tyre"
   ],
   "textures": [
-   "Body_base 2048² (169 KB)",
-   "Body_orm 1024² (164 KB)",
+   "Body_base 2048² (163 KB)",
+   "Body_orm 1024² (167 KB)",
    "Body_normal 1024² (162 KB)",
    "Interior_base 512² (20 KB)",
    "Interior_orm 512² (46 KB)",
    "Interior_normal 512² (37 KB)",
    "Gauges_base 512² (28 KB)",
-   "CarPaint_base 1024² (24 KB)",
+   "CarPaint_base 1024² (21 KB)",
    "Driver_base 512² (8 KB)",
    "Driver_orm 512² (36 KB)",
    "Driver_normal 512² (19 KB)",
@@ -139,7 +139,7 @@
  {
   "lod": "drive",
   "file": "ag_aurelia_drive.glb",
-  "bytes": 572648,
+  "bytes": 586148,
   "maxBytes": 650000,
   "tris": 35456,
   "maxTris": 40000,
@@ -157,12 +157,12 @@
    "Tyre"
   ],
   "textures": [
-   "Body_base 1024² (81 KB)",
-   "Body_orm 512² (64 KB)",
-   "Body_normal 256² (22 KB)",
+   "Body_base 1024² (86 KB)",
+   "Body_orm 512² (70 KB)",
+   "Body_normal 256² (24 KB)",
    "Interior_base 256² (5 KB)",
    "Interior_normal 256² (11 KB)",
-   "CarPaint_base 512² (10 KB)",
+   "CarPaint_base 512² (9 KB)",
    "Driver_base 256² (3 KB)",
    "Driver_normal 256² (3 KB)",
    "Rim_base 256² (6 KB)",
@@ -271,7 +271,7 @@
  {
   "lod": "race",
   "file": "ag_aurelia_race.glb",
-  "bytes": 115056,
+  "bytes": 115148,
   "maxBytes": 330000,
   "tris": 7924,
   "maxTris": 8000,
@@ -385,7 +385,7 @@
  {
   "lod": "cockpit",
   "file": "ag_aurelia_cockpit.glb",
-  "bytes": 555052,
+  "bytes": 562376,
   "maxBytes": 1500000,
   "tris": 31892,
   "maxTris": 60000,
@@ -396,10 +396,10 @@
    "MirrorGlass"
   ],
   "textures": [
-   "Cockpit_base 1024² (66 KB)",
-   "Cockpit_orm 512² (76 KB)",
+   "Cockpit_base 1024² (71 KB)",
+   "Cockpit_orm 512² (77 KB)",
    "Cockpit_normal 512² (67 KB)",
-   "Cockpit_glow 512² (17 KB)",
+   "Cockpit_glow 512² (19 KB)",
    "Gauges_base 1024² (62 KB)"
   ],
   "openEdges": 0,

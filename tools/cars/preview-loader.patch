@@ -7,7 +7,7 @@ index 15b73b2..60b5e4b 100644
  // Spawns a car rig for a catalog entry at `lod` ('garage' | 'drive' | 'race'). A missing LOD
  // file falls back to the next more detailed one; a car with no loadable file at all throws.
 +// PILOT: the Blender pilot cars (assets/pilot/<file>*.glb) and their own driver-view parts.
-+const PILOT_CARS = { 'tm-tempesta': 'tm_tempesta', 'ag-aurelia': 'ag_aurelia' };
++const PILOT_CARS = { 'tm-tempesta': 'tm_tempesta', 'ag-aurelia': 'ag_aurelia', 'kz-kestrel': 'kz_kestrel', 'sv-stallion': 'sv_stallion', 'rb-ridgeback': 'rb_ridgeback' };
 +export async function loadPilotCockpit(file) {
 +  const g = await fetchGltf(resolveUrl(`assets/pilot/${file}_cockpit.glb`));
 +  globalThis.__pilotCockpit = g ? g.scene : true;

@@ -428,10 +428,27 @@ def make_key_material(key):
         base = k.mix(k.math('MULTIPLY', n, 0.4), srgb((0.030, 0.030, 0.032)), srgb((0.045, 0.045, 0.047)))
         tread = k.smooth(0.775 * th, 0.50 * th, k.math('ABSOLUTE', oy))
         base = k.mix(k.math('MULTIPLY', tread, 0.5), base, srgb((0.055, 0.054, 0.052)))
+        blocks = None
+        nb = getattr(car, 'TYRE_BLOCKS', 0)          # all-terrain / gravel tread: staggered blocks
+        if nb:
+            rt = min(car.RF, car.RR)
+            shoulder = k.math('MULTIPLY', k.smooth(0.98 * th, 0.84 * th, k.math('ABSOLUTE', oy)),
+                              k.smooth(rt - 0.050, rt - 0.030, rr))
+            lane = k.math('FLOOR', k.math('MULTIPLY', k.math('ADD', oy, th), 2.0 / th))     # 4 lanes across
+            off = k.math('MULTIPLY', k.math('FRACT', k.math('MULTIPLY', lane, 0.5)), 1.0)
+            cu = k.math('FRACT', k.math('ADD', k.math('MULTIPLY', u, float(nb)), off))
+            cv = k.math('FRACT', k.math('MULTIPLY', k.math('ADD', oy, th), 2.0 / th))
+            gu = k.math('MULTIPLY', k.smooth(0.06, 0.14, cu), k.smooth(0.94, 0.86, cu))
+            gv = k.math('MULTIPLY', k.smooth(0.04, 0.12, cv), k.smooth(0.96, 0.88, cv))
+            blocks = k.math('MULTIPLY', k.math('MULTIPLY', gu, gv), shoulder)
+            groove = k.math('SUBTRACT', shoulder, blocks)
+            base = k.mix(k.math('MULTIPLY', groove, 0.9), base, srgb((0.012, 0.012, 0.013)))
         base = k.mix(letters, base, srgb((0.62, 0.62, 0.60)))
         col = k.mix(band, base, srgb((0.80, 0.05, 0.04)))
         rough = k.mixf(tread, 0.88, 0.72)
         height = k.math('ADD', k.math('MULTIPLY', letters, 0.6), k.math('MULTIPLY', band, 0.3))
+        if blocks is not None:
+            height = k.math('ADD', height, k.math('MULTIPLY', blocks, 1.6))
     elif key == 'rim:alloy':
         # satin gunmetal, polished barrel lip
         r = k.node('ShaderNodeVectorMath', operation='LENGTH')
@@ -443,6 +460,25 @@ def make_key_material(key):
         col = k.mix(lip, srgb((0.40, 0.41, 0.43)), srgb((0.80, 0.80, 0.82)))
         rough = k.mixf(lip, 0.34, 0.16)
         metal = 1.0
+    elif key == 'rim:paint':
+        # painted cast wheel (car.RIM_PAINT), satin clear coat
+        n = k.noise(vec, 500.0, 2.0)
+        c0 = tuple(getattr(car, 'RIM_PAINT', (0.80, 0.80, 0.78)))
+        col = k.mix(k.math('MULTIPLY', n, 0.3), srgb(c0), srgb(tuple(v * 0.92 for v in c0)))
+        rough, coat = 0.32, 0.6
+    elif key == 'body:plastic':
+        # textured black plastic (flares, bumpers, cladding): matte, grained
+        n = k.noise(vec, 900.0, 4.0, 0.7)
+        col = k.mix(n, srgb((0.030, 0.030, 0.032)), srgb((0.048, 0.048, 0.050)))
+        rough = 0.78
+        height = k.math('MULTIPLY', n, 0.35)
+    elif key == 'body:steel':
+        # painted steel (bars, guards, racks): satin
+        c0 = tuple(getattr(car, 'STEEL', (0.05, 0.05, 0.055)))
+        col, rough, coat = srgb(c0), 0.42, 0.3
+    elif key == 'body:alu':
+        n = k.noise(vec, 700.0, 2.0)
+        col, rough, metal = k.mix(n, (0.62, 0.63, 0.64), (0.70, 0.71, 0.72)), 0.30, 1.0
     elif key == 'rim:wire':
         n = k.noise(vec, 400.0, 2.0)
         col, rough, metal = k.mix(n, (0.80, 0.81, 0.83), (0.88, 0.89, 0.90)), 0.10, 1.0
@@ -1107,10 +1143,19 @@ def bake_textures(b, lod):
             # (texel luminance / factoryLum), so a player's colour comes out clean.
             fac = np.array(getattr(car, 'FACTORY_PAINT', (0.62, 0.025, 0.02)))
             shade = 0.55 + 0.45 * A
+            layers = []
             if hasattr(car, 'livery'):
                 P, N, valid = livery_inputs(objs, mats, size)
-                shade = shade * car.livery('CarPaint', P, N, valid)['shade']
+                L = car.livery('CarPaint', P, N, valid)
+                shade = shade * L['shade']
+                layers = L.get('layers', [])
             lin = fac[None, None, :] * shade[..., None]
+            # coloured factory-livery layers (mask, linear rgb): the Factory Livery finish shows
+            # them; under a player's paint only their luminance against the factory colour's
+            # shows, so a colour of the factory paint's luminance leaves the player's paint clean
+            for mask, col in layers:
+                m = np.clip(mask, 0, 1)[..., None]
+                lin = lin * (1 - m) + np.asarray(col)[None, None, :] * shade[..., None] * m
             save_png(stem + '_base.png', lin, srgb_encode=True)
             files[g] = {'base': stem + '_base.png', 'factoryLum': float(lum(fac))}
             print(f'    check {g}: shade mean {shade.mean():.3f}', flush=True)

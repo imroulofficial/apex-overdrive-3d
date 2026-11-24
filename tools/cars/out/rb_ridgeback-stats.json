@@ -1,0 +1,437 @@
+[
+ {
+  "lod": "showroom",
+  "file": "rb_ridgeback.glb",
+  "bytes": 1563716,
+  "maxBytes": 1800000,
+  "tris": 131204,
+  "maxTris": 150000,
+  "materials": [
+   "Body",
+   "Glass",
+   "ClearGlass",
+   "headlight_lens",
+   "Interior",
+   "Gauges",
+   "taillight_lens",
+   "CarPaint",
+   "Tyre",
+   "Rim",
+   "MirrorGlass",
+   "Driver"
+  ],
+  "textures": [
+   "Body_base 2048² (70 KB)",
+   "Body_orm 1024² (163 KB)",
+   "Body_normal 1024² (142 KB)",
+   "Interior_base 512² (5 KB)",
+   "Interior_orm 512² (34 KB)",
+   "Interior_normal 512² (19 KB)",
+   "Gauges_base 512² (29 KB)",
+   "CarPaint_base 1024² (22 KB)",
+   "Tyre_base 1024² (2 KB)",
+   "Tyre_orm 1024² (2 KB)",
+   "Tyre_normal 1024² (2 KB)",
+   "Rim_base 512² (39 KB)",
+   "Rim_orm 512² (69 KB)",
+   "Rim_normal 512² (68 KB)",
+   "Driver_base 512² (9 KB)",
+   "Driver_orm 512² (42 KB)",
+   "Driver_normal 512² (22 KB)"
+  ],
+  "openEdges": 0,
+  "openByMesh": {
+   "exhaust": 0,
+   "glass": 0,
+   "headlight_lens": 0,
+   "interior": 0,
+   "taillight_lens": 0,
+   "window_L": 0,
+   "window_R": 0,
+   "body": 0,
+   "driver": 0,
+   "steering_wheel": 0,
+   "brake_disc_FL": 0,
+   "caliper_FL": 0,
+   "upright_FL": 0,
+   "brake_disc_FR": 0,
+   "caliper_FR": 0,
+   "upright_FR": 0,
+   "brake_disc_RL": 0,
+   "caliper_RL": 0,
+   "upright_RL": 0,
+   "brake_disc_RR": 0,
+   "caliper_RR": 0,
+   "upright_RR": 0,
+   "rim_FR": 0,
+   "tyre_FR": 0,
+   "rim_RR": 0,
+   "tyre_RR": 0
+  },
+  "wheels": {
+   "tyre_FL": {
+    "radius": 0.4330000170587567,
+    "roundness": 0.9962180107523869
+   },
+   "tyre_FR": {
+    "radius": 0.4330000170587567,
+    "roundness": 0.9962180107523869
+   },
+   "tyre_RL": {
+    "radius": 0.4310000138933537,
+    "roundness": 0.9963571223755461
+   },
+   "tyre_RR": {
+    "radius": 0.4310000138933537,
+    "roundness": 0.9963571223755461
+   }
+  },
+  "bounds": {
+   "min": [
+    -2.4,
+    0,
+    -1.119
+   ],
+   "max": [
+    2.4,
+    1.962,
+    1.119
+   ]
+  },
+  "nodes": [
+   "exhaust",
+   "glass",
+   "headlight_lens",
+   "interior",
+   "taillight_lens",
+   "window_L",
+   "window_R",
+   "body",
+   "driver",
+   "steering_wheel",
+   "brake_disc_FL",
+   "caliper_FL",
+   "upright_FL",
+   "brake_disc_FR",
+   "caliper_FR",
+   "upright_FR",
+   "brake_disc_RL",
+   "caliper_RL",
+   "upright_RL",
+   "brake_disc_RR",
+   "caliper_RR",
+   "upright_RR",
+   "rim_FL",
+   "tyre_FL",
+   "wheel_FL",
+   "rim_FR",
+   "tyre_FR",
+   "wheel_FR",
+   "rim_RL",
+   "tyre_RL",
+   "wheel_RL",
+   "rim_RR",
+   "tyre_RR",
+   "wheel_RR",
+   "rb_ridgeback"
+  ]
+ },
+ {
+  "lod": "drive",
+  "file": "rb_ridgeback_drive.glb",
+  "bytes": 535492,
+  "maxBytes": 650000,
+  "tris": 39660,
+  "maxTris": 40000,
+  "materials": [
+   "Body",
+   "Glass",
+   "ClearGlass",
+   "headlight_lens",
+   "Interior",
+   "taillight_lens",
+   "CarPaint",
+   "Tyre",
+   "Rim",
+   "MirrorGlass",
+   "Driver"
+  ],
+  "textures": [
+   "Body_base 1024² (24 KB)",
+   "Body_orm 512² (63 KB)",
+   "Body_normal 512² (45 KB)",
+   "Interior_base 256² (1 KB)",
+   "Interior_normal 256² (7 KB)",
+   "CarPaint_base 512² (12 KB)",
+   "Tyre_base 512² (1 KB)",
+   "Tyre_normal 512² (1 KB)",
+   "Rim_base 256² (8 KB)",
+   "Rim_orm 256² (17 KB)",
+   "Rim_normal 256² (4 KB)",
+   "Driver_base 256² (3 KB)",
+   "Driver_normal 256² (4 KB)"
+  ],
+  "openEdges": 0,
+  "openByMesh": {
+   "exhaust": 0,
+   "glass": 0,
+   "headlight_lens": 0,
+   "interior": 0,
+   "taillight_lens": 0,
+   "window_L": 0,
+   "window_R": 0,
+   "body": 0,
+   "driver": 0,
+   "steering_wheel": 0,
+   "brake_disc_FL": 0,
+   "caliper_FL": 0,
+   "upright_FL": 0,
+   "brake_disc_FR": 0,
+   "caliper_FR": 0,
+   "upright_FR": 0,
+   "brake_disc_RL": 0,
+   "caliper_RL": 0,
+   "upright_RL": 0,
+   "brake_disc_RR": 0,
+   "caliper_RR": 0,
+   "upright_RR": 0,
+   "rim_FR": 0,
+   "tyre_FR": 0,
+   "rim_RR": 0,
+   "tyre_RR": 0
+  },
+  "wheels": {
+   "tyre_FL": {
+    "radius": 0.4330000128398591,
+    "roundness": 0.9969467813029308
+   },
+   "tyre_FR": {
+    "radius": 0.4330000128398591,
+    "roundness": 0.9969467813029308
+   },
+   "tyre_RL": {
+    "radius": 0.43100000946190636,
+    "roundness": 0.9970628352729234
+   },
+   "tyre_RR": {
+    "radius": 0.43100000946190636,
+    "roundness": 0.9970628352729234
+   }
+  },
+  "bounds": {
+   "min": [
+    -2.4,
+    0,
+    -1.119
+   ],
+   "max": [
+    2.4,
+    1.96,
+    1.119
+   ]
+  },
+  "nodes": [
+   "exhaust",
+   "glass",
+   "headlight_lens",
+   "interior",
+   "taillight_lens",
+   "window_L",
+   "window_R",
+   "body",
+   "driver",
+   "steering_wheel",
+   "brake_disc_FL",
+   "caliper_FL",
+   "upright_FL",
+   "brake_disc_FR",
+   "caliper_FR",
+   "upright_FR",
+   "brake_disc_RL",
+   "caliper_RL",
+   "upright_RL",
+   "brake_disc_RR",
+   "caliper_RR",
+   "upright_RR",
+   "rim_FL",
+   "tyre_FL",
+   "wheel_FL",
+   "rim_FR",
+   "tyre_FR",
+   "wheel_FR",
+   "rim_RL",
+   "tyre_RL",
+   "wheel_RL",
+   "rim_RR",
+   "tyre_RR",
+   "wheel_RR",
+   "rb_ridgeback"
+  ]
+ },
+ {
+  "lod": "race",
+  "file": "rb_ridgeback_race.glb",
+  "bytes": 115112,
+  "maxBytes": 330000,
+  "tris": 7848,
+  "maxTris": 8000,
+  "materials": [
+   "Body",
+   "Glass",
+   "ClearGlass",
+   "headlight_lens",
+   "Interior",
+   "taillight_lens",
+   "CarPaint",
+   "Tyre",
+   "Rim",
+   "MirrorGlass",
+   "Driver"
+  ],
+  "textures": [],
+  "openEdges": 0,
+  "openByMesh": {
+   "exhaust": 0,
+   "glass": 0,
+   "headlight_lens": 0,
+   "interior": 0,
+   "taillight_lens": 0,
+   "window_L": 0,
+   "window_R": 0,
+   "body": 0,
+   "driver": 0,
+   "steering_wheel": 0,
+   "brake_disc_FL": 0,
+   "caliper_FL": 0,
+   "brake_disc_FR": 0,
+   "caliper_FR": 0,
+   "brake_disc_RL": 0,
+   "caliper_RL": 0,
+   "brake_disc_RR": 0,
+   "caliper_RR": 0,
+   "rim_FR": 0,
+   "tyre_FR": 0,
+   "rim_RR": 0,
+   "tyre_RR": 0
+  },
+  "wheels": {
+   "tyre_FL": {
+    "radius": 0.4330000128398591,
+    "roundness": 0.998717630245705
+   },
+   "tyre_FR": {
+    "radius": 0.4330000128398591,
+    "roundness": 0.998717630245705
+   },
+   "tyre_RL": {
+    "radius": 0.4309999986699421,
+    "roundness": 0.9987882773462086
+   },
+   "tyre_RR": {
+    "radius": 0.4309999986699421,
+    "roundness": 0.9987882773462086
+   }
+  },
+  "bounds": {
+   "min": [
+    -2.4,
+    0,
+    -1.024
+   ],
+   "max": [
+    2.4,
+    1.958,
+    1.024
+   ]
+  },
+  "nodes": [
+   "exhaust",
+   "glass",
+   "headlight_lens",
+   "interior",
+   "taillight_lens",
+   "window_L",
+   "window_R",
+   "body",
+   "driver",
+   "steering_wheel",
+   "brake_disc_FL",
+   "caliper_FL",
+   "upright_FL",
+   "brake_disc_FR",
+   "caliper_FR",
+   "upright_FR",
+   "brake_disc_RL",
+   "caliper_RL",
+   "upright_RL",
+   "brake_disc_RR",
+   "caliper_RR",
+   "upright_RR",
+   "rim_FL",
+   "tyre_FL",
+   "wheel_FL",
+   "rim_FR",
+   "tyre_FR",
+   "wheel_FR",
+   "rim_RL",
+   "tyre_RL",
+   "wheel_RL",
+   "rim_RR",
+   "tyre_RR",
+   "wheel_RR",
+   "rb_ridgeback"
+  ]
+ },
+ {
+  "lod": "cockpit",
+  "file": "rb_ridgeback_cockpit.glb",
+  "bytes": 482084,
+  "maxBytes": 1500000,
+  "tris": 32084,
+  "maxTris": 60000,
+  "materials": [
+   "ClearGlass",
+   "Cockpit",
+   "Gauges",
+   "MirrorGlass"
+  ],
+  "textures": [
+   "Cockpit_base 1024² (33 KB)",
+   "Cockpit_orm 512² (62 KB)",
+   "Cockpit_normal 512² (53 KB)",
+   "Cockpit_glow 512² (15 KB)",
+   "Gauges_base 1024² (61 KB)"
+  ],
+  "openEdges": 0,
+  "openByMesh": {
+   "cabin_glass": 0,
+   "cockpit_shell": 0,
+   "hands": 0,
+   "steering_wheel": 0,
+   "window_L": 0,
+   "window_R": 0
+  },
+  "wheels": {},
+  "bounds": {
+   "min": [
+    -2.18,
+    0.59,
+    -0.875
+   ],
+   "max": [
+    0.728,
+    1.862,
+    0.875
+   ]
+  },
+  "nodes": [
+   "cabin_glass",
+   "cockpit_shell",
+   "hands",
+   "steering_wheel",
+   "window_L",
+   "window_R",
+   "cockpit"
+  ]
+ }
+]

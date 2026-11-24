@@ -1,0 +1,437 @@
+[
+ {
+  "lod": "showroom",
+  "file": "sv_stallion.glb",
+  "bytes": 1541492,
+  "maxBytes": 1800000,
+  "tris": 118652,
+  "maxTris": 150000,
+  "materials": [
+   "Body",
+   "Glass",
+   "ClearGlass",
+   "headlight_lens",
+   "Interior",
+   "Gauges",
+   "taillight_lens",
+   "CarPaint",
+   "MirrorGlass",
+   "Driver",
+   "Rim",
+   "Tyre"
+  ],
+  "textures": [
+   "Body_base 2048² (124 KB)",
+   "Body_orm 1024² (162 KB)",
+   "Body_normal 1024² (148 KB)",
+   "Interior_base 512² (9 KB)",
+   "Interior_orm 512² (38 KB)",
+   "Interior_normal 512² (25 KB)",
+   "Gauges_base 512² (29 KB)",
+   "CarPaint_base 1024² (26 KB)",
+   "Driver_base 512² (9 KB)",
+   "Driver_orm 512² (41 KB)",
+   "Driver_normal 512² (22 KB)",
+   "Rim_base 512² (27 KB)",
+   "Rim_orm 512² (42 KB)",
+   "Rim_normal 512² (38 KB)",
+   "Tyre_base 1024² (12 KB)",
+   "Tyre_orm 1024² (18 KB)",
+   "Tyre_normal 1024² (4 KB)"
+  ],
+  "openEdges": 0,
+  "openByMesh": {
+   "exhaust": 0,
+   "glass": 0,
+   "headlight_lens": 0,
+   "interior": 0,
+   "taillight_lens": 0,
+   "window_L": 0,
+   "window_R": 0,
+   "body": 0,
+   "driver": 0,
+   "steering_wheel": 0,
+   "brake_disc_FL": 0,
+   "caliper_FL": 0,
+   "upright_FL": 0,
+   "brake_disc_FR": 0,
+   "caliper_FR": 0,
+   "upright_FR": 0,
+   "brake_disc_RL": 0,
+   "caliper_RL": 0,
+   "upright_RL": 0,
+   "brake_disc_RR": 0,
+   "caliper_RR": 0,
+   "upright_RR": 0,
+   "rim_FR": 0,
+   "tyre_FR": 0,
+   "rim_RR": 0,
+   "tyre_RR": 0
+  },
+  "wheels": {
+   "tyre_FL": {
+    "radius": 0.36600001127306053,
+    "roundness": 0.9900902430363832
+   },
+   "tyre_FR": {
+    "radius": 0.36600001127306053,
+    "roundness": 0.9900902430363832
+   },
+   "tyre_RL": {
+    "radius": 0.36400001010800703,
+    "roundness": 0.9905523866217044
+   },
+   "tyre_RR": {
+    "radius": 0.36400001010800703,
+    "roundness": 0.9905523866217044
+   }
+  },
+  "bounds": {
+   "min": [
+    -2.375,
+    0,
+    -0.984
+   ],
+   "max": [
+    2.375,
+    1.366,
+    0.984
+   ]
+  },
+  "nodes": [
+   "exhaust",
+   "glass",
+   "headlight_lens",
+   "interior",
+   "taillight_lens",
+   "window_L",
+   "window_R",
+   "body",
+   "driver",
+   "steering_wheel",
+   "brake_disc_FL",
+   "caliper_FL",
+   "upright_FL",
+   "brake_disc_FR",
+   "caliper_FR",
+   "upright_FR",
+   "brake_disc_RL",
+   "caliper_RL",
+   "upright_RL",
+   "brake_disc_RR",
+   "caliper_RR",
+   "upright_RR",
+   "rim_FL",
+   "tyre_FL",
+   "wheel_FL",
+   "rim_FR",
+   "tyre_FR",
+   "wheel_FR",
+   "rim_RL",
+   "tyre_RL",
+   "wheel_RL",
+   "rim_RR",
+   "tyre_RR",
+   "wheel_RR",
+   "sv_stallion"
+  ]
+ },
+ {
+  "lod": "drive",
+  "file": "sv_stallion_drive.glb",
+  "bytes": 591804,
+  "maxBytes": 650000,
+  "tris": 34480,
+  "maxTris": 40000,
+  "materials": [
+   "Body",
+   "Glass",
+   "ClearGlass",
+   "headlight_lens",
+   "Interior",
+   "taillight_lens",
+   "CarPaint",
+   "MirrorGlass",
+   "Driver",
+   "Rim",
+   "Tyre"
+  ],
+  "textures": [
+   "Body_base 1024² (74 KB)",
+   "Body_orm 512² (68 KB)",
+   "Body_normal 512² (60 KB)",
+   "Interior_base 256² (2 KB)",
+   "Interior_normal 256² (9 KB)",
+   "CarPaint_base 512² (10 KB)",
+   "Driver_base 256² (3 KB)",
+   "Driver_normal 256² (4 KB)",
+   "Rim_base 256² (4 KB)",
+   "Rim_orm 256² (11 KB)",
+   "Rim_normal 256² (3 KB)",
+   "Tyre_base 512² (5 KB)",
+   "Tyre_normal 512² (1 KB)"
+  ],
+  "openEdges": 0,
+  "openByMesh": {
+   "exhaust": 0,
+   "glass": 0,
+   "headlight_lens": 0,
+   "interior": 0,
+   "taillight_lens": 0,
+   "window_L": 0,
+   "window_R": 0,
+   "body": 0,
+   "driver": 0,
+   "steering_wheel": 0,
+   "brake_disc_FL": 0,
+   "caliper_FL": 0,
+   "upright_FL": 0,
+   "brake_disc_FR": 0,
+   "caliper_FR": 0,
+   "upright_FR": 0,
+   "brake_disc_RL": 0,
+   "caliper_RL": 0,
+   "upright_RL": 0,
+   "brake_disc_RR": 0,
+   "caliper_RR": 0,
+   "upright_RR": 0,
+   "rim_FR": 0,
+   "tyre_FR": 0,
+   "rim_RR": 0,
+   "tyre_RR": 0
+  },
+  "wheels": {
+   "tyre_FL": {
+    "radius": 0.3660000152033943,
+    "roundness": 0.9995901267114748
+   },
+   "tyre_FR": {
+    "radius": 0.3660000152033943,
+    "roundness": 0.9995901267114748
+   },
+   "tyre_RL": {
+    "radius": 0.3640000095569042,
+    "roundness": 0.9989208971748843
+   },
+   "tyre_RR": {
+    "radius": 0.3640000095569042,
+    "roundness": 0.9989208971748843
+   }
+  },
+  "bounds": {
+   "min": [
+    -2.375,
+    0,
+    -0.984
+   ],
+   "max": [
+    2.375,
+    1.366,
+    0.984
+   ]
+  },
+  "nodes": [
+   "exhaust",
+   "glass",
+   "headlight_lens",
+   "interior",
+   "taillight_lens",
+   "window_L",
+   "window_R",
+   "body",
+   "driver",
+   "steering_wheel",
+   "brake_disc_FL",
+   "caliper_FL",
+   "upright_FL",
+   "brake_disc_FR",
+   "caliper_FR",
+   "upright_FR",
+   "brake_disc_RL",
+   "caliper_RL",
+   "upright_RL",
+   "brake_disc_RR",
+   "caliper_RR",
+   "upright_RR",
+   "rim_FL",
+   "tyre_FL",
+   "wheel_FL",
+   "rim_FR",
+   "tyre_FR",
+   "wheel_FR",
+   "rim_RL",
+   "tyre_RL",
+   "wheel_RL",
+   "rim_RR",
+   "tyre_RR",
+   "wheel_RR",
+   "sv_stallion"
+  ]
+ },
+ {
+  "lod": "race",
+  "file": "sv_stallion_race.glb",
+  "bytes": 113964,
+  "maxBytes": 330000,
+  "tris": 7986,
+  "maxTris": 8000,
+  "materials": [
+   "Body",
+   "Glass",
+   "ClearGlass",
+   "headlight_lens",
+   "Interior",
+   "taillight_lens",
+   "CarPaint",
+   "MirrorGlass",
+   "Driver",
+   "Rim",
+   "Tyre"
+  ],
+  "textures": [],
+  "openEdges": 0,
+  "openByMesh": {
+   "exhaust": 0,
+   "glass": 0,
+   "headlight_lens": 0,
+   "interior": 0,
+   "taillight_lens": 0,
+   "window_L": 0,
+   "window_R": 0,
+   "body": 0,
+   "driver": 0,
+   "steering_wheel": 0,
+   "brake_disc_FL": 0,
+   "caliper_FL": 0,
+   "brake_disc_FR": 0,
+   "caliper_FR": 0,
+   "brake_disc_RL": 0,
+   "caliper_RL": 0,
+   "brake_disc_RR": 0,
+   "caliper_RR": 0,
+   "rim_FR": 0,
+   "tyre_FR": 0,
+   "rim_RR": 0,
+   "tyre_RR": 0
+  },
+  "wheels": {
+   "tyre_FL": {
+    "radius": 0.36600001241310465,
+    "roundness": 0.9999564022949942
+   },
+   "tyre_FR": {
+    "radius": 0.36600001241310465,
+    "roundness": 0.9999564022949942
+   },
+   "tyre_RL": {
+    "radius": 0.3639999982431876,
+    "roundness": 0.9999647853672645
+   },
+   "tyre_RR": {
+    "radius": 0.3639999982431876,
+    "roundness": 0.9999647853672645
+   }
+  },
+  "bounds": {
+   "min": [
+    -2.375,
+    0,
+    -0.981
+   ],
+   "max": [
+    2.375,
+    1.352,
+    0.981
+   ]
+  },
+  "nodes": [
+   "exhaust",
+   "glass",
+   "headlight_lens",
+   "interior",
+   "taillight_lens",
+   "window_L",
+   "window_R",
+   "body",
+   "driver",
+   "steering_wheel",
+   "brake_disc_FL",
+   "caliper_FL",
+   "upright_FL",
+   "brake_disc_FR",
+   "caliper_FR",
+   "upright_FR",
+   "brake_disc_RL",
+   "caliper_RL",
+   "upright_RL",
+   "brake_disc_RR",
+   "caliper_RR",
+   "upright_RR",
+   "rim_FL",
+   "tyre_FL",
+   "wheel_FL",
+   "rim_FR",
+   "tyre_FR",
+   "wheel_FR",
+   "rim_RL",
+   "tyre_RL",
+   "wheel_RL",
+   "rim_RR",
+   "tyre_RR",
+   "wheel_RR",
+   "sv_stallion"
+  ]
+ },
+ {
+  "lod": "cockpit",
+  "file": "sv_stallion_cockpit.glb",
+  "bytes": 499064,
+  "maxBytes": 1500000,
+  "tris": 30980,
+  "maxTris": 60000,
+  "materials": [
+   "ClearGlass",
+   "Cockpit",
+   "Gauges",
+   "MirrorGlass"
+  ],
+  "textures": [
+   "Cockpit_base 1024² (38 KB)",
+   "Cockpit_orm 512² (68 KB)",
+   "Cockpit_normal 512² (60 KB)",
+   "Cockpit_glow 512² (17 KB)",
+   "Gauges_base 1024² (62 KB)"
+  ],
+  "openEdges": 0,
+  "openByMesh": {
+   "cabin_glass": 0,
+   "cockpit_shell": 0,
+   "hands": 0,
+   "steering_wheel": 0,
+   "window_L": 0,
+   "window_R": 0
+  },
+  "wheels": {},
+  "bounds": {
+   "min": [
+    -1.48,
+    0.24,
+    -0.853
+   ],
+   "max": [
+    0.671,
+    1.34,
+    0.853
+   ]
+  },
+  "nodes": [
+   "cabin_glass",
+   "cockpit_shell",
+   "hands",
+   "steering_wheel",
+   "window_L",
+   "window_R",
+   "cockpit"
+  ]
+ }
+]

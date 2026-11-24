@@ -59,8 +59,9 @@ TYRE_WORDS = ['APEX OVERDRIVE', 'AURELIA GT', 'APEX OVERDRIVE', 'AURELIA GT']
 TYRE_HW = WF / 2
 TYRE_BAND = None
 TYRE_TEXT_R = (0.070, 0.024)
+TYRE_NP_MIN = 12                # fewest tyre profile points (the rival LOD)
 LIVERY_GROUPS = ('Body',)
-GLOVE = (0.20, 0.105, 0.050)          # tan leather driving gloves (the fingers read against the dark rim)
+GLOVE = (0.36, 0.20, 0.095)           # light tan leather driving gloves: read against the dark rim by day and night
 HEADLINER = (0.055, 0.055, 0.058)      # charcoal headliner: neutral under any sky / ground light
 METAL = (0.70, 0.70, 0.71)             # brushed aluminium spokes and trims
 METAL_RM = (0.34, 0.55)                # half-metal satin: a neutral grey, not a mirror of the verges
@@ -159,6 +160,11 @@ def bulge_w(x):
     return float(window(x, 0.76, 1.84, 0.26))
 
 
+def crown_e(x):
+    """Crown exponent: how square the body top turns down into the shoulder."""
+    return 3.0 - 0.6 * smoothstep(-1.70, -2.20, x)
+
+
 def crown(x, z):
     """Body top surface height at (x, z) (inboard of the shoulder crease): flat across the bonnet
     and the deck, turning down tighter near the shoulder, plus the bonnet's power bulge."""
@@ -166,7 +172,7 @@ def crown(x, z):
     ys, yt = ysh_c(x), top_c(x)
     az = np.abs(np.asarray(z, dtype=np.float64))
     u = np.clip(az / hs, 0, 1)
-    e = 3.0 - 0.6 * smoothstep(-1.70, -2.20, x)
+    e = crown_e(x)
     plateau = smoothstep(ROW_Z[2], ROW_Z[1], az)
     return ys + (yt - ys) * (1 - u ** e) + BULGE * np.vectorize(bulge_w)(x) * plateau
 
@@ -181,6 +187,8 @@ def gb_c(x):
                         (-1.45, 0.612), (-1.66, 0.520)])(x))
 
 
+ROW_IN = (0.085, 0.036, 0.010)  # how far the underside edge, rocker and lower side tuck in from the widest row
+SIDE_CREASE = 0.0               # crease on the widest row (a swage line along the side); 0: none
 NR = 13                         # cage rows per side
 NRING = 2 * NR                  # no vertex on the centre line: the centre is an edge, top and bottom
 
@@ -203,7 +211,8 @@ def cage_half(x):
     hs = hw - float(shd_c(x))
     y4 = yb + 0.42 * (ymx - yb)
     y6 = ymx + 0.62 * (ys - ymx)
-    rows = [(0.22, yb), (ZWELL, yb), (hw - 0.085, yb + 0.003), (hw - 0.036, yb + 0.050), (hw - 0.010, y4), (hw, ymx),
+    rows = [(0.22, yb), (ZWELL, yb), (hw - ROW_IN[0], yb + 0.003), (hw - ROW_IN[1], yb + 0.050), (hw - ROW_IN[2], y4),
+            (hw, ymx),
             (hs + 0.5 * (hw - hs), y6), (hs, ys)]
     for z in (hs - 0.040, 0.66 * hs, ROW_Z[2], ROW_Z[1], ROW_Z[0]):
         rows.append((z, float(crown(x, z))))
@@ -236,12 +245,16 @@ def cage_half(x):
     return np.array(rows)
 
 
+STATION_XS = (-2.24, -2.15, -2.04, -1.90, -1.76, -1.62, -0.45, -0.22, 0.0, 0.22, 0.44, 0.62, 0.78, 1.98, 2.08)
+ARCH_F = (-1.0, -0.90, -0.68, -0.36, 0.0, 0.36, 0.68, 0.90, 1.0)   # stations across each arch (x ra)
+
+
 def cage_stations():
     """x stations tail -> nose: support stations round each arch, the arch ends and stations
     across the arch, the cabin tub's ends, and the rest spread evenly."""
-    xs = [-2.24, -2.15, -2.04, -1.90, -1.76, -1.62, -0.45, -0.22, 0.0, 0.22, 0.44, 0.62, 0.78, 1.98, 2.08, FACE_X]
+    xs = list(STATION_XS) + [FACE_X]
     for xc, yc, ra in ARCH:
-        for f in (-1.0, -0.90, -0.68, -0.36, 0.0, 0.36, 0.68, 0.90, 1.0):
+        for f in ARCH_F:
             xs.append(xc + f * ra)
         xs += [xc - ra - 0.07, xc + ra + 0.07]
     xs += [CABIN[0], CABIN[0] - 0.035, CABIN[1], CABIN[1] + 0.035]
@@ -321,6 +334,7 @@ def _ladder(base, flip):
 
 
 _CAGE = {}
+TAIL_TURN = (0.040, 0.88)       # tail panel's turn-in: depth, scale of the closing ring
 
 
 def body_cage():
@@ -339,8 +353,8 @@ def body_cage():
     # tail: the boot lid's lip, then the tail panel turning in under it
     first = rings[0]
     c = np.array([first[:, 0].mean(), 0.5 * (first[:, 1].min() + first[:, 1].max()), 0.0])
-    t1 = c + (first - c) * [0, 0.88, 0.88]
-    t1[:, 0] = first[:, 0] - 0.040
+    t1 = c + (first - c) * [0, TAIL_TURN[1], TAIL_TURN[1]]
+    t1[:, 0] = first[:, 0] - TAIL_TURN[0]
     allr = [t1] + rings + face
     V = np.vstack(allr)
     nr = len(allr)
@@ -418,6 +432,8 @@ def body_cage():
     for si in range(ns - 1):
         i, x0, x1 = i0 + si, xs[si], xs[si + 1]
         both(i, i + 1, 7, 0.85)                                     # shoulder line
+        if SIDE_CREASE and not (arch_at(x0) is not None and arch_at(x1) is not None):
+            both(i, i + 1, 5, SIDE_CREASE)                          # swage line along the side
         a0, a1 = arch_at(x0), arch_at(x1)
         if a0 is not None and a1 is not None and a0[0] == a1[0]:
             both(i, i + 1, 4, 1.0)                                  # arch lip
@@ -510,6 +526,11 @@ C_TOP, C_BASE = -0.820, -1.130  # C line (quarter glass rear edge) from the cant
 RW = (-1.585, -0.960, 0.335)    # rear window: base x, top x, half width in t
 
 
+CANT_K, TUMBLE = 0.78, 0.55     # cant rail height (share of belt -> roof), side glass lean in (m per m)
+ROOF_E, ROOF_ZE = 0.80, 1.0     # roof section exponents (smaller ROOF_E: flatter roof, tighter cant)
+SIDE_BOW = 0.012                # outward bow of the side glass
+
+
 def canopy(x, t):
     """Canopy point(s) at x, t (arrays broadcast); right side for t >= 0, left for t < 0."""
     x = np.asarray(x, dtype=np.float64)
@@ -517,14 +538,14 @@ def canopy(x, t):
     gb = np.vectorize(gb_c)(np.clip(x, GH_X[0], GH_X[1]))
     yB = crown(x, gb)
     yr = yr_c(x)
-    yk = yB + 0.78 * (yr - yB)
-    gk = gb - 0.55 * (yk - yB)
+    yk = yB + CANT_K * (yr - yB)
+    gk = gb - TUMBLE * (yk - yB)
     at = np.abs(t)
     th = np.clip(at / T_CANT, 0, 1) * math.pi / 2
-    roof_z = gk * np.sin(th)
-    roof_y = yk + (yr - yk) * np.cos(th) ** 0.80
+    roof_z = gk * np.sin(th) ** ROOF_ZE
+    roof_y = yk + (yr - yk) * np.cos(th) ** ROOF_E
     sv = (at - T_CANT) / (1 - T_CANT)            # 0 at the cant, 1 at the belt, > 1 below it
-    side_z = gk + (gb - gk) * sv + 0.012 * np.sin(np.clip(sv, 0, 1) * math.pi)
+    side_z = gk + (gb - gk) * sv + SIDE_BOW * np.sin(np.clip(sv, 0, 1) * math.pi)
     side_y = yk + (yB - yk) * sv
     z = np.where(at <= T_CANT, roof_z, side_z) * np.sign(t + 1e-12)
     y = np.where(at <= T_CANT, roof_y, side_y)
@@ -567,6 +588,10 @@ def panel(xr, tr, nu, nv, thick, mat, inset=0.0, side=1, side_mat=None):
     return patch_slab(fn, nu, nv, thick, mat=mat, side_mat=side_mat or mat)
 
 
+B_MAT = 'body:chrome'           # B-pillar post finish
+TRIM_MAT = 'body:chrome'        # window frames and belt mouldings
+
+
 def greenhouse(q):
     """Painted roof, pillars and sails, chrome B-pillars (body)."""
     m = Mesh()
@@ -575,19 +600,20 @@ def greenhouse(q):
     for s in (-1, 1):
         # A-pillar: a strip round the pillar line, from the header corner to the scuttle
         m += panel((A_TOP - 0.03, A_BASE + 0.008), lambda x: (t_apillar(x) - 0.024, np.minimum(1.04, t_apillar(x) + 0.040)),
-                   seg(22, q, 5), seg(4, q, 2), 0.020, 'paint', side=s)
+                   seg(22, q, 5), seg(4, q, 2), 0.020, 'paint', side=s, side_mat='body:rubber')
         # cant rail over the door and the quarter glass
-        m += panel((C_TOP - 0.02, A_TOP), (0.57, 0.615), seg(26, q, 5), 2, 0.018, 'paint', side=s)
+        m += panel((C_TOP - 0.02, A_TOP), (0.57, 0.615), seg(26, q, 5), 2, 0.018, 'paint', side=s,
+                   side_mat='body:rubber')
         # sail (C-pillar) from the C line back to the rear window and down to the deck
         m += panel((GH_X[0] - 0.005, C_TOP + 0.02),
                    lambda x: (np.where(x < RW[1] + 0.012, RW[2] - 0.030, 0.598), np.where(x > C_BASE, np.clip(t_cline(x) + 0.035, 0.60, 1.08), 1.08)),
                    seg(24, q, 5), seg(10, q, 3), 0.022, 'paint', side=s)
         # B-pillar: a slim chrome post between the door glass and the quarter glass
-        m += panel((B_X - 0.018, B_X + 0.012), (0.585, 1.01), 2, seg(8, q, 3), 0.016, 'body:chrome', inset=-0.002,
+        m += panel((B_X - 0.018, B_X + 0.012), (0.585, 1.01), 2, seg(8, q, 3), 0.016, B_MAT, inset=-0.002,
                    side=s)
     # header rail over the windscreen and the scuttle panel under it
     m += panel((A_TOP - 0.006, A_TOP + 0.034), lambda x: (-t_apillar(x) + 0.02, t_apillar(x) - 0.02), 2, seg(20, q, 6),
-               0.018, 'paint')
+               0.018, 'paint', side_mat='body:rubber')
     return m
 
 
@@ -611,12 +637,15 @@ def door_glass(q, s, key='glass'):
                  seg(20, q, 4), seg(10, q, 3), 0.006, key, inset=0.012, side=s)
 
 
+WIN_X = -0.05                   # station the window's drop is measured at
+
+
 def window_open(s):
     """Open pose of a door window (side s) as a 4x4 car-frame matrix applied to its node: the
     glass first turns about the belt line until it stands upright (it leans in with the
     tumblehome when closed), then drops straight down into the door between the outer skin and
     the door card, its top edge just under the belt moulding."""
-    x = -0.05
+    x = WIN_X
     P0, P1, Pb = canopy(x, s * 0.585), canopy(x, s * 1.12), canopy(x, s * 1.0)
     d = P0 - Pb                                   # belt -> top edge
     th = math.atan2(-d[2], d[1])                  # turn that brings the top edge over the belt
@@ -632,7 +661,7 @@ def window_open(s):
 def window_travel(s):
     """Open position of a door window (translation of its node): down along the glass's own
     tumblehome by the height of the opening."""
-    x = -0.05
+    x = WIN_X
     a, b = canopy(x, s * 0.585), canopy(x, s * 1.12)
     d = b - a
     h = abs(float(canopy(x, s * 1.0)[1] - canopy(x, s * 0.585)[1]))
@@ -646,7 +675,8 @@ def window_trims(q):
     n = seg(6, q, 4) if q >= 0.2 else 3
     sam = lambda L: max(4 if q >= 0.2 else 3, int(L / 0.05 * q) + 3)
 
-    def along(pts, r, mat='body:chrome'):
+    def along(pts, r, mat=None):
+        mat = mat or TRIM_MAT
         P = np.asarray(pts)
         L = float(np.sum(np.linalg.norm(np.diff(P, axis=0), axis=1)))
         return tube(P, r, n=n, mat=mat, samples=sam(L), cap='dome' if q >= 0.2 else 'fan')
@@ -1127,7 +1157,7 @@ def tyre(R, W, q):
            (R, hw - 0.040), (R - 0.008, hw - 0.020), (R - 0.030, hw - 0.006), (bulge + 0.04, hw + 0.004),
            (bulge - 0.04, hw + 0.004), (rb + 0.010, hw - 0.008), (rb, hb), (RIM_R - 0.006, hb - 0.008),
            (RIM_R - 0.006, -hb + 0.008)]
-    np_ = max(12, even(int(round(32 * q))))
+    np_ = max(TYRE_NP_MIN, even(int(round(32 * q))))
     prof = catmull(pts, np_, closed=True)
     rmax = prof[:, 0].max()
     prof[:, 0] = rb + (prof[:, 0] - rb) * (R - rb) / (rmax - rb)
@@ -1565,7 +1595,7 @@ def pillar_trims(q):
     m += panel((C_TOP + 0.02, A_TOP + 0.05), (-0.625, 0.625), seg(26, q, 6), seg(16, q, 4), 0.006, 'int:headliner',
                inset=0.026)
     for s in (-1, 1):
-        m += panel((A_TOP - 0.02, A_BASE), lambda x: (t_apillar(x) - 0.026, np.minimum(1.03, t_apillar(x) + 0.046)),
+        m += panel((A_TOP - 0.02, A_BASE), lambda x: (t_apillar(x) - 0.034, np.minimum(1.03, t_apillar(x) + 0.046)),
                    seg(22, q, 5), seg(4, q, 2), 0.008, 'int:headliner', inset=0.024, side=s)
         m += panel((GH_X[0] + 0.03, C_TOP + 0.03),
                    lambda x: (RW[2] - 0.020, np.where(x > C_BASE, np.clip(t_cline(x) + 0.030, 0.60, 1.06), 1.06)),
@@ -1612,6 +1642,11 @@ def glow(group, lod, P, N, valid):
     r = np.linalg.norm(d, axis=-1)
     facing = np.clip(np.sum(N * -d / np.maximum(r, 1e-6)[..., None], -1) * 0.6 + 0.4, 0, 1)
     pool = 0.55 * facing / (1.0 + (r / 0.22) ** 2)
+    for s in (-1, 1):
+        # the gloves catch the instrument light: a soft pool round each hand
+        h = sw_to_car((0.0, WHEEL_R * math.sin(math.radians(40)), s * WHEEL_R * math.cos(math.radians(40))))
+        rh = np.linalg.norm(P - h, axis=-1)
+        pool = pool + 0.45 / (1.0 + (rh / 0.07) ** 2)
     gain = (0.10 + pool) * valid
     return gain.astype(np.float32), 0.10
 
@@ -1785,25 +1820,29 @@ def _pose(M):
                      'quaternion': [round(float(v), 5) for v in (qx, qy, qz, w)]}}
 
 
-META = {
-    'id': ID, 'length': LENGTH, 'wheelbase': XF - XR,
-    'axles': {'front': XF, 'rear': XR},
-    'wheelRadius': {'front': RF, 'rear': RR},
-    'halfTrack': {'front': TF, 'rear': TR},
-    'tyreWidth': {'front': WF, 'rear': WR},
-    'eye': list(EYE),
-    'steeringWheel': {'centre': list(WHEEL_CENTRE), 'axis': 'local +x (column, toward the nose)', 'tiltDeg': 28},
-    'windows': {
-        'window_L': _pose(window_open(-1)),
-        'window_R': _pose(window_open(1)),
-        'note': 'open pose of the node in the car frame (closed = identity): position (m) and '
-                'quaternion (x, y, z, w); the glass stands up about the belt line and drops into the door',
-    },
-    'hideInCockpit': ['interior', 'driver', 'steering_wheel', 'glass', 'window_L', 'window_R'],
-    'cockpitFx': {'speedLines': False, 'particleNearFade': 2.8,
-                  'note': 'in the driver view no nitro streaks, smoke or sparks within ~2.8 m of the eye'},
-    'cockpitGlow': 'material Cockpit carries a baked emissive night-light map (instrument glow, soft ambient); '
-                   'Gauges glow warm white',
-    'mirrorGlass': 'material MirrorGlass, uv 0..1 per glass (u along z, v up)',
-    'factoryPaint': list(FACTORY_PAINT),
-}
+def make_meta():
+    return {
+        'id': ID, 'length': LENGTH, 'wheelbase': XF - XR,
+        'axles': {'front': XF, 'rear': XR},
+        'wheelRadius': {'front': RF, 'rear': RR},
+        'halfTrack': {'front': TF, 'rear': TR},
+        'tyreWidth': {'front': WF, 'rear': WR},
+        'eye': list(EYE),
+        'steeringWheel': {'centre': list(WHEEL_CENTRE), 'axis': 'local +x (column, toward the nose)', 'tiltDeg': 28},
+        'windows': {
+            'window_L': _pose(window_open(-1)),
+            'window_R': _pose(window_open(1)),
+            'note': 'open pose of the node in the car frame (closed = identity): position (m) and '
+                    'quaternion (x, y, z, w); the glass stands up about the belt line and drops into the door',
+        },
+        'hideInCockpit': ['interior', 'driver', 'steering_wheel', 'glass', 'window_L', 'window_R'],
+        'cockpitFx': {'speedLines': False, 'particleNearFade': 2.8,
+                      'note': 'in the driver view no nitro streaks, smoke or sparks within ~2.8 m of the eye'},
+        'cockpitGlow': 'material Cockpit carries a baked emissive night-light map (instrument glow, soft ambient); '
+                       'Gauges glow warm white',
+        'mirrorGlass': 'material MirrorGlass, uv 0..1 per glass (u along z, v up)',
+        'factoryPaint': list(FACTORY_PAINT),
+    }
+
+
+META = make_meta()

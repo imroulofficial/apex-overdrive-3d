@@ -419,6 +419,9 @@ for _p in (args.tex, args.cockpit):
             pass
         if _meta:
             break
+for _v, (_loc, _tgt, _lens) in ((_meta or {}).get('renderViews') or {}).items():
+    # per-car close-up cameras, given in the game frame (x fwd, y up, z right)
+    VIEWS[_v] = ((_loc[0], -_loc[2], _loc[1]), (_tgt[0], -_tgt[2], _tgt[1]), _lens, None)
 if _meta and 'eye' in _meta:
     ex, ey, ez = _meta['eye']
     EYE = (ex, -ez, ey)

@@ -28,6 +28,9 @@ const ONLY = arg('only', null)?.split(',');
 const CARS = {
   tm_tempesta: { id: 'tm-tempesta', eye: { x: -0.3, y: 1.02, z: 0 }, windows: false },
   ag_aurelia: { id: 'ag-aurelia', eye: { x: -0.25, y: 1.1, z: -0.37 }, windows: true },
+  kz_kestrel: { id: 'kz-kestrel', eye: { x: -0.265, y: 1.225, z: -0.36 }, windows: true },
+  sv_stallion: { id: 'sv-stallion', eye: { x: -0.3, y: 1.14, z: -0.375 }, windows: true },
+  rb_ridgeback: { id: 'rb-ridgeback', eye: { x: -0.27, y: 1.5, z: -0.4 }, windows: true },
 };
 const FILE = arg('car', 'tm_tempesta');
 const CAR = CARS[FILE].id;
