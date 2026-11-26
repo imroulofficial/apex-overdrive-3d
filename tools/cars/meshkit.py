@@ -158,18 +158,29 @@ def rot(axis, ang):
 # ---------------------------------------------------------------------------------------------
 
 class Mesh:
-    def __init__(self, V=None, F=None, mats=None, mat='default'):
+    def __init__(self, V=None, F=None, mats=None, mat='default', uv=None, cn=None):
         self.V = np.zeros((0, 3)) if V is None else np.asarray(V, dtype=np.float64)
         self.F = [] if F is None else [list(f) for f in F]
         if mats is None:
             mats = [mat] * len(self.F)
         self.mats = list(mats)
+        # optional per-corner texture coordinates (one list of (u, v) per face): the remastered
+        # cars carry their source texture's UVs this way (Blender UV layer 'src')
+        self.uv = None if uv is None else [[tuple(c) for c in f] for f in uv]
+        # optional per-corner custom normals (remastered bodies: transferred from the source)
+        self.cn = None if cn is None else [[tuple(c) for c in f] for f in cn]
 
     def copy(self):
-        return Mesh(self.V.copy(), [list(f) for f in self.F], list(self.mats))
+        return Mesh(self.V.copy(), [list(f) for f in self.F], list(self.mats), uv=self.uv, cn=self.cn)
 
     def __iadd__(self, other):
         off = len(self.V)
+        for att, z in (('uv', (0.0, 0.0)), ('cn', (0.0, 0.0, 0.0))):
+            sa, oa = getattr(self, att), getattr(other, att)
+            if sa is not None or oa is not None:
+                a = sa if sa is not None else [[z] * len(f) for f in self.F]
+                b = oa if oa is not None else [[z] * len(f) for f in other.F]
+                setattr(self, att, a + b)
         self.V = np.vstack([self.V, other.V]) if len(self.V) else other.V.copy()
         self.F += [[i + off for i in f] for f in other.F]
         self.mats += other.mats
@@ -193,12 +204,20 @@ class Mesh:
         self.V = V + np.asarray(t, dtype=np.float64)
         if s is not None and np.prod(np.sign(s)) < 0:
             self.F = [f[::-1] for f in self.F]
+            if self.uv is not None:
+                self.uv = [f[::-1] for f in self.uv]
+            if self.cn is not None:
+                self.cn = [f[::-1] for f in self.cn]
         return self
 
     def mirrored_z(self):
         m = self.copy()
         m.V[:, 2] *= -1
         m.F = [f[::-1] for f in m.F]
+        if m.uv is not None:
+            m.uv = [f[::-1] for f in m.uv]
+        if m.cn is not None:
+            m.cn = [[(c[0], c[1], -c[2]) for c in f[::-1]] for f in m.cn]
         return m
 
     def tris(self):
@@ -216,6 +235,10 @@ class Mesh:
     def orient_outward(self):
         if self.signed_volume() < 0:
             self.F = [f[::-1] for f in self.F]
+            if self.uv is not None:
+                self.uv = [f[::-1] for f in self.uv]
+            if self.cn is not None:
+                self.cn = [f[::-1] for f in self.cn]
         return self
 
     def open_edges(self):

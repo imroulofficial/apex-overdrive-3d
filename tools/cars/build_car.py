@@ -127,7 +127,7 @@ def group_of(key, lod):
     if lod == 'cockpit':
         return {'glass': 'Glass', 'carbon': 'Carbon', 'mirror': 'MirrorGlass'}.get(head, 'Cockpit')
     return {'paint': 'CarPaint', 'carbon': 'Carbon', 'mirror': 'MirrorGlass', 'body': 'Body', 'tyre': 'Tyre',
-            'rim': 'Rim', 'driver': 'Driver', 'glass': 'Glass', 'int': 'Interior'}.get(head, key)
+            'rim': 'Rim', 'driver': 'Driver', 'glass': 'Glass', 'int': 'Interior', 'src': 'Body'}.get(head, key)
 
 
 BAKED = {'Body', 'Tyre', 'Rim', 'Driver', 'Cockpit', 'Carbon', 'Interior'}  # race LOD: vertex colours
@@ -230,6 +230,21 @@ def srgb(c):
 TEX_IMAGES = {}
 
 
+def src_image(path, data=False):
+    key = ('src', path)
+    if key not in TEX_IMAGES:
+        img = bpy.data.images.load(path)
+        img.colorspace_settings.name = 'Non-Color' if data else 'sRGB'
+        TEX_IMAGES[key] = img
+    return TEX_IMAGES[key]
+
+
+def src_uv(k):
+    nd = k.node('ShaderNodeUVMap')
+    nd.uv_map = 'src'
+    return nd.outputs['UV']
+
+
 def text_strip():
     """Sidewall lettering strip (generic: the game's own name and the car's), white on black."""
     if 'strip' in TEX_IMAGES:
@@ -317,8 +332,22 @@ def make_key_material(key):
     col, rough, metal, height = (0.02, 0.02, 0.02), 0.5, 0.0, None
     coat = 0.0
 
-    if key.startswith('paint'):
+    src_shade = None
+    if key == 'paint:src':
+        # remastered car: factory colour; its bake (BASE) is the source paint's shading layer
         col, rough, coat = tuple(getattr(car, 'FACTORY_PAINT', (0.62, 0.025, 0.02))), 0.3, 1.0
+        src_shade = k.image(src_image(car.SRC_SHADE, data=True), src_uv(k)).outputs['Color']
+    elif key.startswith('paint'):
+        col, rough, coat = tuple(getattr(car, 'FACTORY_PAINT', (0.62, 0.025, 0.02))), 0.3, 1.0
+    elif key.startswith('src:'):
+        # remastered car: the original model's own texture (trim, grilles, lamps, badges)
+        tx = k.image(src_image(car.SRC_TEX), src_uv(k))
+        col = tx.outputs['Color']
+        rough = getattr(car, 'SRC_ROUGH', 0.42)
+    elif key == 'int:skin':
+        # remastered car: the inside of the shell (headliner, door cards, floor seen through glass)
+        n = k.noise(vec, 300.0, 3.0)
+        col, rough = k.mix(n, srgb((0.030, 0.030, 0.032)), srgb((0.042, 0.042, 0.045))), 0.85
     elif key.startswith('carbon'):
         # 2x2 twill, 9 mm tows, with a glossy clear coat
         sx = k.math('MULTIPLY', ox, 1 / 0.009)
@@ -645,7 +674,7 @@ def make_key_material(key):
         mv.outputs[0].default_value = metal
     be = k.node('ShaderNodeEmission')
     be.name = 'base_emit'
-    k.feed(be.inputs['Color'], col)
+    k.feed(be.inputs['Color'], src_shade if src_shade is not None else col)
     em = k.node('ShaderNodeEmission')
     em.name = 'metal_emit'
     k.l.new(mv.outputs[0], em.inputs['Color'])
@@ -694,9 +723,20 @@ def mesh_object(name, mesh, keys_lod, M=None, parent=None):
         me.materials.append(make_key_material(kk))
     idx = np.array([keys.index(kk) for kk in mesh.mats], dtype=np.int32)
     me.polygons.foreach_set('material_index', idx)
+    if mesh.uv is not None and any(kk.startswith(('src:', 'paint:src')) for kk in keys):
+        # the source texture's coordinates (remastered cars): layer 'src', read by the src:*
+        # materials while baking, dropped before export
+        lay = me.uv_layers.new(name='src')
+        lay.data.foreach_set('uv', np.array([c for f in mesh.uv for c in f], dtype=np.float64).ravel())
     me.update()
     me.shade_smooth()
-    me.set_sharp_from_angle(angle=math.radians(48))
+    if mesh.cn is not None:
+        # remastered body: the source's own smooth shading (normals transferred from the
+        # high-poly original; a decimated surface's own normals wobble on glossy paint)
+        N = np.array([c for f in mesh.cn for c in f], dtype=np.float64) @ B3.T
+        me.normals_split_custom_set(N.tolist())
+    else:
+        me.set_sharp_from_angle(angle=math.radians(48))
     ob = bpy.data.objects.new(name, me)
     bpy.context.scene.collection.objects.link(ob)
     if parent is not None:
@@ -727,7 +767,9 @@ def split_by_group(mesh, lod):
     for g, fids in groups.items():
         used = sorted({v for i in fids for v in mesh.F[i]})
         remap = {v: j for j, v in enumerate(used)}
-        out[g] = Mesh(mesh.V[used], [[remap[v] for v in mesh.F[i]] for i in fids], [mesh.mats[i] for i in fids])
+        out[g] = Mesh(mesh.V[used], [[remap[v] for v in mesh.F[i]] for i in fids], [mesh.mats[i] for i in fids],
+                      uv=None if mesh.uv is None else [mesh.uv[i] for i in fids],
+                      cn=None if mesh.cn is None else [mesh.cn[i] for i in fids])
     return out
 
 
@@ -857,6 +899,13 @@ def unwrap(objs, margin):
         for i, o in enumerate(objs):
             tyre_uv(o, i, len(objs))
         return
+    for o in objs:
+        # keep a source-texture layer ('src') for the bakes: the atlas goes on a new layer
+        lays = o.data.uv_layers
+        if 'src' in lays:
+            if 'UVMap' not in lays:
+                lays.new(name='UVMap')
+            lays.active = lays['UVMap']
     select_only(objs)
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
@@ -1178,6 +1227,11 @@ def bake_textures(b, lod):
             # (texel luminance / factoryLum), so a player's colour comes out clean.
             fac = np.array(getattr(car, 'FACTORY_PAINT', (0.62, 0.025, 0.02)))
             shade = 0.55 + 0.45 * A
+            if getattr(car, 'SRC_SHADE', None):
+                # remastered car: the source paint's own shading (panel gaps, vents, lettering)
+                sh = new_image(f'{g}_srcshade', size, True)
+                bake('BASE', objs, sh, mats, samples=4)
+                shade = shade * pixels(sh)[..., 0]
             layers = []
             if hasattr(car, 'livery'):
                 P, N, valid = livery_inputs(objs, mats, size)
@@ -1341,6 +1395,12 @@ def export_material(g, lod):
 def finalize(b, lod):
     # Swap design-key materials for the export material of each object's group.
     for node, g, o in b.parts:
+        lays = o.data.uv_layers
+        if 'src' in lays:
+            lays.remove(lays['src'])
+            if len(lays):
+                lays.active = lays[0]
+                lays[0].active_render = True
         o.data.materials.clear()
         o.data.materials.append(export_material(g, lod))
         o.data.polygons.foreach_set('material_index', np.zeros(len(o.data.polygons), dtype=np.int32))
