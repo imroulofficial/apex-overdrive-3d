@@ -11,7 +11,7 @@ inherit('rp1_vanta', globals())
 import remaster_kit as rk  # noqa: E402
 
 rk.setup(globals(), 'rp1_vanta')
-EXHAUST = []            # electric: no tailpipes (the nitro flames come out of the diffuser)
+EXHAUST = [(0.30, 0.0, 0.022)]   # electric: one small dark emitter in the diffuser (the nitro flames come out of it)
 
 
 def build(q):

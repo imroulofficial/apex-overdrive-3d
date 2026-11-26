@@ -51,9 +51,9 @@ V, F, UV, C = d['V'], d['F'], d['UV'], d['C']
 
 # triangle targets per LOD (outer body, inner skin, glass, each lens set)
 TARGET = {
-    'showroom': dict(body=cfg.get('body_tris', 34000), glass=2600, lens=500),
-    'drive': dict(body=cfg.get('body_tris_drive', 9000), glass=700, lens=160),
-    'race': dict(body=cfg.get('body_tris_race', 2000), glass=180, lens=40),
+    'showroom': dict(body=cfg.get('body_tris', 32000), glass=2600, lens=500),
+    'drive': dict(body=cfg.get('body_tris_drive', 7600), glass=700, lens=140),
+    'race': dict(body=cfg.get('body_tris_race', 1650), glass=180, lens=30),
 }
 INNER_T = 0.004
 GLASS_T = 0.003
@@ -165,7 +165,7 @@ def corner_attrs(Vx, Fx, want_uv=True):
     return N, U
 
 
-def lod_classes(Vx, Fx, iters=3):
+def lod_classes(Vx, Fx, iters=8):
     """Source class per LOD face (majority of the centre and the three nudged corners), then a
     2-of-3 neighbour filter (a lone face of another class takes its neighbours' class)."""
     T = bvh()

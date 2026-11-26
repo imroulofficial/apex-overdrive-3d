@@ -184,7 +184,7 @@ def build(g, q):
         'taillight_lens': P['taillight_lens'],
         'window_L': P['window_L'],
         'window_R': P['window_R'],
-        'interior': g['remaster_cabin'](q) if 'remaster_cabin' in g else g['cabin'](q),
+        'interior': cabin(g, q),
         'driver': g['driver'](q),
         'steering_wheel': g['steering_wheel'](q),
     }
@@ -195,6 +195,85 @@ def build(g, q):
     return out
 
 
+def cabin(g, q):
+    """The scripted car's cabin pieces that sit inside any shell (dash, fascia, gauges / screens,
+    seats, console, steering column), without the pieces drawn for the scripted body (headliner
+    panel, door cards, pillar trims, parcel shelf, cargo floor): the source shell's dark inner
+    skin is the headliner and the door cards here, and a glass roof stays see-through."""
+    from meshkit import strut
+    m = Mesh()
+    try:
+        m += g['dash_body'](q, half=g.get('DASH_HALF', 0.80))
+    except TypeError:
+        m += g['dash_body'](q)
+    m += g['_fascia'](q)
+    if q >= 0.6:
+        m += g['gauges'](q)
+        if 'binnacle' in g:
+            m += g['binnacle'](q)
+    seat = g.get('_seat', g.get('seat'))
+    Z = g['DRIVER_Z']
+    for z in (Z, -Z):
+        m += seat(q, z)
+    m += seat(q, 0.0, x0=g.get('REAR_SEAT_X', -1.08), front=False).transform(s=(1, 1, 1.6)) \
+        if g.get('REAR_SEAT', True) else Mesh()
+    if q < 0.1:
+        return m
+    m += g['console'](q)
+    m += strut(tuple(np.array(g['WHEEL_CENTRE']) + [0.06, -0.03, 0]),
+               (0.45, 0.80 + g.get('KDY', 0.0), Z), 0.024, 0.024, n=g['seg'](10, q, 6), mat='int:black', samples=3)
+    return m
+
+
+def rear_mirror(g, q):
+    """The scripted interior mirror (MirrorGlass, the game's live mirror), moved to hang 10 cm
+    under the source roof's header at the same station."""
+    m = g['rear_view_mirror'](q)
+    if not len(m.V):
+        return m
+    gl = [i for i, k in enumerate(m.mats) if k == 'mirror']
+    c_old = m.V[sorted({v for i in gl for v in m.F[i]})].mean(0) if gl else m.V.mean(0)
+    P = parts(g['SRC'], 'showroom')
+    shell = P['body'] + P['glass']
+    t = ray_hits(shell.V, shell.F, np.array([c_old[0], 0.9, -0.05]), np.array([0.0, 1.0, 0.0]))
+    if not len(t):
+        return m
+    roof = 0.9 + t[-1] if len(t) == 1 else 0.9 + t[0]
+    # the first surface above the cabin floor is the roof's inside (or the glass roof)
+    dy = (roof - 0.100) - c_old[1]
+    top = m.V[:, 1].max()
+    m.V[:, 1] += dy
+    # the stalk reaches the roof: stretch its upper end
+    hi = m.V[:, 1] > top + dy - 0.03
+    m.V[hi, 1] += min(0.0, roof - 0.004 - (top + dy))
+    return m
+
+
+def inside_report(g, mesh, name):
+    """Share of a part's vertices that stick out of the source shell (ray parity, vertical rays)."""
+    P = parts(g['SRC'], 'showroom')
+    body = P['body']
+    keep = [i for i, k in enumerate(body.mats) if k != 'int:skin']
+    # the outer shell with its glass (outer faces of each pane: the first third of a slab)
+    shell = Mesh(body.V, [body.F[i] for i in keep], ['b'] * len(keep))
+    for k in ('glass', 'window_L', 'window_R'):
+        gl = P[k]
+        nf = len(gl.F)
+        n_out = next(i for i in range(nf) if i > 0 and gl.F[i][0] >= len(gl.V) // 2) if nf else 0
+        shell += Mesh(gl.V, gl.F[:n_out], ['g'] * n_out)
+    body = shell
+    Fb = np.array(body.F)
+    V = mesh.V
+    idx = np.linspace(0, len(V) - 1, min(400, len(V))).astype(int)
+    out = 0
+    for i in idx:
+        t = ray_hits(body.V, Fb, V[i], np.array([0.0, 1.0, 0.0]))
+        if len(t) % 2 == 0:
+            out += 1
+    print(f'  {name}: {out}/{len(idx)} sampled vertices outside the source shell')
+    return out / len(idx)
+
+
 def cockpit(g, q=1.0):
     """Cockpit file: wheel, hands, the cabin trim (dash, binnacle / screens, console, seats, door
     cards, rear-view mirror) under the source roof; the cabin glass and door panes are the
@@ -203,7 +282,7 @@ def cockpit(g, q=1.0):
     P = parts(g['SRC'], 'showroom')
     for k in ('glass', 'window_L', 'window_R'):
         P[k].mats = ['glass:clear'] * len(P[k].F)
-    shell = g['remaster_cockpit_shell'](q) if 'remaster_cockpit_shell' in g else g['cockpit_shell'](q)
+    shell = cabin(g, q) + rear_mirror(g, q)
     return {
         'steering_wheel': g['steering_wheel'](q),
         'hands': g['hands'](q),

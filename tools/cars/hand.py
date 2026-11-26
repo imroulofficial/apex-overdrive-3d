@@ -24,10 +24,10 @@ from meshkit import Mesh, norm, tube
 # finger table: (offset along the rim from the hand's middle, MCP angle round the rim (deg),
 # MCP distance from the rim axis, glove radius, phalanx lengths proximal/middle/distal)
 FINGERS = (
-    (0.0270, -6.0, 0.0345, 0.0094, (0.043, 0.026, 0.021)),    # index (toward twelve o'clock)
-    (0.0080, -4.0, 0.0355, 0.0097, (0.047, 0.029, 0.022)),    # middle
-    (-0.0110, -6.0, 0.0345, 0.0092, (0.044, 0.027, 0.021)),   # ring
-    (-0.0285, -12.0, 0.0320, 0.0080, (0.035, 0.021, 0.018)),  # little
+    (0.0300, -6.0, 0.0345, 0.0092, (0.045, 0.027, 0.022)),    # index (toward twelve o'clock)
+    (0.0095, -4.0, 0.0355, 0.0095, (0.049, 0.030, 0.023)),    # middle
+    (-0.0115, -6.0, 0.0345, 0.0090, (0.046, 0.028, 0.022)),   # ring
+    (-0.0315, -12.0, 0.0320, 0.0079, (0.037, 0.022, 0.019)),  # little
 )
 
 
@@ -313,7 +313,7 @@ def seams(g, q, mat='driver:seam'):
     finger's root and the cuff hem."""
     m = Mesh()
     n = 4 if q < 0.6 else 5
-    r = 0.0009
+    r = 0.0011
     Lw, back = g.Lw, g.back
     for k, (off, *_r) in enumerate(FINGERS[:3]):
         J = g.joints[k]
@@ -321,6 +321,11 @@ def seams(g, q, mat='driver:seam'):
         b = g.wc + g.et * off * 0.55 - Lw * 0.012 + back * 0.02
         pts = _on_surface(g, [a + (b - a) * t for t in np.linspace(0, 1, 9)], 0.0007)
         m += tube(pts, r, n=n, mat=mat, samples=10, cap='fan')
+    # knuckle band: a lighter padded strip across the four knuckles (the glove's accent)
+    kn = [g.joints[k][0] + back * 0.002 for k in range(4)]
+    kn = [kn[0] + (kn[0] - kn[1]) * 0.35] + kn + [kn[3] + (kn[3] - kn[2]) * 0.35]
+    pts = _on_surface(g, kn, 0.0010)
+    m += tube(pts, 0.0026, n=n + 2, mat=mat, samples=14, cap='dome')
     # cuff hem: a ring round the cuff's open end
     ca, cb = g.cuff_a, g.cuff_b
     ax = norm(cb - ca)

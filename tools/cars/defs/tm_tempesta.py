@@ -49,6 +49,8 @@ EYE = (-0.300, 1.020, 0.0)
 WHEEL_CENTRE = (0.140, 0.700, 0.0)
 WHEEL_TILT = math.radians(20)   # steering wheel plane leans back toward the driver
 FACTORY_PAINT = (0.62, 0.025, 0.02)   # linear RGB of the factory livery's paint zones (red)
+GLOVE = (0.030, 0.030, 0.033)
+GLOVE_ACCENT = (0.38, 0.38, 0.40)   # black race gloves, light grey stitching and knuckle band
 RACE_NUMBER = '17'
 
 META = {

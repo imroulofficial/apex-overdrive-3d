@@ -21,7 +21,7 @@ CFG = {
             # the blacked-out canopy (windscreen, glass roof, hatch glass) is glass whatever the
             # texture says: the AI painted white reflections onto it
             {'box': {'x': [-1.74, 1.13], 'y': [1.30, 1.65], 'az': [0.0, 0.60]}},
-            {'box': {'x': [-2.10, -1.55], 'y': [1.10, 1.45], 'az': [0.0, 0.60], 'nx': [-1.0, -0.25]}},
+            {'box': {'x': [-2.30, -1.55], 'y': [1.12, 1.45], 'az': [0.0, 0.60], 'nx': [-1.0, -0.25]}},
             {'box': {'x': [0.50, 1.15], 'y': [1.06, 1.45], 'az': [0.0, 0.60], 'ny': [0.3, 1.0]}},
         ],
         # the roof spoiler (black) sits over the end of the glass roof
@@ -61,7 +61,10 @@ CFG = {
     },
     'rb_ridgeback': {
         'src': 'New Car 8.glb',
-        'paint': {'maxSat': 0.15, 'minVal': 0.17, 'maxVal': 0.45},
+        'paint': {'maxSat': 0.15, 'minVal': 0.09, 'maxVal': 0.45},
+        # roof rack, tailgate spare wheel, bull bar and the black lower cladding are trim
+        'paint_not': [{'y': [1.93, 3.0]}, {'x': [-3.0, -2.27], 'az': [0.0, 0.56], 'y': [0.80, 1.80]}, {'x': [2.28, 3.0]},
+                      {'y': [0.0, 0.70]}],
         'belt': 1.30,
         'door': [0.0, 0.84],
         'glass': [

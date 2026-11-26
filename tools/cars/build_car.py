@@ -547,7 +547,13 @@ def make_key_material(key):
         # glove seams and wrist strap: the glove's leather, darker
         g = tuple(getattr(car, 'GLOVE', None) or (0.08, 0.08, 0.085))
         n = k.noise(vec, 900.0, 3.0)
-        col = k.mix(k.math('MULTIPLY', n, 0.4), srgb(tuple(v * 0.42 for v in g)), srgb(tuple(v * 0.55 for v in g)))
+        acc = getattr(car, 'GLOVE_ACCENT', None)
+        if acc:
+            # contrast stitching and the knuckle band: a lighter accent so the dark glove's
+            # shape (fingers, knuckles, cuff) reads against the black rim, day and night
+            col = k.mix(k.math('MULTIPLY', n, 0.4), srgb(tuple(v * 0.85 for v in acc)), srgb(tuple(acc)))
+        else:
+            col = k.mix(k.math('MULTIPLY', n, 0.4), srgb(tuple(v * 0.42 for v in g)), srgb(tuple(v * 0.55 for v in g)))
         rough = 0.6
     elif key == 'driver:glove':
         n = k.noise(vec, 260.0, 3.0)
