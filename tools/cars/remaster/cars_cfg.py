@@ -26,6 +26,8 @@ CFG = {
         ],
         # the roof spoiler (black) sits over the end of the glass roof
         'glass_not': [{'box': {'x': [-2.20, -1.76], 'y': [1.36, 1.70]}}],
+        # the panoramic roof stays the source's black roof (lods.gloss_black)
+        'roof_black': [{'x': [-2.25, 0.70], 'y': 1.40, 'ny': 0.55}],
         'head': [{'box': {'x': [1.55, 2.32], 'y': [0.70, 0.96], 'az': [0.25, 0.98], 'nx': [-0.2, 1.0]},
                   'rule': {'maxVal': 0.69}}],
         'tail': [{'box': {'x': [-2.33, -1.68], 'y': [0.92, 1.13], 'nx': [-1.0, 0.3]},
@@ -66,6 +68,9 @@ CFG = {
         'paint_not': [{'y': [1.93, 3.0]}, {'x': [-3.0, -2.27], 'az': [0.0, 0.56], 'y': [0.80, 1.80]}, {'x': [2.28, 3.0]},
                       {'y': [0.0, 0.70]}],
         'belt': 1.30,
+        # roof rack, bull bar and spare wheel: many thin parts, many vertices per triangle; a
+        # smaller showroom shell keeps the file in its 1.76 MB budget
+        'body_tris': 22000,
         'door': [0.0, 0.84],
         'glass': [
             # side windows (front door, rear door, rear quarter), windscreen, tailgate glass

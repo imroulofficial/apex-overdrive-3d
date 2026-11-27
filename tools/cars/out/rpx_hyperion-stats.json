@@ -2,45 +2,43 @@
  {
   "lod": "showroom",
   "file": "rpx_hyperion.glb",
-  "bytes": 1534028,
+  "bytes": 1790884,
   "maxBytes": 1800000,
-  "tris": 116780,
+  "tris": 119192,
   "maxTris": 150000,
   "materials": [
    "Body",
    "Glass",
-   "ClearGlass",
    "headlight_lens",
    "Interior",
    "Gauges",
    "Carbon",
    "taillight_lens",
    "CarPaint",
-   "MirrorGlass",
    "Driver",
    "Rim",
    "Tyre"
   ],
   "textures": [
-   "Body_base 2048² (58 KB)",
-   "Body_orm 1024² (148 KB)",
-   "Body_normal 1024² (150 KB)",
-   "Interior_base 512² (5 KB)",
-   "Interior_orm 512² (37 KB)",
-   "Interior_normal 512² (28 KB)",
+   "Body_base 1536² (106 KB)",
+   "Body_orm 256² (32 KB)",
+   "Body_normal 256² (34 KB)",
+   "Interior_base 256² (4 KB)",
+   "Interior_orm 256² (40 KB)",
+   "Interior_normal 256² (37 KB)",
    "Gauges_base 512² (33 KB)",
    "Carbon_weave 512² (3 KB)",
    "Carbon_weave_normal 512² (11 KB)",
-   "Carbon_orm 512² (32 KB)",
-   "CarPaint_base 1024² (41 KB)",
-   "Driver_base 512² (9 KB)",
-   "Driver_orm 512² (41 KB)",
+   "Carbon_orm 512² (33 KB)",
+   "CarPaint_base 1024² (145 KB)",
+   "Driver_base 512² (8 KB)",
+   "Driver_orm 512² (45 KB)",
    "Driver_normal 512² (25 KB)",
    "Rim_base 512² (11 KB)",
    "Rim_orm 512² (42 KB)",
    "Rim_normal 512² (44 KB)",
    "Tyre_base 1024² (9 KB)",
-   "Tyre_orm 1024² (19 KB)",
+   "Tyre_orm 1024² (17 KB)",
    "Tyre_normal 1024² (3 KB)"
   ],
   "openEdges": 0,
@@ -92,14 +90,14 @@
   },
   "bounds": {
    "min": [
-    -2.35,
+    -2.352,
     0,
-    -1.05
+    -1.079
    ],
    "max": [
-    2.35,
-    1.108,
-    1.05
+    2.348,
+    1.11,
+    1.078
    ]
   },
   "nodes": [
@@ -143,38 +141,36 @@
  {
   "lod": "drive",
   "file": "rpx_hyperion_drive.glb",
-  "bytes": 595228,
+  "bytes": 648408,
   "maxBytes": 650000,
-  "tris": 31476,
+  "tris": 29826,
   "maxTris": 40000,
   "materials": [
    "Body",
    "Glass",
-   "ClearGlass",
    "headlight_lens",
    "Interior",
    "Carbon",
    "taillight_lens",
    "CarPaint",
-   "MirrorGlass",
    "Driver",
    "Rim",
    "Tyre"
   ],
   "textures": [
-   "Body_base 1024² (36 KB)",
-   "Body_orm 512² (76 KB)",
-   "Body_normal 512² (74 KB)",
+   "Body_base 768² (55 KB)",
+   "Body_orm 256² (33 KB)",
+   "Body_normal 128² (10 KB)",
    "Interior_base 256² (1 KB)",
-   "Interior_normal 256² (7 KB)",
+   "Interior_normal 256² (32 KB)",
    "Carbon_weave 512² (3 KB)",
    "Carbon_weave_normal 512² (11 KB)",
-   "Carbon_orm 512² (34 KB)",
-   "CarPaint_base 512² (17 KB)",
+   "Carbon_orm 512² (36 KB)",
+   "CarPaint_base 512² (40 KB)",
    "Driver_base 256² (3 KB)",
    "Driver_normal 256² (4 KB)",
    "Rim_base 256² (1 KB)",
-   "Rim_orm 256² (10 KB)",
+   "Rim_orm 256² (9 KB)",
    "Rim_normal 256² (4 KB)",
    "Tyre_base 512² (4 KB)",
    "Tyre_normal 512² (1 KB)"
@@ -228,14 +224,14 @@
   },
   "bounds": {
    "min": [
-    -2.35,
+    -2.352,
     0,
-    -1.05
+    -1.072
    ],
    "max": [
-    2.35,
-    1.108,
-    1.05
+    2.348,
+    1.112,
+    1.074
    ]
   },
   "nodes": [
@@ -279,19 +275,17 @@
  {
   "lod": "race",
   "file": "rpx_hyperion_race.glb",
-  "bytes": 105464,
+  "bytes": 168848,
   "maxBytes": 330000,
-  "tris": 7232,
+  "tris": 7368,
   "maxTris": 8000,
   "materials": [
    "Body",
    "Glass",
-   "ClearGlass",
    "headlight_lens",
    "Interior",
    "taillight_lens",
    "CarPaint",
-   "MirrorGlass",
    "Driver",
    "Rim",
    "Tyre"
@@ -342,14 +336,14 @@
   },
   "bounds": {
    "min": [
-    -2.35,
+    -2.359,
     0,
-    -1.017
+    -1.065
    ],
    "max": [
-    2.35,
-    1.09,
-    1.017
+    2.347,
+    1.108,
+    1.07
    ]
   },
   "nodes": [
@@ -393,9 +387,9 @@
  {
   "lod": "cockpit",
   "file": "rpx_hyperion_cockpit.glb",
-  "bytes": 600576,
+  "bytes": 545044,
   "maxBytes": 1500000,
-  "tris": 38406,
+  "tris": 31228,
   "maxTris": 60000,
   "materials": [
    "ClearGlass",
@@ -405,10 +399,10 @@
    "MirrorGlass"
   ],
   "textures": [
-   "Cockpit_base 1024² (28 KB)",
-   "Cockpit_orm 512² (65 KB)",
-   "Cockpit_normal 512² (56 KB)",
-   "Cockpit_glow 512² (15 KB)",
+   "Cockpit_base 1024² (25 KB)",
+   "Cockpit_orm 512² (52 KB)",
+   "Cockpit_normal 512² (46 KB)",
+   "Cockpit_glow 512² (14 KB)",
    "Gauges_base 1024² (72 KB)",
    "Carbon_weave 512² (3 KB)",
    "Carbon_weave_normal 512² (11 KB)",
@@ -426,13 +420,13 @@
   "wheels": {},
   "bounds": {
    "min": [
-    -0.915,
+    -0.754,
     0.07,
     -0.77
    ],
    "max": [
-    1.069,
-    1.082,
+    1.047,
+    1.079,
     0.77
    ]
   },

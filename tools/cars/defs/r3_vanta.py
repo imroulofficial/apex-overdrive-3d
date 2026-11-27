@@ -11,6 +11,10 @@ inherit('rp1_vanta', globals())
 import remaster_kit as rk  # noqa: E402
 
 rk.setup(globals(), 'rp1_vanta')
+# the source's wheels: 20-inch, bright turbine blades out to a silver lip (low sidewall)
+RIM_R = 0.254
+RIM_PAINT = (0.30, 0.31, 0.33)
+TYRE_TEXT_R = (0.066, 0.021)
 EXHAUST = [(0.30, 0.0, 0.022)]   # electric: one small dark emitter in the diffuser (the nitro flames come out of it)
 
 

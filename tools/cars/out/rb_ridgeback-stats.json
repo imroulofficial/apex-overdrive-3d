@@ -2,41 +2,39 @@
  {
   "lod": "showroom",
   "file": "rb_ridgeback.glb",
-  "bytes": 1767740,
+  "bytes": 1774772,
   "maxBytes": 1800000,
-  "tris": 144644,
+  "tris": 119180,
   "maxTris": 150000,
   "materials": [
    "Body",
    "Glass",
-   "ClearGlass",
    "headlight_lens",
    "Interior",
    "Gauges",
    "taillight_lens",
    "CarPaint",
-   "Rim",
-   "MirrorGlass",
    "Driver",
+   "Rim",
    "Tyre"
   ],
   "textures": [
-   "Body_base 2048² (67 KB)",
-   "Body_orm 1024² (209 KB)",
-   "Body_normal 1024² (182 KB)",
-   "Interior_base 512² (5 KB)",
-   "Interior_orm 512² (37 KB)",
-   "Interior_normal 512² (24 KB)",
+   "Body_base 1536² (86 KB)",
+   "Body_orm 256² (37 KB)",
+   "Body_normal 256² (39 KB)",
+   "Interior_base 256² (4 KB)",
+   "Interior_orm 256² (43 KB)",
+   "Interior_normal 256² (40 KB)",
    "Gauges_base 512² (29 KB)",
-   "CarPaint_base 1024² (16 KB)",
-   "Rim_base 512² (18 KB)",
-   "Rim_orm 512² (55 KB)",
-   "Rim_normal 512² (60 KB)",
-   "Driver_base 512² (9 KB)",
-   "Driver_orm 512² (43 KB)",
+   "CarPaint_base 768² (57 KB)",
+   "Driver_base 512² (8 KB)",
+   "Driver_orm 512² (44 KB)",
    "Driver_normal 512² (23 KB)",
+   "Rim_base 512² (23 KB)",
+   "Rim_orm 512² (64 KB)",
+   "Rim_normal 512² (64 KB)",
    "Tyre_base 1024² (18 KB)",
-   "Tyre_orm 1024² (52 KB)",
+   "Tyre_orm 1024² (63 KB)",
    "Tyre_normal 1024² (7 KB)"
   ],
   "openEdges": 0,
@@ -88,14 +86,14 @@
   },
   "bounds": {
    "min": [
-    -2.4,
+    -2.399,
     -0.01,
-    -1.235
+    -1.097
    ],
    "max": [
     2.4,
-    1.968,
-    1.235
+    2.038,
+    1.094
    ]
   },
   "nodes": [
@@ -139,36 +137,34 @@
  {
   "lod": "drive",
   "file": "rb_ridgeback_drive.glb",
-  "bytes": 531848,
+  "bytes": 606720,
   "maxBytes": 650000,
-  "tris": 39260,
+  "tris": 32452,
   "maxTris": 40000,
   "materials": [
    "Body",
    "Glass",
-   "ClearGlass",
    "headlight_lens",
    "Interior",
    "taillight_lens",
    "CarPaint",
-   "Rim",
-   "MirrorGlass",
    "Driver",
+   "Rim",
    "Tyre"
   ],
   "textures": [
-   "Body_base 1024² (29 KB)",
-   "Body_orm 512² (64 KB)",
-   "Body_normal 512² (49 KB)",
-   "Interior_base 256² (1 KB)",
-   "Interior_normal 256² (8 KB)",
-   "CarPaint_base 512² (7 KB)",
+   "Body_base 768² (42 KB)",
+   "Body_orm 256² (35 KB)",
+   "Body_normal 128² (10 KB)",
+   "Interior_base 256² (2 KB)",
+   "Interior_normal 256² (37 KB)",
+   "CarPaint_base 512² (24 KB)",
+   "Driver_base 256² (3 KB)",
+   "Driver_normal 256² (3 KB)",
    "Rim_base 256² (4 KB)",
    "Rim_orm 256² (14 KB)",
    "Rim_normal 256² (2 KB)",
-   "Driver_base 256² (3 KB)",
-   "Driver_normal 256² (3 KB)",
-   "Tyre_base 512² (6 KB)",
+   "Tyre_base 512² (7 KB)",
    "Tyre_normal 512² (1 KB)"
   ],
   "openEdges": 0,
@@ -220,14 +216,14 @@
   },
   "bounds": {
    "min": [
-    -2.4,
+    -2.396,
     0,
-    -1.235
+    -1.095
    ],
    "max": [
-    2.4,
-    1.968,
-    1.235
+    2.399,
+    2.039,
+    1.092
    ]
   },
   "nodes": [
@@ -271,21 +267,19 @@
  {
   "lod": "race",
   "file": "rb_ridgeback_race.glb",
-  "bytes": 114704,
+  "bytes": 168940,
   "maxBytes": 330000,
-  "tris": 7772,
+  "tris": 7410,
   "maxTris": 8000,
   "materials": [
    "Body",
    "Glass",
-   "ClearGlass",
    "headlight_lens",
    "Interior",
    "taillight_lens",
    "CarPaint",
-   "Rim",
-   "MirrorGlass",
    "Driver",
+   "Rim",
    "Tyre"
   ],
   "textures": [],
@@ -334,14 +328,14 @@
   },
   "bounds": {
    "min": [
-    -2.4,
+    -2.397,
     0,
-    -1.027
+    -1.092
    ],
    "max": [
-    2.4,
-    1.968,
-    1.027
+    2.396,
+    2.039,
+    1.094
    ]
   },
   "nodes": [
@@ -385,9 +379,9 @@
  {
   "lod": "cockpit",
   "file": "rb_ridgeback_cockpit.glb",
-  "bytes": 538372,
+  "bytes": 516644,
   "maxBytes": 1500000,
-  "tris": 40720,
+  "tris": 33530,
   "maxTris": 60000,
   "materials": [
    "ClearGlass",
@@ -396,10 +390,10 @@
    "MirrorGlass"
   ],
   "textures": [
-   "Cockpit_base 1024² (30 KB)",
+   "Cockpit_base 1024² (25 KB)",
    "Cockpit_orm 512² (63 KB)",
-   "Cockpit_normal 512² (54 KB)",
-   "Cockpit_glow 512² (14 KB)",
+   "Cockpit_normal 512² (53 KB)",
+   "Cockpit_glow 512² (15 KB)",
    "Gauges_base 1024² (61 KB)"
   ],
   "openEdges": 0,
@@ -414,14 +408,14 @@
   "wheels": {},
   "bounds": {
    "min": [
-    -2.167,
+    -2.394,
     0.65,
-    -0.875
+    -0.9
    ],
    "max": [
-    0.868,
-    1.851,
-    0.875
+    0.928,
+    1.846,
+    0.902
    ]
   },
   "nodes": [

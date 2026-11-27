@@ -2,7 +2,7 @@
  {
   "lod": "showroom",
   "file": "sv_stallion.glb",
-  "bytes": 1542448,
+  "bytes": 1540848,
   "maxBytes": 1800000,
   "tris": 118652,
   "maxTris": 150000,
@@ -29,7 +29,7 @@
    "Interior_normal 512² (25 KB)",
    "Gauges_base 512² (29 KB)",
    "CarPaint_base 1024² (26 KB)",
-   "Driver_base 512² (9 KB)",
+   "Driver_base 512² (8 KB)",
    "Driver_orm 512² (42 KB)",
    "Driver_normal 512² (22 KB)",
    "Rim_base 512² (27 KB)",
@@ -139,7 +139,7 @@
  {
   "lod": "drive",
   "file": "sv_stallion_drive.glb",
-  "bytes": 591964,
+  "bytes": 591284,
   "maxBytes": 650000,
   "tris": 34480,
   "maxTris": 40000,
@@ -271,7 +271,7 @@
  {
   "lod": "race",
   "file": "sv_stallion_race.glb",
-  "bytes": 113964,
+  "bytes": 113908,
   "maxBytes": 330000,
   "tris": 7986,
   "maxTris": 8000,
@@ -385,9 +385,9 @@
  {
   "lod": "cockpit",
   "file": "sv_stallion_cockpit.glb",
-  "bytes": 559656,
+  "bytes": 567008,
   "maxBytes": 1500000,
-  "tris": 40066,
+  "tris": 40628,
   "maxTris": 60000,
   "materials": [
    "ClearGlass",
@@ -396,9 +396,9 @@
    "MirrorGlass"
   ],
   "textures": [
-   "Cockpit_base 1024² (38 KB)",
-   "Cockpit_orm 512² (68 KB)",
-   "Cockpit_normal 512² (60 KB)",
+   "Cockpit_base 1024² (34 KB)",
+   "Cockpit_orm 512² (70 KB)",
+   "Cockpit_normal 512² (61 KB)",
    "Cockpit_glow 512² (17 KB)",
    "Gauges_base 1024² (62 KB)"
   ],

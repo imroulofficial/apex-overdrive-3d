@@ -41,8 +41,16 @@ const LODS = [
 // A closed car's cabin is seen through tinted glass: its atlases are capped per LOD.
 // (A cap may also name one texture, e.g. Body_normal.) A closed car's drive file keeps the Body
 // ORM (chrome needs its metal map), so its Body normal map drops to 256.
-const CAPS = { Interior: { showroom: 512, drive: 256 }, Gauges: { showroom: 512, drive: 256 },
-  Body_normal: { drive: FILE === 'ag_aurelia' ? 256 : 512 } };
+// A remastered car (tools/cars/remaster: the original hyper3d body) has a flat Body normal map
+// (its shading is in the transferred vertex normals) over a many-island atlas: 256 is plenty.
+const REMASTER = ['rp1_vanta', 'mz_monza', 'rpx_hyperion', 'rb_ridgeback'].includes(FILE);
+// Its Body ORM (AO, flat roughness per material) and the cabin seen through the tint go to 256, its Body albedo to 1536 / 768 (drive).
+const CAPS = { Interior: REMASTER ? { showroom: 256, drive: 256 } : { showroom: 512, drive: 256 },
+  Gauges: { showroom: 512, drive: 256 },
+  Body_normal: REMASTER ? { showroom: 256, drive: 128 } : { drive: FILE === 'ag_aurelia' ? 256 : 512 },
+  ...(REMASTER ? { Body_orm: { showroom: 256, drive: 256 }, Body_base: { showroom: 1536, drive: 768 } } : {}),
+  // the Ridgeback's black paint: its shading map at 768 (the roof rack and bull bar fill the budget)
+  ...(FILE === 'rb_ridgeback' ? { CarPaint: { showroom: 768 } } : {}) };
 const QUALITY = { base: 84, orm: 88, normal: 90 };
 
 async function webp(file, size, kind) {

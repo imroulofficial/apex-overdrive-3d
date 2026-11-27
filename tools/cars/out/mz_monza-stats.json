@@ -2,45 +2,43 @@
  {
   "lod": "showroom",
   "file": "mz_monza.glb",
-  "bytes": 1506472,
+  "bytes": 1788128,
   "maxBytes": 1800000,
-  "tris": 117104,
+  "tris": 118346,
   "maxTris": 150000,
   "materials": [
    "Body",
    "Glass",
-   "ClearGlass",
    "headlight_lens",
    "Interior",
    "Gauges",
    "Carbon",
    "taillight_lens",
    "CarPaint",
-   "MirrorGlass",
    "Driver",
    "Rim",
    "Tyre"
   ],
   "textures": [
-   "Body_base 2048² (60 KB)",
-   "Body_orm 1024² (146 KB)",
-   "Body_normal 1024² (146 KB)",
-   "Interior_base 512² (6 KB)",
-   "Interior_orm 512² (38 KB)",
-   "Interior_normal 512² (28 KB)",
+   "Body_base 1536² (125 KB)",
+   "Body_orm 256² (33 KB)",
+   "Body_normal 256² (34 KB)",
+   "Interior_base 256² (4 KB)",
+   "Interior_orm 256² (38 KB)",
+   "Interior_normal 256² (34 KB)",
    "Gauges_base 512² (32 KB)",
    "Carbon_weave 512² (3 KB)",
    "Carbon_weave_normal 512² (11 KB)",
-   "Carbon_orm 512² (31 KB)",
-   "CarPaint_base 1024² (34 KB)",
-   "Driver_base 512² (8 KB)",
-   "Driver_orm 512² (38 KB)",
+   "Carbon_orm 512² (32 KB)",
+   "CarPaint_base 1024² (139 KB)",
+   "Driver_base 512² (7 KB)",
+   "Driver_orm 512² (42 KB)",
    "Driver_normal 512² (21 KB)",
    "Rim_base 512² (12 KB)",
    "Rim_orm 512² (42 KB)",
    "Rim_normal 512² (43 KB)",
    "Tyre_base 1024² (11 KB)",
-   "Tyre_orm 1024² (19 KB)",
+   "Tyre_orm 1024² (22 KB)",
    "Tyre_normal 1024² (3 KB)"
   ],
   "openEdges": 0,
@@ -92,14 +90,14 @@
   },
   "bounds": {
    "min": [
-    -2.325,
+    -2.322,
     0,
-    -1.047
+    -1.144
    ],
    "max": [
-    2.325,
-    1.312,
-    1.047
+    2.327,
+    1.316,
+    1.144
    ]
   },
   "nodes": [
@@ -143,34 +141,32 @@
  {
   "lod": "drive",
   "file": "mz_monza_drive.glb",
-  "bytes": 566536,
+  "bytes": 632548,
   "maxBytes": 650000,
-  "tris": 31388,
+  "tris": 29434,
   "maxTris": 40000,
   "materials": [
    "Body",
    "Glass",
-   "ClearGlass",
    "headlight_lens",
    "Interior",
    "Carbon",
    "taillight_lens",
    "CarPaint",
-   "MirrorGlass",
    "Driver",
    "Rim",
    "Tyre"
   ],
   "textures": [
-   "Body_base 1024² (34 KB)",
-   "Body_orm 512² (65 KB)",
-   "Body_normal 512² (60 KB)",
+   "Body_base 768² (63 KB)",
+   "Body_orm 256² (28 KB)",
+   "Body_normal 128² (9 KB)",
    "Interior_base 256² (1 KB)",
-   "Interior_normal 256² (7 KB)",
+   "Interior_normal 256² (30 KB)",
    "Carbon_weave 512² (3 KB)",
    "Carbon_weave_normal 512² (11 KB)",
-   "Carbon_orm 512² (33 KB)",
-   "CarPaint_base 512² (14 KB)",
+   "Carbon_orm 512² (37 KB)",
+   "CarPaint_base 512² (35 KB)",
    "Driver_base 256² (3 KB)",
    "Driver_normal 256² (5 KB)",
    "Rim_base 256² (1 KB)",
@@ -230,12 +226,12 @@
    "min": [
     -2.325,
     0,
-    -1.047
+    -1.144
    ],
    "max": [
-    2.325,
-    1.312,
-    1.047
+    2.327,
+    1.317,
+    1.144
    ]
   },
   "nodes": [
@@ -279,19 +275,17 @@
  {
   "lod": "race",
   "file": "mz_monza_race.glb",
-  "bytes": 104380,
+  "bytes": 165448,
   "maxBytes": 330000,
-  "tris": 7030,
+  "tris": 7356,
   "maxTris": 8000,
   "materials": [
    "Body",
    "Glass",
-   "ClearGlass",
    "headlight_lens",
    "Interior",
    "taillight_lens",
    "CarPaint",
-   "MirrorGlass",
    "Driver",
    "Rim",
    "Tyre"
@@ -342,14 +336,14 @@
   },
   "bounds": {
    "min": [
-    -2.325,
+    -2.308,
     0,
-    -1.047
+    -1.137
    ],
    "max": [
-    2.325,
-    1.299,
-    1.047
+    2.327,
+    1.317,
+    1.138
    ]
   },
   "nodes": [
@@ -393,9 +387,9 @@
  {
   "lod": "cockpit",
   "file": "mz_monza_cockpit.glb",
-  "bytes": 599656,
+  "bytes": 545660,
   "maxBytes": 1500000,
-  "tris": 38934,
+  "tris": 32200,
   "maxTris": 60000,
   "materials": [
    "ClearGlass",
@@ -405,14 +399,14 @@
    "MirrorGlass"
   ],
   "textures": [
-   "Cockpit_base 1024² (30 KB)",
-   "Cockpit_orm 512² (65 KB)",
-   "Cockpit_normal 512² (56 KB)",
-   "Cockpit_glow 512² (15 KB)",
+   "Cockpit_base 1024² (24 KB)",
+   "Cockpit_orm 512² (55 KB)",
+   "Cockpit_normal 512² (49 KB)",
+   "Cockpit_glow 512² (14 KB)",
    "Gauges_base 1024² (68 KB)",
    "Carbon_weave 512² (3 KB)",
    "Carbon_weave_normal 512² (11 KB)",
-   "Carbon_orm 512² (39 KB)"
+   "Carbon_orm 512² (38 KB)"
   ],
   "openEdges": 0,
   "openByMesh": {
@@ -426,14 +420,14 @@
   "wheels": {},
   "bounds": {
    "min": [
-    -1.015,
-    0.2,
-    -0.836
+    -0.907,
+    0.23,
+    -0.867
    ],
    "max": [
-    1.052,
-    1.286,
-    0.836
+    1,
+    1.284,
+    0.873
    ]
   },
   "nodes": [
