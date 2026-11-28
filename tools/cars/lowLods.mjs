@@ -9,9 +9,10 @@
 //                           where it is over (the Kestrel's was 33k)
 //   <file>_drive.glb        the player's car: the cabin parts (interior, driver, steering
 //                           wheel, the dash) and the rims and tyres get their texture's colour baked
-//                           into a vertex attribute (_BAKEDCOLOR), so race/raceCars.js can fold
+//                           into vertex attributes (_BAKEDCOLOR, and _BAKEDPBR: roughness and
+//                           metalness from its ORM map), so race/raceCars.js can fold
 //                           them into its vertex-colour atlas (one draw instead of one per
-//                           material); the textures stay for the higher tiers' rims and tyres
+//                           material) on every tier
 //
 //   node tools/cars/lowLods.mjs [--cars rp1_vanta,...] [--only cockpit,cap,drive]
 //
@@ -39,7 +40,7 @@ export const LOW_COCKPIT_TRIS = 14000;
 const HIGH_SHELL_TRIS = 18000;
 // Share of the low cabin's triangle budget per node (the rest goes to the shell).
 const LOW_SHARE = { hands: 2400, cabin_glass: 900, window_L: 260, window_R: 260 };
-const LOW_TEX = { Cockpit_base: 512, Cockpit_glow: 256, Gauges_base: 512 };
+const LOW_TEX = { Cockpit_base: 512, Cockpit_glow: 256, Gauges_base: 512, Carbon_weave: 256 };
 // Materials whose texture colour is baked into the vertices (any node: the dash's Interior
 // parts sit in the body mesh).
 const DRIVE_BAKE = /^(Interior|Driver|Rim|Tyre)$/;
@@ -167,10 +168,27 @@ const LIN = new Float32Array(256).map((_, i) => {
 
 const toSrgb8 = (c) => Math.round(255 * (c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(Math.min(1, c), 1 / 2.4) - 0.055));
 
+// Box-filtered sample of an 8-bit RGB image at uv (5 taps over ~1/64 of the image, so a vertex
+// never lands on a single stray texel): the three channels, through `curve` (sRGB -> linear or
+// plain 0..1).
+function sample(img, t, curve) {
+  const out = [0, 0, 0];
+  for (const [du, dv] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const u = t[0] + du / 128;
+    const v = t[1] + dv / 128;
+    const x = Math.min(img.w - 1, Math.max(0, Math.floor((u - Math.floor(u)) * img.w)));
+    const y = Math.min(img.h - 1, Math.max(0, Math.floor((v - Math.floor(v)) * img.h)));
+    const k = (y * img.w + x) * 3;
+    for (let c = 0; c < 3; c++) out[c] += curve(img.data[k + c]) / 5;
+  }
+  return out;
+}
+const PLAIN = (b) => b / 255;
+
 async function bakeDrive(file) {
   const src = path.join(DIR, `${file}_drive.glb`);
   const doc = await io.read(src);
-  for (const p of doc.getRoot().listMeshes().flatMap((m) => m.listPrimitives())) p.setAttribute('_BAKEDCOLOR', null);
+  for (const p of doc.getRoot().listMeshes().flatMap((m) => m.listPrimitives())) p.setAttribute('_BAKEDCOLOR', null).setAttribute('_BAKEDPBR', null);
   await doc.transform(dequantize());
   const images = new Map();
   const pixels = async (tex) => {
@@ -179,6 +197,11 @@ async function bakeDrive(file) {
       images.set(tex, { data, w: info.width, h: info.height });
     }
     return images.get(tex);
+  };
+  // VEC4 normalized bytes (glTF vertex attributes align to 4 bytes).
+  const bytes = (prim, name, data) => {
+    const attr = doc.createAccessor().setType('VEC4').setBuffer(prim.getAttribute('POSITION').getBuffer()).setNormalized(true).setArray(data);
+    prim.setAttribute(name, attr);
   };
   let baked = 0;
   const cabinMeshes = new Set(doc.getRoot().listNodes().filter((n) => DRIVE_BAKE_NODES.test(n.getName()) && n.getMesh()).map((n) => n.getMesh()));
@@ -190,35 +213,27 @@ async function bakeDrive(file) {
       const uv = prim.getAttribute('TEXCOORD_0');
       if (!tex || !uv) continue;
       const img = await pixels(tex);
+      const ormTex = mat.getMetallicRoughnessTexture();
+      const orm = ormTex && (await pixels(ormTex));
       const f = mat.getBaseColorFactor();
       const n = uv.getCount();
-      // sRGB-encoded bytes (VEC4: glTF vertex attributes align to 4 bytes); the loader reads
-      // them back as linear colour (raceCars.js bakedColor).
-      const out = new Uint8Array(n * 4);
+      // Colour: sRGB-encoded bytes, read back as linear colour (raceCars.js withBakedColor).
+      // PBR: roughness, metalness (glTF ORM: green, blue) times the material's factors.
+      const col = new Uint8Array(n * 4);
+      const pbr = new Uint8Array(n * 4);
       const t = [0, 0];
       for (let i = 0; i < n; i++) {
         uv.getElement(i, t);
-        // Box-filtered sample (5 taps over ~1/64 of the image) so a vertex never lands on a
-        // single stray texel.
-        let r = 0, g = 0, b = 0;
-        for (const [du, dv] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const u = t[0] + du / 128;
-          const v = t[1] + dv / 128;
-          const x = Math.min(img.w - 1, Math.max(0, Math.floor((u - Math.floor(u)) * img.w)));
-          const y = Math.min(img.h - 1, Math.max(0, Math.floor((v - Math.floor(v)) * img.h)));
-          const k = (y * img.w + x) * 3;
-          r += LIN[img.data[k]];
-          g += LIN[img.data[k + 1]];
-          b += LIN[img.data[k + 2]];
-        }
-        out[i * 4] = toSrgb8((r / 5) * f[0]);
-        out[i * 4 + 1] = toSrgb8((g / 5) * f[1]);
-        out[i * 4 + 2] = toSrgb8((b / 5) * f[2]);
-        out[i * 4 + 3] = 255;
+        const c = sample(img, t, (b) => LIN[b]);
+        for (let k = 0; k < 3; k++) col[i * 4 + k] = toSrgb8(c[k] * f[k]);
+        col[i * 4 + 3] = 255;
+        const o = orm ? sample(orm, t, PLAIN) : [1, 1, 1];
+        pbr[i * 4] = Math.round(255 * Math.min(1, o[1] * mat.getRoughnessFactor()));
+        pbr[i * 4 + 1] = Math.round(255 * Math.min(1, o[2] * mat.getMetallicFactor()));
+        pbr[i * 4 + 3] = 255;
       }
-      const attr = doc.createAccessor().setType('VEC4').setBuffer(uv.getBuffer()).setNormalized(true);
-      attr.setArray(out);
-      prim.setAttribute('_BAKEDCOLOR', attr);
+      bytes(prim, '_BAKEDCOLOR', col);
+      bytes(prim, '_BAKEDPBR', pbr);
       baked += n;
     }
   }

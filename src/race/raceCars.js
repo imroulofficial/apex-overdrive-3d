@@ -52,7 +52,7 @@ function toFloat(attr) {
 function normalize(geo, matrix) {
   let g = geo.index ? geo.toNonIndexed() : geo.clone();
   for (const name of Object.keys(g.attributes)) {
-    if (!['position', 'normal', 'uv', 'color'].includes(name)) g.deleteAttribute(name);
+    if (!['position', 'normal', 'uv', 'color', '_bakedpbr'].includes(name)) g.deleteAttribute(name);
     else if (!(g.attributes[name].array instanceof Float32Array) || g.attributes[name].normalized || g.attributes[name].isInterleavedBufferAttribute) g.setAttribute(name, toFloat(g.attributes[name]));
   }
   if (!g.attributes.uv) g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
@@ -102,14 +102,16 @@ function bake(root, relativeTo, skip = () => false, materialMap = (m) => m, atla
       const list = buckets.get(key);
       if (target === ATLAS || target === GLASS || target === LAMP) {
         const g = normalize(withBakedColor(geo, target === ATLAS), m);
-        if (target === ATLAS) paintBaked(g, describe(mat));
+        if (target === ATLAS) bakedPbr(paintBaked(g, describe(mat)));
         else if (target === GLASS) paintGlass(g, mat);
         else paintLamp(g, mat);
         // The atlas, glass and lamp materials draw both faces (DoubleSide): a double-sided part
         // needs no mirrored copy of its triangles.
         list.push(g);
       } else {
-        list.push(normalize(geo, m));
+        const g = normalize(geo, m);
+        g.deleteAttribute('_bakedpbr');
+        list.push(g);
       }
     }
   });
@@ -129,7 +131,10 @@ function withBakedColor(geo, use) {
   if (!baked) return geo;
   const g = geo.clone();
   g.deleteAttribute('_bakedcolor');
-  if (!use) return g;
+  if (!use) {
+    g.deleteAttribute('_bakedpbr');
+    return g;
+  }
   const col = new Float32Array(baked.count * 3);
   const c = new THREE.Color();
   for (let i = 0; i < baked.count; i++) {
@@ -139,6 +144,16 @@ function withBakedColor(geo, use) {
     col[i * 3 + 2] = c.b;
   }
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return g;
+}
+
+// The roughness and metalness baked with the colour (_BAKEDPBR), over the material's own.
+function bakedPbr(g) {
+  const b = g.attributes._bakedpbr;
+  if (!b) return g;
+  const pbr = g.attributes.pbr;
+  for (let i = 0; i < pbr.count; i++) pbr.setXY(i, b.getX(i), b.getY(i));
+  g.deleteAttribute('_bakedpbr');
   return g;
 }
 
@@ -389,6 +404,11 @@ export class CarFactory {
     this.glass = createVertexPbrMaterial({ envMapIntensity: 1.1, transparent: true, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true });
     this.glass.name = 'Glass';
     this.liteMats = new Map(); // template material -> its lite copy (player, low tier)
+    // Lite: the player's paint without its flake normal map (the clear coat and livery stay).
+    if (lite && this.paint.normalMap) {
+      this.paint.normalMap = null;
+      this.paint.needsUpdate = true;
+    }
     // Length and width of the car on the ground, for its contact shadow.
     const box = new THREE.Box3().setFromObject(template.group, true);
     const size = box.getSize(new THREE.Vector3());
@@ -506,8 +526,9 @@ export class CarFactory {
     const atlas = { atlasMaterial: this.atlas, glassMaterial: this.glass, lampMaterial: lamps };
     const describe = (m) => (m === this.paint ? describeMaterial(paint) : describeMaterial(m));
     // `baked`: this part may use its baked texture colour (cabin parts; lite rims and tyres).
-    const mapFor = (baked) => (mat, geo) => {
-      if (mat === this.paint) return paintInAtlas ? ATLAS : paint;
+    // `wheel`: a lite player's wheel part (painted rims join its atlas mesh).
+    const mapFor = (baked, wheel = false) => (mat, geo) => {
+      if (mat === this.paint) return paintInAtlas || wheel ? ATLAS : paint;
       if (mat.name === 'skip') return null;
       // Head and tail lenses: one mesh per car so its brake lights glow on their own; the
       // player's mirror glass stays apart so the driver view can show the live rear view in it.
@@ -600,7 +621,7 @@ export class CarFactory {
     const mirrorGlass = [];
     body.traverse((o) => o.isMesh && o.material.name === 'MirrorGlass' && mirrorGlass.push({ mesh: o, own: o.material }));
 
-    const wheelMap = mapFor(lite);
+    const wheelMap = mapFor(true, lite);
     const wheels = wheelsSrc.map((src, index) => {
       const wheel = new THREE.Group();
       wheel.position.copy(src.position);
@@ -610,8 +631,8 @@ export class CarFactory {
       if (batch && batch.slots.length < WHEEL_CAPACITY) {
         batch.slots.push(spin);
       } else {
-        // Textured wheels: everything except the caliper spins, one mesh per material (lite:
-        // rim and tyre in one atlas mesh).
+        // Textured wheels: everything except the caliper spins; rim and tyre (their baked
+        // colours) in one atlas mesh.
         const merged = bake(src, src, (o) => o.name === 'caliper' || o.userData.still, wheelMap, atlas, describe);
         merged.forEach((mesh) => {
           mesh.castShadow = false;

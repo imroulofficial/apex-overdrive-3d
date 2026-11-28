@@ -49,10 +49,12 @@ async function quiet(fn) {
 
 const rigs = {};
 const cockpits = {};
+const lowCockpits = {};
 for (const car of CARS) {
   rigs[car.id] = {};
   for (const lod of ['garage', 'drive', 'race']) rigs[car.id][lod] = await quiet(() => loadCar(car, { paintColor: '#c8102e', finish: 'metallic', lod }));
   cockpits[car.id] = await quiet(() => loadCarCockpit(car));
+  lowCockpits[car.id] = await quiet(() => loadCarCockpit(car, { tier: 'low' }));
 }
 const DRIVE = (id) => rigs[id].drive;
 const box = (o) => new THREE.Box3().setFromObject(o, true);
@@ -404,7 +406,7 @@ test('own cockpit: eye from extras.apex.eye, hidden car nodes, steering wheel an
     for (const g of c.glowMaterials) assert.ok(Math.abs(g.m.emissiveIntensity - g.full) < 0.01, `${car.id} night glow`);
     // Budget per car: draws and triangles of the cabin.
     const s = c.stats();
-    assert.ok(s.draws <= 24 && s.triangles <= 60000, `${car.id} cockpit ${JSON.stringify(s)}`);
+    assert.ok(s.draws <= 24 && s.triangles <= 45000, `${car.id} cockpit ${JSON.stringify(s)}`);
     // The car hides the parts the cockpit draws itself.
     const hide = rig.meta.hideInCockpit ?? DEFAULT_HIDE_IN_COCKPIT;
     assert.ok(hide.includes('steering_wheel') && hide.includes('driver'));
@@ -578,4 +580,132 @@ test("driver view: the player's car draws in front (no rival shows through it), 
   assert.match(race, /this\.factory\.frontDrawPlayer\(player\);\s*PLAYER_FRONT\.value = 0;/);
   for (const x of [v, rival]) x.dispose();
   for (const x of [f, rf]) x.dispose();
+});
+
+// Pixel size of a WebP image (VP8, VP8L or VP8X header).
+function webpSize(b) {
+  const tag = String.fromCharCode(...b.subarray(12, 16));
+  if (tag === 'VP8 ') return [b.readUInt16LE(26) & 0x3fff, b.readUInt16LE(28) & 0x3fff];
+  if (tag === 'VP8L') {
+    const v = b.readUInt32LE(21);
+    return [(v & 0x3fff) + 1, ((v >> 14) & 0x3fff) + 1];
+  }
+  return [1 + b.readUIntLE(24, 3), 1 + b.readUIntLE(27, 3)];
+}
+async function glbImages(file) {
+  const b = await readFile(new URL(`assets/models/${file}`, PUBLIC));
+  const len = b.readUInt32LE(12);
+  const j = JSON.parse(b.subarray(20, 20 + len).toString());
+  const bin = b.subarray(20 + len + 8);
+  return (j.images ?? []).map((im) => {
+    const v = j.bufferViews[im.bufferView];
+    const [w, h] = webpSize(bin.subarray(v.byteOffset ?? 0, (v.byteOffset ?? 0) + v.byteLength));
+    return { name: im.name, w, h };
+  });
+}
+
+test('low tier cockpit: a light file per car (<= 15k triangles, 512 px, <= 4 MB of textures, no normal maps)', async () => {
+  for (const car of CARS) {
+    const low = lowCockpits[car.id];
+    assert.ok(low?.url.endsWith('_cockpit_low.glb'), `${car.id} loads its light cabin on the low tier`);
+    assert.equal(car.model.cockpitLowUrl, car.model.url.replace(/\.glb$/, '_cockpit_low.glb'));
+    assert.equal(low.meta.id, car.id, 'same design data');
+    const c = new CarCockpit({ source: low.scene, meta: low.meta, modelMatrix: DRIVE(car.id).modelMatrix, tier: 'low' });
+    const s = c.stats();
+    assert.ok(s.triangles <= 15000, `${car.id} low cockpit ${JSON.stringify(s)}`);
+    let normalMaps = 0;
+    c.group.traverse((o) => o.isMesh && o.material.normalMap && normalMaps++);
+    assert.equal(normalMaps, 0, `${car.id}: no normal maps`);
+    // The same moving parts as the full cabin.
+    assert.equal(Boolean(c.wheel), Boolean(cockpits[car.id].scene.getObjectByName('steering_wheel')), car.id);
+    assert.equal(c.windowNodes.length, car.id === 'tm-tempesta' ? 0 : 2, `${car.id} windows`);
+    const images = await glbImages(car.model.cockpitLowUrl.replace(/^assets\/models\//, ''));
+    let bytes = 0;
+    for (const im of images) {
+      assert.ok(im.w <= 512 && im.h <= 512, `${car.id} ${im.name} ${im.w}x${im.h}`);
+      bytes += im.w * im.h * 4 * (4 / 3);
+    }
+    assert.ok(bytes <= 4 * 1048576, `${car.id} low cockpit textures ${(bytes / 1048576).toFixed(2)} MB`);
+    c.dispose();
+  }
+  // Other tiers keep the full cabin.
+  assert.ok((await quiet(() => loadCarCockpit(CARS[0], { tier: 'mid' }))).url.endsWith('_cockpit.glb'));
+});
+
+test('lite cars (low tier): rivals one opaque draw, the player at 512 px with its cabin, rims and tyres in the atlas', () => {
+  for (const car of CARS) {
+    const rival = new CarFactory(rigs[car.id].race, { lite: true });
+    const r = rival.build({ color: '#3366ff' });
+    const mats = new Set();
+    r.root.traverse((o) => o.isMesh && mats.add(o.material.name || o.material.type));
+    // Atlas (paint included), glass and lamps; the wheels are the factory's shared batches.
+    let draws = 0;
+    r.root.traverse((o) => o.isMesh && o.visible && draws++);
+    assert.ok(draws <= 3, `${car.id} lite rival draws ${draws}: ${[...mats]}`);
+    let physical = 0;
+    r.root.traverse((o) => o.isMesh && o.material.isMeshPhysicalMaterial && physical++);
+    assert.equal(physical, 0, `${car.id}: lite rival paint in the atlas`);
+    r.dispose();
+    rival.dispose();
+
+    const f = new CarFactory(DRIVE(car.id), { lite: true });
+    const p = f.build({ player: true });
+    let pDraws = 0;
+    let tris = 0;
+    p.root.traverse((o) => {
+      if (!o.isMesh || !o.visible) return;
+      pDraws++;
+      tris += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3;
+      assert.ok(!o.material.normalMap, `${car.id} ${o.material.name || o.material.type}: no normal map on the low tier`);
+    });
+    assert.ok(pDraws <= 11, `${car.id} lite player draws ${pDraws}`);
+    assert.ok(tris <= 40000, `${car.id} lite player triangles ${tris}`);
+    // One cabin group (the driver view still hides it), no moving parts, no live-mirror glass.
+    assert.deepEqual(p.cabin.children.map((g) => g.name), ['cabin-parts']);
+    assert.equal(p.windows.length, 0);
+    assert.equal(p.steerPart, null);
+    assert.equal(p.mirrorGlass.length, 0);
+    // A wheel is at most one draw (rim and tyre in the atlas; none of its own when the factory
+    // batches flat wheels) and the uprights ride in the body.
+    for (const w of p.wheels) {
+      let n = 0;
+      w.spin.traverse((o) => o.isMesh && n++);
+      assert.ok(n <= 1, `${car.id} lite wheel draws ${n}`);
+      assert.equal(w.wheel.children.filter((c) => c.isMesh).length, 0);
+    }
+    p.dispose();
+    f.dispose();
+  }
+});
+
+test('every tier: one glass mesh and one lamp mesh per car; the cabin and dash in the atlas', () => {
+  for (const car of CARS) {
+    const f = new CarFactory(rigs[car.id].race);
+    const r = f.build({ color: '#ffffff' });
+    const count = (root, name) => {
+      let n = 0;
+      root.traverse((o) => o.isMesh && o.material.name === name && n++);
+      return n;
+    };
+    assert.ok(count(r.root, 'Glass') <= 1 && count(r.root, 'Lamps') === 1, car.id);
+    // Glass keeps its alpha (per vertex) and draws in one pass, both faces.
+    r.root.traverse((o) => {
+      if (!o.isMesh || o.material.name !== 'Glass') return;
+      assert.ok(o.material.transparent && o.material.forceSinglePass && o.material.side === THREE.DoubleSide);
+      const a = o.geometry.attributes.color;
+      assert.equal(a.itemSize, 4);
+      let clear = false;
+      for (let i = 0; i < a.count; i++) if (a.getW(i) < 1) clear = true;
+      assert.ok(clear, `${car.id} glass alpha`);
+    });
+    r.dispose();
+    f.dispose();
+    // The player's cabin (interior, driver) has no textured material left: baked colours.
+    const pf = new CarFactory(DRIVE(car.id));
+    const p = pf.build({ player: true });
+    const parts = p.cabin.getObjectByName('cabin-parts');
+    parts?.traverse((o) => o.isMesh && assert.ok(!o.material.map, `${car.id} cabin ${o.material.name} uses the atlas`));
+    p.dispose();
+    pf.dispose();
+  }
 });
