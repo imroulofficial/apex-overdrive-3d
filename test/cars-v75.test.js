@@ -571,10 +571,16 @@ test("driver view: the player's car draws in front (no rival shows through it), 
     assert.ok(shader.vertexShader.includes(FRONT_DRAW));
     assert.match(m.customProgramCacheKey(), /\|front$/);
   }
-  // Rivals never get it.
+  // Rivals share the same program (one program per material kind) but their switch stays at 0, so they never draw in front.
   const rf = new CarFactory(rigs['tm-tempesta'].race);
   const rival = rf.build({ color: '#00ff00' });
-  rival.root.traverse((o) => o.isMesh && [].concat(o.material).forEach((m) => assert.ok(!m.userData.frontDraw)));
+  rival.root.traverse((o) => o.isMesh && [].concat(o.material).forEach((m) => {
+    if (!m.userData.frontDraw) return;
+    const shader = { uniforms: {}, vertexShader: '#include <project_vertex>', fragmentShader: '' };
+    m.onBeforeCompile(shader);
+    assert.notEqual(shader.uniforms.uFront, PLAYER_FRONT, m.name);
+    assert.equal(shader.uniforms.uFront.value, 0, m.name);
+  }));
   const race = await read('../src/race/Race.js');
   assert.match(race, /PLAYER_FRONT\.value = shown && own \? 1 : 0;/);
   assert.match(race, /this\.factory\.frontDrawPlayer\(player\);\s*PLAYER_FRONT\.value = 0;/);

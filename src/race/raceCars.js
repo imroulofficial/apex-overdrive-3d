@@ -208,9 +208,10 @@ function createLampMaterial() {
   return m;
 }
 
-// The low tier's copy of a textured part (Body): colour at 512 px, ORM at 256 px, no normal map.
+// The low tier's copy of a textured part (Body): colour at 512 px, no ORM or normal map.
 const LITE_COLOR = 512;
-const LITE_ORM = 256;
+const LITE_ROUGHNESS = 0.55;
+const LITE_METALNESS = 0.25;
 function smaller(tex, size, made) {
   const img = tex?.image;
   if (!img || typeof document === 'undefined' || !(img.width > size)) return tex;
@@ -226,10 +227,13 @@ function smaller(tex, size, made) {
 function liteMaterial(src, made) {
   const m = src.clone();
   m.map = smaller(src.map, LITE_COLOR, made);
-  const orm = smaller(src.roughnessMap ?? src.metalnessMap, LITE_ORM, made);
-  if (m.roughnessMap) m.roughnessMap = orm;
-  if (m.metalnessMap) m.metalnessMap = orm;
-  if (m.aoMap) m.aoMap = null;
+  // Roughness and metalness as plain values (a trim-like satin) instead of the ORM map.
+  if (m.roughnessMap || m.metalnessMap) {
+    m.roughnessMap = m.metalnessMap = null;
+    m.roughness = LITE_ROUGHNESS;
+    m.metalness = LITE_METALNESS;
+  }
+  m.aoMap = null;
   m.normalMap = null;
   return m;
 }
@@ -370,13 +374,18 @@ export function windowPose(pose, k, out = new THREE.Matrix4()) {
 // for the one player car (cached template materials keep it from race to race).
 export const PLAYER_FRONT = { value: 0 };
 export const FRONT_DRAW = 'gl_Position.z = mix(gl_Position.z, mix(-gl_Position.w, gl_Position.z, 0.1), uFront);';
+// Every car material from a factory gets it (rivals with a switch that stays 0), so a rival's
+// and the player's atlas, glass and lamps share one program each; frontDraw() again with
+// PLAYER_FRONT (before the first compile) hands a material to the player's switch.
 export function frontDraw(material, uniform = PLAYER_FRONT) {
-  if (!material || material.userData.frontDraw) return;
+  if (!material) return;
+  material.userData.uFront = uniform;
+  if (material.userData.frontDraw) return;
   material.userData.frontDraw = true;
   const prev = material.onBeforeCompile;
   material.onBeforeCompile = (shader, renderer) => {
     prev.call(material, shader, renderer);
-    shader.uniforms.uFront = uniform;
+    shader.uniforms.uFront = material.userData.uFront;
     shader.vertexShader = `uniform float uFront;\n${shader.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>\n  ${FRONT_DRAW}`)}`;
   };
   const key = material.customProgramCacheKey.bind(material);
@@ -404,11 +413,11 @@ export class CarFactory {
     this.glass = createVertexPbrMaterial({ envMapIntensity: 1.1, transparent: true, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true });
     this.glass.name = 'Glass';
     this.liteMats = new Map(); // template material -> its lite copy (player, low tier)
-    // Lite: the player's paint without its flake normal map (the clear coat and livery stay).
-    if (lite && this.paint.normalMap) {
-      this.paint.normalMap = null;
-      this.paint.needsUpdate = true;
-    }
+    // The driver-view switch of this factory's shared materials: off for rivals' factories,
+    // PLAYER_FRONT once frontDrawPlayer() claims the factory for the player.
+    this.front = { value: 0 };
+    for (const m of [this.atlas, this.wheelAtlas, this.glass]) frontDraw(m, this.front);
+    if (lite) this.litePaint();
     // Length and width of the car on the ground, for its contact shadow.
     const box = new THREE.Box3().setFromObject(template.group, true);
     const size = box.getSize(new THREE.Vector3());
@@ -449,6 +458,8 @@ export class CarFactory {
   // The player's car (and this factory's wheel batches) drawn in front in the driver view
   // (switched by PLAYER_FRONT).
   frontDrawPlayer(visual) {
+    this.front = PLAYER_FRONT;
+    for (const m of [this.atlas, this.wheelAtlas, this.glass]) frontDraw(m);
     for (const root of [visual.root, ...this.sharedMeshes]) {
       root.traverse((o) => {
         if (o.isMesh) for (const m of [].concat(o.material)) frontDraw(m);
@@ -459,6 +470,17 @@ export class CarFactory {
 
   setPlayerPaint(color, finish) {
     applyFinish(this.paint, color, finish);
+    if (this.lite) this.litePaint();
+  }
+
+  // Lite: the player's paint keeps its colour, finish, livery and env reflections, without the
+  // flake normal map, clear coat or iridescence (the extra lobes cost a low-end GPU the most).
+  litePaint() {
+    const p = this.paint;
+    p.normalMap = null;
+    p.clearcoat = 0;
+    p.iridescence = 0;
+    p.needsUpdate = true;
   }
 
   // One InstancedMesh for every wheel on one side of the cars this factory builds (tyre, rim
@@ -523,6 +545,7 @@ export class CarFactory {
     const paint = player ? this.paint : createRivalPaint(color, finish, this.paint.userData.livery);
     const paintInAtlas = lite && !player;
     const lamps = createLampMaterial();
+    frontDraw(lamps, this.front);
     const atlas = { atlasMaterial: this.atlas, glassMaterial: this.glass, lampMaterial: lamps };
     const describe = (m) => (m === this.paint ? describeMaterial(paint) : describeMaterial(m));
     // `baked`: this part may use its baked texture colour (cabin parts; lite rims and tyres).
