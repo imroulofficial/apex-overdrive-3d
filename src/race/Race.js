@@ -16,7 +16,6 @@ import { shownPaintColor } from '../garage/carPaint.js';
 import { ChaseCamera } from './chaseCamera.js';
 import { Cockpit, gearGlyph } from './cockpit.js';
 import { CarCockpit } from './carCockpit.js';
-import { DoorWindows } from './doorWindows.js';
 import { cockpitTier, loadCockpitAsset } from './cockpitAsset.js';
 import { tunnelShade } from './alpineSetPieces.js';
 import { Gearbox } from '../audio/gearbox.js';
@@ -173,7 +172,6 @@ export class Race {
     // counter and the gear readout.
     this.cockpit = null;
     this.cockpitShown = null;
-    this.windows = new DoorWindows();
     this.cockpitProj = { i: -1 };
     this.nightGlow = 0;
     this.gearbox = new Gearbox();
@@ -349,8 +347,8 @@ export class Race {
   }
 
   // The player car's cabin: its own cockpit model when it has one (race/carCockpit.js), else
-  // the shared cabin (race/cockpit.js, loaded only then). Its eye, cockpit effects and door
-  // windows come with it.
+  // the shared cabin (race/cockpit.js, loaded only then). Its eye and cockpit effects come
+  // with it. The windows are always closed (v76: no window button).
   async buildCockpit(car, job = loadCarCockpit(car, { tier: this.cockpitTier })) {
     const own = await job;
     if (this.cockpit) {
@@ -372,30 +370,6 @@ export class Race {
       this.cockpitFx = null;
     }
     this.scene.add(this.cockpit.group);
-    this.setWindowsNow(0);
-  }
-
-  // Door windows (cockpit view, cars with extras.apex.windows): the HUD button toggles them
-  // down and up; each race starts with them closed. Never saved.
-  get windowsAvailable() {
-    return Boolean(this.cockpit?.windowNodes?.length);
-  }
-
-  toggleWindows() {
-    return this.windows.toggle({ cockpitView: Boolean(this.cockpitShown), available: this.windowsAvailable });
-  }
-
-  setWindowsNow(k) {
-    this.windows.reset(k);
-    this.cockpit?.setWindows?.(k);
-    this.player?.visual.setWindows(k);
-  }
-
-  updateWindows(dt) {
-    const k = this.windows.step(dt);
-    if (k === null) return;
-    this.cockpit.setWindows?.(k);
-    this.player.visual.setWindows(k);
   }
 
   // The follow views and the driver's eye need the model's nose and roof line.
@@ -562,7 +536,6 @@ export class Race {
     const shown = shownPaintColor(this.factory.paint, paint.color, paint.finish);
     this.cockpit.setPaint(shown);
     this.player.color = shown;
-    this.setWindowsNow(0);
     this.playerSmoke = fx?.smoke ? new THREE.Color(fx.smoke.color) : SMOKE;
     this.player.visual.setNitroFx(fx?.nitro ?? null);
     if (this.shadowState !== this.renderer.shadowMap.enabled) {
@@ -635,22 +608,7 @@ export class Race {
     this.culling.update(this.camera);
     this.bloom.resize();
     this.bloom.render(scene, this.camera);
-    // The cockpit's live mirror target, allocated and drawn once (mid and high GPUs).
-    this.cockpit.renderMirror(r, scene, true);
-    // The player's wing mirrors in their other material too (live in the driver view, their
-    // own glass outside it), so switching views compiles nothing.
-    const live = this.cockpit.bodyMirrorMaterial;
     const visual = this.player?.visual;
-    if (live && visual?.mirrorGlass?.length) {
-      visual.setMirror(this.cockpitShown ? null : live);
-      // Compiled for the screen and drawn once into a target (the bloom chain's format).
-      r.compile(scene, this.camera);
-      const prev = r.getRenderTarget();
-      r.setRenderTarget(this.warmTarget);
-      r.render(scene, this.camera);
-      r.setRenderTarget(prev);
-      visual.setMirror(this.cockpitShown ? live : null);
-    }
     // The body twins for the driver view (raceCars.js cockpitTwins), the same way.
     if (visual?.twins?.length) {
       const own = Boolean(this.cockpitShown && this.cockpitFx);
@@ -761,9 +719,8 @@ export class Race {
     this.render();
   }
 
-  // One frame on screen: the cockpit's live mirror when it is due, then the scene through bloom.
+  // One frame on screen: the scene through bloom (v76: no mirror pass).
   render() {
-    if (this.cockpitShown) this.cockpit.renderMirror(this.renderer, this.scene);
     this.bloom.render(this.scene, this.camera);
   }
 
@@ -839,6 +796,14 @@ export class Race {
 
     const chaseOpts = (this.chaseOpts ??= { boostTier: 0 });
     chaseOpts.boostTier = player.tier;
+    // Driver view of a car with its own cabin (v76): the eye and the cabin ride on the car
+    // body's own world matrix (suspension, lean and squat included), the same one the bonnet,
+    // the wings and the pillars seen through the glass are drawn with.
+    if (this.cockpitFx && this.chase.view === 'cockpit') {
+      const body = this.player.visual.frame;
+      body.updateWorldMatrix(true, false);
+      this.chase.frame = body.matrixWorld;
+    } else this.chase.frame = null;
     this.chase.update(dt, player, chaseOpts);
     this.updateCockpit(dt, playerInput);
     this.culling.update(this.camera);
@@ -846,7 +811,6 @@ export class Race {
     // In the car's own cabin the nitro streaks stay off (extras.apex.cockpitFx.speedLines).
     const lines = this.cockpitShown && this.cockpitFx && !this.cockpitFx.speedLines ? 0 : lineLevel;
     this.speedLines.update(dt, simulate ? lines : 0, Math.max(20, player.speed), player.tier);
-    this.updateWindows(dt);
 
     this.processEvents();
     this.updateEngine(playerInput, dt);
@@ -888,32 +852,43 @@ export class Race {
     for (const r of this.racers) {
       const v = r.vehicle;
       if (!v) continue;
-      const p = (v.prevPose ??= { x: 0, y: 0, z: 0, heading: 0, pitch: 0 });
+      const p = (v.prevPose ??= { x: 0, y: 0, z: 0, heading: 0, pitch: 0, forward: 0, vx: 0, vz: 0, yawRate: 0 });
       p.x = v.pos.x;
       p.y = v.pos.y;
       p.z = v.pos.z;
       p.heading = v.heading;
       p.pitch = v.pitch;
+      p.forward = v.forward;
+      p.vx = v.vel.x;
+      p.vz = v.vel.y;
+      p.yawRate = v.yawRate;
     }
   }
 
   // While the simulation is ahead of the clock, moves every car back to where it was at this
   // instant (between its last two steps) for the visuals, cameras and effects of this frame;
   // unblendCars() puts the simulated pose back.
+  // v76: k < 0 (the simulation a little behind the clock) draws them that much further along
+  // their last step, and the speeds the visuals and cameras read (forward speed, velocity, yaw
+  // rate) blend too, so nothing measured from them changes in steps.
   blendCars() {
     this.blended = false;
     const k = this.physicsClock.blend;
-    if (k <= 1e-4) return;
+    if (Math.abs(k) <= 1e-4) return;
     for (const r of this.racers) {
       const v = r.vehicle;
       const p = v?.prevPose;
       if (!p) continue;
-      const c = (v.simPose ??= { x: 0, y: 0, z: 0, heading: 0, pitch: 0 });
+      const c = (v.simPose ??= { x: 0, y: 0, z: 0, heading: 0, pitch: 0, forward: 0, vx: 0, vz: 0, yawRate: 0 });
       c.x = v.pos.x;
       c.y = v.pos.y;
       c.z = v.pos.z;
       c.heading = v.heading;
       c.pitch = v.pitch;
+      c.forward = v.forward;
+      c.vx = v.vel.x;
+      c.vz = v.vel.y;
+      c.yawRate = v.yawRate;
       v.pos.x -= (c.x - p.x) * k;
       v.pos.y -= (c.y - p.y) * k;
       v.pos.z -= (c.z - p.z) * k;
@@ -921,6 +896,10 @@ export class Race {
       dh = Math.atan2(Math.sin(dh), Math.cos(dh));
       v.heading -= dh * k;
       v.pitch -= (c.pitch - p.pitch) * k;
+      v.forward -= (c.forward - p.forward) * k;
+      v.vel.x -= (c.vx - p.vx) * k;
+      v.vel.y -= (c.vz - p.vz) * k;
+      v.yawRate -= (c.yawRate - p.yawRate) * k;
     }
     this.blended = true;
   }
@@ -935,6 +914,9 @@ export class Race {
       v.pos.set(c.x, c.y, c.z);
       v.heading = c.heading;
       v.pitch = c.pitch;
+      v.forward = c.forward;
+      v.vel.set(c.vx, c.vz);
+      v.yawRate = c.yawRate;
     }
   }
 
@@ -1419,12 +1401,11 @@ export class Race {
     if (shown !== this.cockpitShown) {
       this.cockpitShown = shown;
       this.cockpit.setVisible(shown);
-      // The car's own cabin sits inside the car: only its interior, driver, glass, windows and
+      // The car's own cabin sits inside the car: only its interior, driver, glass and
       // steering wheel hide. The shared cabin hides the whole car round it.
       const own = Boolean(this.cockpitFx);
       this.player.visual.root.visible = own || !shown;
       this.player.visual.setCabinShown(!shown);
-      this.player.visual.setMirror(shown ? this.cockpit.bodyMirrorMaterial : null);
       this.player.visual.setCockpitLook(shown && own);
       PLAYER_FRONT.value = shown && own ? 1 : 0;
       for (const m of this.factory.sharedMeshes) m.visible = own || !shown;

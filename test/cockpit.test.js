@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import * as THREE from 'three';
 import { ChaseCamera, HEAD, cockpitEye } from '../src/race/chaseCamera.js';
-import { Cockpit, needleAngle, shiftLit, gearGlyph, WHEEL_LOCK, HAND_TURN, SPEEDO_MAX, RPM_MAX, RPM_RED, SHIFT_LIGHTS, SHIFT_FROM, GLYPH, MIRROR } from '../src/race/cockpit.js';
+import { Cockpit, needleAngle, shiftLit, gearGlyph, WHEEL_LOCK, HAND_TURN, SPEEDO_MAX, RPM_MAX, RPM_RED, SHIFT_LIGHTS, SHIFT_FROM, GLYPH, MIRROR_TINT } from '../src/race/cockpit.js';
 import { Rain, LensDrops } from '../src/race/atmosphere.js';
 import { CAMERA_VIEWS, CAMERA_LABELS } from '../src/data/controls.js';
 import { normalize, defaults } from '../src/core/saveSchema.js';
@@ -219,60 +219,20 @@ test('light: few draws, textures made once, simplest version on low-end GPUs', (
   assert.ok(tris(low) < tris(full) * 0.35, `low-end has fewer details (${tris(low)} vs ${tris(full)} triangles)`);
 });
 
-test('live mirror: one small render every 2nd frame on mid/high GPUs, never on low-end', () => {
-  const renders = [];
-  const fakeRenderer = (log) => ({
-    shadowMap: { autoUpdate: true },
-    target: null,
-    getRenderTarget() {
-      return this.target;
-    },
-    setRenderTarget(t) {
-      this.target = t;
-    },
-    render(scene, camera) {
-      log.push({ target: this.target, camera, shadows: this.shadowMap.autoUpdate });
-    },
-  });
-  const scene = new THREE.Scene();
-  // Low-end: no target, no camera, no render, even when forced (the warm-up).
-  const low = makeCockpit(true);
-  const lowLog = [];
-  assert.equal(low.liveMirror, false);
-  assert.equal(low.mirrorTarget, undefined);
-  low.setVisible(true);
-  for (let i = 0; i < 10; i++) low.renderMirror(fakeRenderer(lowLog), scene);
-  low.renderMirror(fakeRenderer(lowLog), scene, true);
-  assert.equal(lowLog.length, 0, 'no live mirror pass on low-end');
-  const glass = meshesOf(low).find((m) => m.name === 'cockpit-mirrors');
-  assert.ok(glass.material.vertexColors && !glass.material.map, 'low-end mirrors show a sky gradient');
-
-  const full = makeCockpit();
-  const r = fakeRenderer(renders);
-  assert.equal(full.mirrorTarget.width, MIRROR.width);
-  assert.equal(full.mirrorTarget.height, MIRROR.height);
-  assert.ok(MIRROR.width <= 256 && MIRROR.height <= 128, 'low resolution');
-  full.renderMirror(r, scene);
-  assert.equal(renders.length, 0, 'nothing while the cockpit is hidden');
-  full.setVisible(true);
-  for (let i = 0; i < 10; i++) full.renderMirror(r, scene);
-  assert.equal(renders.length, 10 / MIRROR.every, 'every 2nd frame');
-  for (const e of renders) {
-    assert.equal(e.target, full.mirrorTarget);
-    assert.equal(e.shadows, false, 'reuses the shadow map');
-    assert.equal(e.camera.far, MIRROR.far, 'limited draw distance');
-    assert.equal(e.camera.layers.test(full.group.children[0].layers), false, 'never draws the cabin');
+test('mirrors: dark tinted glass on every tier, no render target, no mirror pass (v76)', () => {
+  for (const low of [true, false]) {
+    const c = makeCockpit(low);
+    assert.equal(c.liveMirror, false);
+    assert.equal(c.mirrorTarget, undefined);
+    assert.equal(c.renderMirror, undefined);
+    const glass = meshesOf(c).find((m) => m.name === 'cockpit-mirrors');
+    assert.ok(glass.material.vertexColors && !glass.material.map, 'tinted glass');
   }
-  assert.equal(r.target, null, 'back to the main target');
-  assert.equal(r.shadowMap.autoUpdate, true);
+  assert.ok(new THREE.Color(MIRROR_TINT.top).getHSL({}).l < 0.25, 'dark');
 });
-
-test('Race: mirror only while the cockpit shows, warmed up before the race, speed lines outside', async () => {
+test('Race: no mirror pass (v76), speed lines outside the cabin', async () => {
   const race = await read('../src/race/Race.js');
-  const render = race.slice(race.indexOf('  render() {'), race.indexOf('  trackPerformance('));
-  assert.match(render, /if \(this\.cockpitShown\) this\.cockpit\.renderMirror\(this\.renderer, this\.scene\)/);
-  const warm = race.slice(race.indexOf('  warmUp() {'), race.indexOf('  start() {'));
-  assert.match(warm, /this\.cockpit\.renderMirror\(r, scene, true\)/);
+  assert.doesNotMatch(race, /renderMirror/);
   const upd = race.slice(race.indexOf('  updateCockpit(dt, input) {'), race.indexOf('  updateEngine('));
   assert.match(upd, /this\.lens\.setGlass\(shown\)/);
   assert.match(upd, /this\.rain\.setCabin\(shown\)/);

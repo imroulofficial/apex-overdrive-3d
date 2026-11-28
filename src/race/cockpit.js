@@ -24,10 +24,8 @@ import * as THREE from 'three';
 //             a digital speed readout, the gear and a row of shift lights (one 512x320 texture,
 //             drawn once; the digits and lights change through uniforms only)
 //   needles   speedometer and rev counter needles, glowing
-//   mirrors   rear-view and both wing mirrors. Mid and high tiers see a live rear view: one
-//             256x96 render, every 2nd frame, no post-processing, 120 m draw distance (the
-//             only extra pass, and only while the cockpit shows). The low tier gets a sky
-//             gradient instead, and no extra pass.
+//   mirrors   rear-view and both wing mirrors: dark tinted glass with a faint sheen, part of
+//             the interior (v76: no live rear view and no mirror render pass on any tier).
 //   glass     a very faint sheen low on the windscreen (not on the low tier)
 //
 // Drawn on top: every cockpit material squeezes its depth into the front tenth of the depth
@@ -49,8 +47,9 @@ export const SHIFT_FROM = 4800;
 export const SHIFT_FLASH = 7500;
 // Glyphs in the cluster texture's digit strip: 0-9, then N, R and a blank.
 export const GLYPH = { N: 10, R: 11, BLANK: 12 };
-// The live mirror's render target and how often it renders (every Nth frame).
-export const MIRROR = { width: 256, height: 96, every: 2, far: 120, fov: 22 };
+// Mirror glass (v76): dark tinted glass, a little lighter at the top of each glass (the sky's
+// faint sheen), drawn as vertex colours in one unlit draw.
+export const MIRROR_TINT = { top: 0x2b3642, low: 0x0b0e12 };
 const GLYPHS = '0123456789NR ';
 const SWEEP = (240 * Math.PI) / 180; // dial sweep, needle from lower-left to lower-right
 
@@ -403,14 +402,14 @@ function partMesh(asset, name, material, parent, label = name) {
   return m;
 }
 
-// Low tier mirrors: a sky gradient (light at the top of each glass, road grey at the bottom)
-// instead of the live rear view; from each glass's uv.y, which runs bottom to top.
-export function skyGradient(geometry) {
+// Mirror glass colours: a gradient from each glass's uv.y, which runs bottom to top (v76: the
+// dark tint of MIRROR_TINT on every tier).
+export function skyGradient(geometry, topColor = MIRROR_TINT.top, lowColor = MIRROR_TINT.low) {
   const g = geometry.clone();
   const uv = g.attributes.uv;
   const col = new Float32Array(uv.count * 3);
-  const top = new THREE.Color(0xa9bfd3);
-  const low = new THREE.Color(0x4b545e);
+  const top = new THREE.Color(topColor);
+  const low = new THREE.Color(lowColor);
   for (let i = 0; i < uv.count; i++) {
     _c.copy(low).lerp(top, Math.min(1, Math.max(0, uv.getY(i))));
     col.set([_c.r, _c.g, _c.b], i * 3);
@@ -452,7 +451,7 @@ export class Cockpit {
   constructor({ lowEnd = false, tier = lowEnd ? 'low' : 'mid', asset = null } = {}) {
     this.tier = tier;
     this.lowEnd = tier === 'low';
-    this.liveMirror = !this.lowEnd;
+    this.liveMirror = false; // v76: never (dark tinted mirror glass instead)
     this.asset = asset;
     const low = this.lowEnd;
     const group = (this.group = new THREE.Group());
@@ -521,17 +520,10 @@ export class Cockpit {
     this.rpmNeedle = needle(DIAL_R_X);
     group.add(cluster);
 
-    // Mirrors.
-    if (this.liveMirror) {
-      this.mirrorTarget = new THREE.WebGLRenderTarget(MIRROR.width, MIRROR.height, { depthBuffer: true, samples: 0 });
-      this.mirrorTarget.texture.name = 'cockpit-mirror';
-      this.mirrorCamera = new THREE.PerspectiveCamera(MIRROR.fov, MIRROR.width / MIRROR.height, 0.5, MIRROR.far);
-      this.mirrorCamera.layers.set(0); // the world, never the cabin
-      this.mirrorFrame = 0;
-    }
-    const glassMat = inFront(this.liveMirror ? new THREE.MeshBasicMaterial({ map: this.mirrorTarget.texture }) : new THREE.MeshBasicMaterial({ vertexColors: true }));
+    // Mirrors: dark tinted glass.
+    const glassMat = inFront(new THREE.MeshBasicMaterial({ vertexColors: true }));
     const mirrors = partMesh(asset, 'cockpit_mirror_glass', glassMat, group, 'cockpit-mirrors');
-    if (mirrors && !this.liveMirror) mirrors.geometry = skyGradient(mirrors.geometry);
+    if (mirrors) mirrors.geometry = skyGradient(mirrors.geometry);
     if (!low) {
       const sheen = inFront(new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
       const glass = new THREE.Mesh(buildGlass(), sheen);
@@ -635,31 +627,5 @@ export class Cockpit {
     }
   }
 
-  // The live rear view (mid and high tiers, cockpit showing): one low-resolution render of the
-  // world behind the car every MIRROR.every frames, no post-processing, a short draw
-  // distance, reusing the sun's shadow map. `force` renders now (the warm-up).
-  renderMirror(renderer, scene, force = false) {
-    if (!this.liveMirror || (!force && !this.group.visible)) return false;
-    if (!force && this.mirrorFrame++ % MIRROR.every !== 0) return false;
-    const cam = this.mirrorCamera;
-    const g = this.group;
-    g.updateMatrixWorld();
-    // From the rear-view mirror, looking back down the car (a little down, to see the road).
-    cam.position.set(0.3, 0.12, 0.33).applyMatrix4(g.matrixWorld);
-    _p.set(-20, -1.6, 0.33).applyMatrix4(g.matrixWorld);
-    cam.lookAt(_p);
-    cam.updateMatrixWorld();
-    const shadows = renderer.shadowMap.autoUpdate;
-    renderer.shadowMap.autoUpdate = false;
-    const prev = renderer.getRenderTarget();
-    renderer.setRenderTarget(this.mirrorTarget);
-    renderer.render(scene, cam);
-    renderer.setRenderTarget(prev);
-    renderer.shadowMap.autoUpdate = shadows;
-    return true;
-  }
-
-  dispose() {
-    this.mirrorTarget?.dispose();
-  }
+  dispose() {}
 }

@@ -3,7 +3,6 @@ import {
   DEPTH_FRONT,
   GLYPH,
   HAND_TURN,
-  MIRROR,
   RPM_RED,
   SHIFT_FLASH,
   SHIFT_LIGHTS,
@@ -17,15 +16,16 @@ import {
   shiftLit,
   skyGradient,
 } from './cockpit.js';
-import { frontDraw, windowPose } from './raceCars.js';
+
 
 // The car's own driver-view cabin (versionCode 75): `<car>_cockpit.glb`, built with the car in
 // Blender (dash, binnacle, seats, door cards, pillars, its own steering wheel with the gloved
 // hands, clear glass and door windows, mirror glass), in the car's own frame. The player's car
 // stays visible round it, so the bonnet, wings and mirrors seen through the glass are its own;
 // the car hides only its interior, driver, glass, windows and steering wheel
-// (extras.apex.hideInCockpit, CarVisual.setCabinShown). The cabin follows the car's physics
-// frame (heading and pitch), like the driver's eye.
+// (extras.apex.hideInCockpit, CarVisual.setCabinShown). v76: the cabin and the driver's eye
+// ride on the car body's own world matrix (ChaseCamera.frame), the one the bonnet is drawn
+// with, so nothing in the view moves against anything else.
 //
 // Same interface and behaviour as the shared cabin (race/cockpit.js), which stays as the
 // fallback for a car without a cockpit file:
@@ -35,10 +35,19 @@ import { frontDraw, windowPose } from './raceCars.js';
 //     drawn in their own shader: speed, revs (or kW), and the small dials at rest
 //   - a gear and speed readout and a row of shift lights between the two big dials
 //   - the gauges glow brighter at night and in tunnels
-//   - every MirrorGlass surface shows the live rear view (mid and high tiers, and a low-end GPU
-//     on a manually chosen High) or a sky gradient (low tier), as the shared cabin's mirrors
+//   - every MirrorGlass surface is dark tinted glass, part of the interior (v76: no live rear
+//     view and no mirror render pass on any tier)
 //   - drawn on top (DEPTH_FRONT): a rival that touches the car never shows inside the cabin
-//   - door windows (extras.apex.windows) slide down and up (setWindows)
+//   - the door windows stay closed (v76: no window button); their glass is clear both ways
+
+// Mirror glass without uv: the dark tint all over.
+function tint(g) {
+  const c = new THREE.Color(0x10141a);
+  const col = new Float32Array(g.attributes.position.count * 3);
+  for (let i = 0; i < col.length; i += 3) col.set([c.r, c.g, c.b], i);
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return g;
+}
 
 // Share of the cabin's baked night light shown by day (glow 0); all of it at glow 1.
 const CABIN_DAY_GLOW = 0.3;
@@ -298,7 +307,7 @@ export class CarCockpit {
   constructor({ source, meta, modelMatrix, tier = 'mid' }) {
     this.tier = tier;
     this.lowEnd = tier === 'low';
-    this.liveMirror = tier !== 'low';
+    this.liveMirror = false; // v76: never
     this.meta = meta ?? {};
     this.textures = [];
     // Placed like the shared cabin, at the car's physics frame (the same frame as the driver's
@@ -329,34 +338,15 @@ export class CarCockpit {
       uRadius: { value: gauges[0]?.radius ?? 236 / 512 },
       uGlow: { value: 0 },
     };
-    // The live mirror (mid and high): one small render of the world behind the car every
-    // MIRROR.every frames, shared by every MirrorGlass surface.
-    if (this.liveMirror) {
-      this.mirrorTarget = new THREE.WebGLRenderTarget(MIRROR.width, MIRROR.height, { depthBuffer: true, samples: 0 });
-      this.mirrorTarget.texture.name = 'car-cockpit-mirror';
-      this.mirrorCamera = new THREE.PerspectiveCamera(MIRROR.fov, MIRROR.width / MIRROR.height, 0.5, MIRROR.far);
-      this.mirrorCamera.layers.set(0); // the world: never the cabin (layer 1) or the player's car (layer 2)
-      this.mirrorFrame = 0;
-    }
-    const mirrorMat = inFront(this.liveMirror ? new THREE.MeshBasicMaterial({ map: this.mirrorTarget.texture }) : new THREE.MeshBasicMaterial({ vertexColors: true }));
+    // Mirror glass: dark tinted glass on every tier (one unlit draw, vertex colours).
+    const mirrorMat = inFront(new THREE.MeshBasicMaterial({ vertexColors: true }));
     mirrorMat.name = 'MirrorGlass';
     root.traverse((o) => {
       if (!o.isMesh) return;
       const name = o.material?.name ?? '';
       if (name === 'MirrorGlass') {
-        // Each glass has uv 0..1 (u along the car's z): the rear view flipped like a mirror.
         const g = o.geometry.clone();
-        if (this.liveMirror) {
-          const uv = g.attributes.uv;
-          if (uv) {
-            const flipped = new Float32Array(uv.count * 2);
-            for (let i = 0; i < uv.count; i++) flipped.set([1 - uv.getX(i), 1 - uv.getY(i)], i * 2);
-            g.setAttribute('uv', new THREE.BufferAttribute(flipped, 2));
-          }
-          o.geometry = g;
-        } else {
-          o.geometry = g.attributes.uv ? skyGradient(g) : g;
-        }
+        o.geometry = g.attributes.uv ? skyGradient(g) : tint(g);
         o.material = mirrorMat;
         mirrorMeshes.push(o);
         return;
@@ -365,24 +355,12 @@ export class CarCockpit {
       o.material = mats.get(o.material);
       if (name === 'Gauges') gaugeMeshes.push(o);
     });
-    // The car body's wing mirrors (MirrorGlass on the player's car) show the same rear view,
-    // flipped in the shader (their geometry is shared with the car's other parts).
-    this.bodyMirrorMaterial = null;
-    if (this.liveMirror) {
-      const m = (this.bodyMirrorMaterial = new THREE.MeshBasicMaterial({ map: this.mirrorTarget.texture, name: 'MirrorGlass' }));
-      m.onBeforeCompile = (sh) => {
-        sh.vertexShader = sh.vertexShader.replace('#include <uv_vertex>', '#include <uv_vertex>\n#ifdef USE_MAP\n  vMapUv = vec2(1.0) - vMapUv;\n#endif');
-      };
-      m.customProgramCacheKey = () => 'body-mirror';
-      // On the body, drawn in front like the rest of the player's car (frontDraw).
-      frontDraw(m);
-    }
     // The cabin's baked night light (emissive map on the Cockpit material) is meant for the
     // dark: by day it only lifts the cabin a little, at night and in tunnels it is all there.
     this.glowMaterials = [...mats.values()].filter((m) => (m.userData.glows || m.emissive?.getHex() > 0) && m.name !== 'Gauges').map((m) => ({ m, full: m.userData.glowI?.value ?? m.emissiveIntensity }));
     for (const g of this.glowMaterials) setGlow(g.m, g.full * CABIN_DAY_GLOW);
     this.unlit = [...mats.values()].filter((m) => m.userData.shade);
-    this.materials = [...mats.values(), mirrorMat, ...(this.bodyMirrorMaterial ? [this.bodyMirrorMaterial] : [])];
+    this.materials = [...mats.values(), mirrorMat];
     this.mirrorMeshes = mirrorMeshes;
 
     // Steering wheel and hands: the hands get a pivot of their own at the wheel's transform.
@@ -402,17 +380,6 @@ export class CarCockpit {
         this.hands.attach(hands);
       }
     }
-
-    // Door windows: poses on top of each node's own transform.
-    this.windowNodes = [];
-    for (const [name, pose] of Object.entries(this.meta.windows ?? {})) {
-      const node = pose?.open && root.getObjectByName(name);
-      if (!node) continue;
-      node.updateMatrix();
-      node.matrixAutoUpdate = false;
-      this.windowNodes.push({ node, pose, rest: node.matrix.clone() });
-    }
-    this.windowLevel = 0;
 
     // Gear, speed and shift lights between the two big dials, facing the driver.
     const spots = measureDials(gaugeMeshes, root);
@@ -437,20 +404,6 @@ export class CarCockpit {
       }
     }
     this.displayUniforms = this.displayMaterial?.uniforms ?? null;
-
-    // The rear-view mirror camera sits at the middle mirror (closest to the car's centre line).
-    this.mirrorAt = new THREE.Vector3(-0.2, 1.1, 0);
-    if (mirrorMeshes.length) {
-      let best = Infinity;
-      for (const o of mirrorMeshes) {
-        o.geometry.computeBoundingBox();
-        o.geometry.boundingBox.getCenter(_a).applyMatrix4(_m.multiplyMatrices(new THREE.Matrix4().copy(root.matrixWorld).invert(), o.matrixWorld));
-        if (Math.abs(_a.z) < best) {
-          best = Math.abs(_a.z);
-          this.mirrorAt.copy(_a);
-        }
-      }
-    }
 
     group.traverse((o) => {
       o.frustumCulled = false;
@@ -494,17 +447,20 @@ export class CarCockpit {
   // The car's own cabin keeps its neutral colours whatever the paint.
   setPaint() {}
 
-  // Door windows 0 (closed) .. 1 (fully down).
-  setWindows(k) {
-    this.windowLevel = k;
-    for (const w of this.windowNodes) w.node.matrix.multiplyMatrices(windowPose(w.pose, k, _m), w.rest);
-  }
-
   // Same arguments as Cockpit.update. The cabin rides on the car body; this turns the wheel,
   // hands and needles and sets the readout, the shift lights and the glow.
   update(car, chase, dt, steer, kmh, rpm, gear = GLYPH.N, glow = 0) {
-    chase.carPoint(car, 0, 0, 0, this.group.position);
-    this.group.rotation.set(0, car.heading, car.pitch);
+    if (chase.frame) {
+      // On the car body's own frame, the same one the camera's eye uses (v76): no part of the
+      // cabin, the wheel or the hands can move against the bonnet or the camera.
+      this.group.matrixAutoUpdate = false;
+      this.group.matrix.copy(chase.frame);
+      this.group.matrixWorldNeedsUpdate = true;
+    } else {
+      this.group.matrixAutoUpdate = true;
+      chase.carPoint(car, 0, 0, 0, this.group.position);
+      this.group.rotation.set(0, car.heading, car.pitch);
+    }
     this.time += dt;
     this.wheelAngle += (steer * WHEEL_LOCK - this.wheelAngle) * Math.min(1, dt * WHEEL_RATE);
     if (this.wheel) {
@@ -539,8 +495,6 @@ export class CarCockpit {
     }
   }
 
-  // The live rear view, as the shared cabin's (race/cockpit.js renderMirror): from the middle
-  // mirror, looking back down the car. `force` renders now (the warm-up).
   // The race's environment map for the medium tier's glass (cabinMaterial).
   setEnvironment(env) {
     this.group.traverse((o) => {
@@ -548,30 +502,8 @@ export class CarCockpit {
     });
   }
 
-  renderMirror(renderer, scene, force = false) {
-    if (!this.liveMirror || (!force && !this.group.visible)) return false;
-    if (!force && this.mirrorFrame++ % MIRROR.every !== 0) return false;
-    const cam = this.mirrorCamera;
-    const g = this.group;
-    g.updateMatrixWorld();
-    const root = g.children[0].children[0];
-    cam.position.copy(this.mirrorAt).applyMatrix4(root.matrixWorld);
-    _b.set(this.mirrorAt.x - 20, this.mirrorAt.y - 1.4, this.mirrorAt.z).applyMatrix4(root.matrixWorld);
-    cam.lookAt(_b);
-    cam.updateMatrixWorld();
-    const shadows = renderer.shadowMap.autoUpdate;
-    renderer.shadowMap.autoUpdate = false;
-    const prev = renderer.getRenderTarget();
-    renderer.setRenderTarget(this.mirrorTarget);
-    renderer.render(scene, cam);
-    renderer.setRenderTarget(prev);
-    renderer.shadowMap.autoUpdate = shadows;
-    return true;
-  }
-
   dispose() {
     this.group.removeFromParent();
-    this.mirrorTarget?.dispose();
     for (const m of this.materials) m.dispose();
     for (const t of this.textures) t.dispose();
     if (this.display) this.display.geometry.dispose();

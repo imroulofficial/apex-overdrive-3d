@@ -249,14 +249,7 @@ const raceHud = createRaceHud({
   onNext: () => exitToMap({ next: true }),
   onDoubleCoins: () => doubleCoins(),
   onCameraView: () => cycleCameraView(),
-  onWindows: () => toggleWindows(),
 });
-
-// Door windows down / up (driver view, cars with windows); every race starts with them closed.
-function toggleWindows() {
-  if (mode !== 'race' || !race?.toggleWindows()) return;
-  raceHud.setWindows(race.windowsAvailable, race.windows.down);
-}
 
 // Finger-drag free look on empty screen (the canvas): turns only the camera, never the car.
 const freeLook = createFreeLook({
@@ -329,7 +322,6 @@ function beginRace() {
     startNitro: Boolean(raceOpts.startNitro),
   });
   raceHud.setNext(null);
-  raceHud.setWindows(race.windowsAvailable, false);
 }
 
 // From the briefing (or, in debug, straight from the garage). `startNitro` is the rewarded

@@ -52,6 +52,25 @@ export const FREE_LOOK = { yawPerPx: 0.009, pitchPerPx: 0.006, orbitPitch: [-0.2
 // roof rather than into the bodywork.
 export const OCCLUSION = { margin: 0.6, pullIn: 10, easeOut: 2.2, minReach: 0.1, samples: 4, refine: 4 };
 
+// Frame-rate independent easing (v76): the share of the way to a target covered in `dt` seconds
+// at `rate` per second, the same whatever the frame time.
+export const expK = (dt, rate) => 1 - Math.exp(-rate * Math.max(0, dt));
+
+// Follows a target that moves during the frame (v76). The old follow eased the camera by
+// min(1, dt * rate) of the way to where the car is now; that trails a moving car by a distance
+// that depends on the frame time (at 50 m/s about 3.3 m at 60 FPS, 2.5 m at 30 FPS), so every
+// uneven frame moved the car on screen. This is the exact answer of a first-order lag to a
+// target moving in a straight line through the frame: the same trail at any frame rate.
+export function lagFollow(out, prevTarget, target, rate, dt) {
+  if (!(dt > 0)) return out;
+  const a = Math.exp(-rate * dt);
+  const err = (prevTarget - out) * a + ((target - prevTarget) * (1 - a)) / (rate * dt);
+  return target - err;
+}
+// The follow views' lag rate. 15/s keeps the distance the camera trailed the car by at 60 FPS
+// before (rate 12, Euler steps): the look is unchanged on a 60 Hz phone.
+export const FOLLOW_LAG = 15;
+
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -97,6 +116,14 @@ export class ChaseCamera {
     this._p = new THREE.Vector3();
     this._l2 = new THREE.Vector3();
     this._proj = { i: -1 };
+    // Follow views (v76): the eased camera point and the targets of the frame before.
+    this.follow = { x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, camY: 0, primed: false };
+    // Driver view (v76): the car body's own world matrix (Race sets it each frame). The eye,
+    // the cabin, the wheel, the hands and the bonnet all ride on it, so none moves against
+    // another; head motion and shake go on the camera only.
+    this.frame = null;
+    this._up = new THREE.Vector3();
+    this._worldUp = new THREE.Vector3(0, 1, 0);
   }
 
   // The view only ever changes here (the camera button / Settings). A view change is the
@@ -131,6 +158,14 @@ export class ChaseCamera {
     this.applyReach(car, this.pos, this.reach);
     this.camY = this.pos.y;
     this.camera.position.copy(this.pos);
+    const f = this.follow;
+    f.x = f.tx = this.pos.x;
+    f.y = f.ty = this.pos.y;
+    f.z = f.tz = this.pos.z;
+    f.camY = this.pos.y;
+    f.primed = true;
+    this.camera.up.copy(this._worldUp);
+    if (this.view === 'cockpit' && this.frame) this.camera.up.setFromMatrixColumn(this.frame, 1).normalize();
     this.camera.lookAt(this.look);
   }
 
@@ -213,6 +248,12 @@ export class ChaseCamera {
   cockpitFor(car, pos, look) {
     const e = this.ownEye ? Object.assign(this.eye, this.ownEye) : cockpitEye(this.size, this.eye);
     const h = this.head;
+    if (this.frame && !this.freeLooking) {
+      // On the car body's own frame (v76), like the cabin round it.
+      pos.set(e.x + h.x, e.y + h.y, e.z + h.z).applyMatrix4(this.frame);
+      look.set(e.x + h.x + COCKPIT.ahead, e.y + h.y - COCKPIT.drop, e.z + h.z).applyMatrix4(this.frame);
+      return;
+    }
     this.carPoint(car, e.x + h.x, e.y + h.y, e.z + h.z, pos);
     this.aim(car, pos, look, COCKPIT.ahead, COCKPIT.drop);
   }
@@ -355,7 +396,8 @@ export class ChaseCamera {
     this.updateFreeLook(dt);
     // Range and height follow the speed smoothly, so a hit that kills the speed does not pull
     // the camera in with a jolt.
-    this.camSpeed += (Math.min(car.speed, 70) - this.camSpeed) * Math.min(1, dt * 2.5);
+    this.camSpeed += (Math.min(car.speed, 70) - this.camSpeed) * expK(dt, 2.5);
+    cam.up.copy(this._worldUp);
     if (this.mode === 'intro') {
       // Sweep from a high aerial over the grid down to the chosen view, landing exactly on it
       // so the race starts without a cut.
@@ -375,6 +417,7 @@ export class ChaseCamera {
         this.mode = 'chase';
         this.snap(car);
       }
+      this.follow.primed = false;
     } else if (this.mode === 'orbit') {
       this.t += dt;
       const a = car.heading + Math.PI * 0.6 + this.t * 0.35;
@@ -390,30 +433,47 @@ export class ChaseCamera {
       this.camY = this.pos.y;
       const speedK = Math.min(1, car.speed / 70);
       const targetFov = BASE_FOV + COCKPIT.fov + speedK * COCKPIT.speedFov + (boostTier === 2 ? 10 : boostTier === 1 ? 5 : 0);
-      this.fov += (targetFov - this.fov) * Math.min(1, dt * (targetFov > this.fov ? 6 : 2.5));
+      this.fov += (targetFov - this.fov) * expK(dt, targetFov > this.fov ? 6 : 2.5);
       this.applyShake(cam, boostTier, COCKPIT.shake, dt);
+      if (this.frame) cam.up.setFromMatrixColumn(this.frame, 1).normalize();
       cam.lookAt(this.look);
+      this.follow.primed = false;
     } else {
       const F = FOLLOW[this.view] ?? FOLLOW.chase;
-      const turn = wrapAngle(this.followYaw(car, dt) - this.yaw) * Math.min(1, dt * F.follow);
+      const turn = wrapAngle(this.followYaw(car, dt) - this.yaw) * expK(dt, F.follow);
       this.yaw += clamp(turn, -FOLLOW_YAW.maxRate * dt, FOLLOW_YAW.maxRate * dt);
       const from = this.idealFor(car, this.pos, this.look);
       // Obstacles: slide in fast, back out slowly, so a wall never pops the view.
       const reach = this.clearReach(car, from);
-      this.reach += (reach - this.reach) * Math.min(1, dt * (reach < this.reach ? OCCLUSION.pullIn : OCCLUSION.easeOut));
+      this.reach += (reach - this.reach) * expK(dt, reach < this.reach ? OCCLUSION.pullIn : OCCLUSION.easeOut);
       this.applyReach(car, this.pos, this.reach);
-      // Smooth vertical so jumps feel weighty rather than glued.
-      this.camY ??= this.pos.y;
-      this.camY += (this.pos.y - this.camY) * Math.min(1, dt * (car.airborne ? 3 : 8));
+      // The camera trails its ideal point by the same distance at any frame rate (lagFollow).
+      const f = this.follow;
+      if (!f.primed) {
+        f.x = f.tx = cam.position.x;
+        f.z = f.tz = cam.position.z;
+        f.y = f.ty = this.camY ?? this.pos.y;
+        f.camY = cam.position.y;
+        f.primed = true;
+      }
+      // Smooth vertical so jumps feel weighty rather than glued...
+      f.y = lagFollow(f.y, f.ty, this.pos.y, car.airborne ? 3 : 8, dt);
+      f.ty = this.pos.y;
       // ...but never so far behind that a big jump leaves the camera under the car.
       const floor = car.pos.y + Math.min(F.height * 0.6, (this.pos.y - car.pos.y) * 0.9);
-      this.camY = Math.max(this.camY, floor);
-      cam.position.lerp(this._v.set(this.pos.x, this.camY, this.pos.z), Math.min(1, dt * 12));
-      cam.position.y = Math.max(cam.position.y, floor);
+      const prevCamY = this.camY ?? f.y;
+      f.y = Math.max(f.y, floor);
+      this.camY = f.y;
+      f.camY = Math.max(lagFollow(f.camY, prevCamY, this.camY, FOLLOW_LAG, dt), floor);
+      f.x = lagFollow(f.x, f.tx, this.pos.x, FOLLOW_LAG, dt);
+      f.z = lagFollow(f.z, f.tz, this.pos.z, FOLLOW_LAG, dt);
+      f.tx = this.pos.x;
+      f.tz = this.pos.z;
+      cam.position.set(f.x, f.camY, f.z);
       if (!this.freeLooking) this.look.y = this.look.y * 0.6 + (this.camY - 1.2) * 0.4;
       const speedK = Math.min(1, car.speed / 70);
       const targetFov = BASE_FOV + F.fov + speedK * 10 + (boostTier === 2 ? 18 : boostTier === 1 ? 8 : 0);
-      this.fov += (targetFov - this.fov) * Math.min(1, dt * (targetFov > this.fov ? 6 : 2.5));
+      this.fov += (targetFov - this.fov) * expK(dt, targetFov > this.fov ? 6 : 2.5);
       this.applyShake(cam, boostTier, 1, dt);
       cam.lookAt(this.look);
     }
@@ -429,7 +489,7 @@ export class ChaseCamera {
   // weight is continuous, so no threshold makes the camera jump.
   followYaw(car, dt) {
     const Y = FOLLOW_YAW;
-    this.driftK += ((car.drifting ? 1 : 0) - this.driftK) * Math.min(1, dt * Y.driftRate);
+    this.driftK += ((car.drifting ? 1 : 0) - this.driftK) * expK(dt, Y.driftRate);
     const forward = car.forward ?? car.speed;
     const w = smooth01(Y.travelFrom, Y.travelTo, forward);
     if (w <= 0) return car.heading;
@@ -439,16 +499,20 @@ export class ChaseCamera {
     return car.heading + clamp(gap * share * w, -Y.maxOffset, Y.maxOffset);
   }
 
+  // Impact shake and the nitro tier-2 rumble (v76): smooth noise (a few sines in time) instead
+  // of a new random offset every frame, which read as frame-rate-dependent jitter. Same size.
   applyShake(cam, boostTier, scale, dt) {
+    this.shakeT = (this.shakeT ?? 0) + dt;
+    const t = this.shakeT;
     if (this.shake > 0.001) {
       const s = this.shake * 0.35 * scale;
-      cam.position.x += (Math.random() - 0.5) * s;
-      cam.position.y += (Math.random() - 0.5) * s;
+      cam.position.x += (Math.sin(t * 47.3) * 0.3 + Math.sin(t * 31.1 + 1.7) * 0.2) * s;
+      cam.position.y += (Math.sin(t * 41.9 + 0.6) * 0.3 + Math.sin(t * 27.7 + 2.9) * 0.2) * s;
       this.shake *= Math.pow(0.02, dt);
     }
     if (boostTier === 2) {
-      cam.position.x += (Math.random() - 0.5) * 0.05 * scale;
-      cam.position.y += (Math.random() - 0.5) * 0.05 * scale;
+      cam.position.x += (Math.sin(t * 38.3 + 0.4) * 0.3 + Math.sin(t * 23.9 + 2.2) * 0.2) * 0.05 * scale;
+      cam.position.y += (Math.sin(t * 33.7 + 1.1) * 0.3 + Math.sin(t * 19.3 + 0.3) * 0.2) * 0.05 * scale;
     }
   }
 }

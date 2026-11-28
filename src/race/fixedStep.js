@@ -28,8 +28,12 @@ export class FixedStep {
     return n;
   }
 
-  // How far back toward the pose before the last step the cars are drawn (0..1).
+  // How far back toward the pose before the last step the cars are drawn: 0..1 while the
+  // simulation is ahead of the clock. While it is up to LAG behind (no step was due yet) the
+  // value goes below 0 (down to -LAG / STEP) and the cars are drawn that much further along
+  // their last step, so every frame shows the cars exactly where they are at that frame's
+  // time (v76: clamping at 0 drew them up to 5 ms late on some frames, a visible jerk).
   get blend() {
-    return Math.min(1, Math.max(0, this.lead / STEP));
+    return Math.min(1, Math.max(-LAG / STEP, this.lead / STEP));
   }
 }

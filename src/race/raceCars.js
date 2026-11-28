@@ -344,29 +344,11 @@ function inStill(o, wheel) {
 }
 
 // Driver-view parts of the player's car (Blender models, extras.apex.hideInCockpit): baked
-// apart from the body so the cockpit view can hide them, the door windows so they can slide
-// down and the steering wheel so it can turn.
+// apart from the body so the cockpit view can hide them and the steering wheel so it can turn.
+// The door windows are always closed (v76) and bake with the rest of the cabin.
 export const DEFAULT_HIDE_IN_COCKPIT = ['interior', 'driver', 'steering_wheel', 'glass', 'window_L', 'window_R'];
 const _m = new THREE.Matrix4();
-const _q = new THREE.Quaternion();
-const _q0 = new THREE.Quaternion();
-const _pv = new THREE.Vector3();
-const _po = new THREE.Vector3();
-const _sv = new THREE.Vector3(1, 1, 1);
 const X_AXIS = new THREE.Vector3(1, 0, 0);
-
-// A door window's pose at `k` (0 closed .. 1 open) from extras.apex.windows[name]
-// ({ closed, open }: position and quaternion of the node in the car frame), as a matrix in that
-// frame.
-export function windowPose(pose, k, out = new THREE.Matrix4()) {
-  const c = pose.closed ?? { position: [0, 0, 0], quaternion: [0, 0, 0, 1] };
-  const o = pose.open;
-  _pv.fromArray(c.position).lerp(_po.fromArray(o.position), k);
-  _q0.fromArray(c.quaternion);
-  _q.fromArray(o.quaternion);
-  _q0.slerp(_q, k);
-  return out.compose(_pv, _q0, _sv);
-}
 
 // Driver view of a car with its own cabin: the player's car is drawn in front of everything
 // else, like the cabin (race/cockpit.js DEPTH_FRONT), so a rival that touches or overlaps it
@@ -537,7 +519,6 @@ export class CarFactory {
         if (o.isMesh) for (const m of [].concat(o.material)) frontDraw(m);
       });
     }
-    for (const g of visual.mirrorGlass ?? []) frontDraw(g.own);
     if (this.twins) this.cockpitTwins(visual, this.twins);
   }
 
@@ -660,14 +641,9 @@ export class CarFactory {
     const mapFor = (baked, wheel = false) => (mat, geo) => {
       if (mat === this.paint) return paintInAtlas || wheel ? ATLAS : paint;
       if (mat.name === 'skip') return null;
-      // Head and tail lenses: one mesh per car so its brake lights glow on their own; the
-      // player's mirror glass stays apart so the driver view can show the live rear view in it.
+      // Head and tail lenses: one mesh per car so its brake lights glow on their own. (v76: the
+      // mirror glass joins the atlas on every tier: there is no live rear view to show in it.)
       if (mat.userData.tailLight || mat.userData.headLight) return LAMP;
-      // (Lite: no live mirror on the low tier, so it joins the atlas.)
-      if (player && !lite && mat.name === 'MirrorGlass') {
-        if (!own.has(mat)) own.set(mat, mat.clone());
-        return own.get(mat);
-      }
       if (isGlass(mat)) return GLASS;
       if (isFlatMaterial(mat) || (baked && geo?.attributes._bakedcolor)) return ATLAS;
       if (lite && player && !mat.transparent) {
@@ -709,19 +685,14 @@ export class CarFactory {
       mesh.receiveShadow = !mesh.material.transparent;
       body.add(mesh);
     });
-    // Cabin parts under the body. The door windows and the steering wheel move, through a
-    // matrix in the rig frame (model frame pose, conjugated by the model matrix), so each is a
-    // group of its own; every other cabin part (interior, driver, glass) bakes into one group.
-    // Lite: the steering wheel and the door windows join them (no turning wheel; the windows
-    // only open in the driver view, where the cockpit model draws its own).
+    // Cabin parts under the body. The steering wheel turns, so it is a group of its own; every
+    // other cabin part (interior, driver, glass, the closed door windows) bakes into one group.
+    // Lite: the steering wheel joins them (no turning wheel).
     const cabin = new THREE.Group();
     cabin.name = 'cabin';
     body.add(cabin);
-    const windows = [];
     let steer = null;
-    const M = this.template.modelMatrix ?? new THREE.Matrix4();
-    const Minv = new THREE.Matrix4().copy(M).invert();
-    const moving = lite ? [] : cabinNodes.filter((n) => meta?.windows?.[n.name]?.open || n.name === 'steering_wheel');
+    const moving = lite ? [] : cabinNodes.filter((n) => n.name === 'steering_wheel');
     const resting = cabinNodes.filter((n) => !moving.includes(n));
     const addCabin = (name, meshes) => {
       const group = new THREE.Group();
@@ -737,19 +708,11 @@ export class CarFactory {
     if (resting.length) addCabin('parts', bake(t, t, (p) => (resting.includes(p) ? KEEP : p.parent === t), materialMap, atlas, describe));
     for (const node of moving) {
       const group = addCabin(node.name, bake(node, t, () => false, materialMap, atlas, describe));
-      const pose = meta?.windows?.[node.name];
-      if (pose?.open) {
-        group.matrixAutoUpdate = false;
-        windows.push({ group, pose, M, Minv });
-      } else {
-        // Turns about its own local x (the column).
-        const S = new THREE.Matrix4().copy(t.matrixWorld).invert().multiply(node.matrixWorld);
-        group.matrixAutoUpdate = false;
-        steer = { group, S, Sinv: new THREE.Matrix4().copy(S).invert() };
-      }
+      // Turns about its own local x (the column).
+      const S = new THREE.Matrix4().copy(t.matrixWorld).invert().multiply(node.matrixWorld);
+      group.matrixAutoUpdate = false;
+      steer = { group, S, Sinv: new THREE.Matrix4().copy(S).invert() };
     }
-    const mirrorGlass = [];
-    body.traverse((o) => o.isMesh && o.material.name === 'MirrorGlass' && mirrorGlass.push({ mesh: o, own: o.material }));
 
     // (Painted rims join the atlas on lite cars and on the player car: one draw for all four.)
     const wheelMap = mapFor(true, lite || player);
@@ -820,9 +783,8 @@ export class CarFactory {
     root.traverse((o) => o.isMesh && o.material === lamps && (hasLamps = true));
     visual.lamps = hasLamps ? lamps.userData.lamps : null;
     visual.cabin = cabin;
-    visual.windows = windows;
+    visual.frame = body; // the body's own frame (suspension, lean, squat): the driver view rides on it
     visual.steerPart = steer;
-    visual.mirrorGlass = mirrorGlass;
     visual.footprint = this.footprint;
     visual.chassis = this.chassis;
     // Materials made for this car alone (the atlas, glass, wheels and template parts are shared).
@@ -894,9 +856,6 @@ export class CarVisual {
     this.cabin.scale.setScalar(on ? 1 : 0); // its parts in the merged meshes collapse (mergeParts)
   }
 
-  // The body's own mirror glass (wing mirrors of the player's car): the live rear view while
-  // the driver view shows (`material`, race/carCockpit.js bodyMirrorMaterial), else its own
-  // dark glass. Both materials are on the car from the warm-up on, so a switch compiles nothing.
   // Low tier: the cheap Lambert twins of the body's materials in the driver view (CarFactory.cockpitTwins).
   // `env`: the race's environment map for the medium tier's glossy twins.
   setCockpitEnvironment(env) {
@@ -908,15 +867,6 @@ export class CarVisual {
       if (on) t.twin.color.copy(t.full.color);
       t.mesh.material = on ? t.twin : t.full;
     }
-  }
-
-  setMirror(material) {
-    for (const g of this.mirrorGlass ?? []) g.mesh.material = material ?? g.own;
-  }
-
-  // Door windows 0 (closed) .. 1 (fully down), extras.apex.windows poses.
-  setWindows(k) {
-    for (const w of this.windows ?? []) w.group.matrix.multiplyMatrices(w.M, windowPose(w.pose, k, _m)).multiply(w.Minv);
   }
 
   // Nitro trail colour (FX_COLORS entry) for this car's flames; null keeps the stock blue.

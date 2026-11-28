@@ -22,7 +22,7 @@ export function formatTime(t) {
   return `${m}:${s.toFixed(2).padStart(5, '0')}`;
 }
 
-export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, onRaceAgain, onNext, onDoubleCoins, onCameraView, onWindows }) {
+export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, onRaceAgain, onNext, onDoubleCoins, onCameraView }) {
   const root = $('#race-hud');
   const el = {
     pos: $('#rh-pos'),
@@ -77,17 +77,6 @@ export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, 
   button('#rh-cam', () => onCameraView?.());
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyC' && !e.repeat && !root.hidden && !el.pause.open) onCameraView?.();
-  });
-  // Door windows (driver view): on pointerdown, so a tap counts while other fingers hold the
-  // steering and pedals (a click only follows a lone primary touch on some phones); it never
-  // takes focus or reaches the controls under it.
-  const winBtn = $('#rh-win');
-  winBtn.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (root.dataset.view !== 'cockpit' || root.dataset.windows !== '1') return;
-    sfx.tap();
-    onWindows?.();
   });
   button('#pause-resume', () => onResume());
   button('#pause-restart', () => onRestart());
@@ -174,14 +163,6 @@ export function createRaceHud({ onPause, onResume, onRestart, onQuit, onGarage, 
       el.countdown.innerHTML = `<span class="${text === 'GO!' ? 'go' : ''}">${text}</span>`;
       clearTimeout(countdownTimer);
       countdownTimer = setTimeout(() => (el.countdown.hidden = true), 900);
-    },
-
-    // Door windows: whether the car has them (the button shows in the driver view only) and
-    // whether they are down.
-    setWindows(available, down = false) {
-      root.dataset.windows = available ? '1' : '0';
-      winBtn.setAttribute('aria-pressed', down ? 'true' : 'false');
-      winBtn.setAttribute('aria-label', down ? 'Windows up' : 'Windows down');
     },
 
     // The live camera view; `announce` flashes its name (on a toggle, not at race start).

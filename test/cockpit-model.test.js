@@ -95,19 +95,21 @@ test('quality tier from the GPU tier: low-end GPU -> low, High -> high, otherwis
   const { cockpit: mid } = rig('mid');
   const { cockpit: high } = rig('high');
   assert.equal(low.lowEnd, true);
-  assert.equal(low.liveMirror, false, 'no live mirror on low-end');
-  assert.equal(low.mirrorTarget, undefined);
-  assert.equal(mid.liveMirror, true);
-  assert.equal(high.liveMirror, true);
+  // v76: no live mirror on any tier.
+  for (const c of [low, mid, high]) {
+    assert.equal(c.liveMirror, false);
+    assert.equal(c.mirrorTarget, undefined);
+  }
   // Materials per tier: unlit on low, Lambert without reflections on mid, PBR with them on high.
   const shell = (c) => meshesOf(c).find((m) => m.name === 'cockpit-shell').material;
   assert.ok(shell(low).isMeshBasicMaterial);
   assert.ok(shell(mid).isMeshLambertMaterial && shell(mid).normalMap !== undefined, 'mid: Lambert, no reflections');
   assert.ok(shell(high).isMeshStandardMaterial && shell(high).envMapIntensity > 0);
-  // The low tier's mirrors show a sky gradient (vertex colours), never a render target.
-  const glass = meshesOf(low).find((m) => m.name === 'cockpit-mirrors');
-  assert.ok(glass.material.vertexColors && !glass.material.map && glass.geometry.attributes.color);
-  assert.equal(meshesOf(mid).find((m) => m.name === 'cockpit-mirrors').material.map, mid.mirrorTarget.texture);
+  // Every tier's mirrors are dark tinted glass (vertex colours), never a render target.
+  for (const c of [low, mid, high]) {
+    const glass = meshesOf(c).find((m) => m.name === 'cockpit-mirrors');
+    assert.ok(glass.material.vertexColors && !glass.material.map && glass.geometry.attributes.color);
+  }
   // Race picks the tier from the same GPU flag the ANR fix (F1) uses.
   return read('../src/race/Race.js').then((race) => {
     assert.match(race, /cockpitTier\(\{ lowEnd: this\.lowEnd, quality, manual \}\)/);

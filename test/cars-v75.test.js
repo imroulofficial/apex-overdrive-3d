@@ -1,9 +1,9 @@
 // versionCode 75: the eight Blender cars in the game. The model loader's wheel rig (pivots on
 // the axle, per-axle rolling radius, uprights that steer but never spin, the steering wheel),
 // the lamp patterns, factory colours, glass; the race bake (rival batching, the player's cabin
-// parts and door windows); each car's own cockpit (eye, hidden nodes, mirrors per tier, moving
-// wheel and hands, windows); the window button; the cockpit effects; and that every save keeps
-// what it owns.
+// parts); each car's own cockpit (eye, hidden nodes, dark tinted mirror glass, moving wheel and
+// hands); v76: no window button (windows always closed) and no live mirror; the cockpit
+// effects; and that every save keeps what it owns.
 import './dom-stub.js';
 
 globalThis.self ??= globalThis; // GLTFLoader looks for self.URL
@@ -14,10 +14,9 @@ import * as THREE from 'three';
 import { CARS } from '../src/data/cars.js';
 import { PAINTS, RIMS } from '../src/data/catalog.js';
 import { loadCar, loadCarCockpit, HEAD_PATTERN, TAIL_PATTERN, readMeta, factoryColorOf } from '../src/assets/modelLoader.js';
-import { CarFactory, DEFAULT_HIDE_IN_COCKPIT, windowPose, PLAYER_FRONT, FRONT_DRAW } from '../src/race/raceCars.js';
+import { CarFactory, DEFAULT_HIDE_IN_COCKPIT, PLAYER_FRONT, FRONT_DRAW } from '../src/race/raceCars.js';
 import { CarCockpit, dialKind, dialValue } from '../src/race/carCockpit.js';
 import { cockpitTier } from '../src/race/cockpitAsset.js';
-import { DoorWindows, WINDOW_TIME } from '../src/race/doorWindows.js';
 import { Particles } from '../src/race/effects.js';
 import { createCarPaint, shownPaintColor, applyFinish } from '../src/garage/carPaint.js';
 import { migrate, normalize, SAVE_VERSION } from '../src/core/saveSchema.js';
@@ -261,7 +260,6 @@ test('rival race LODs bake into the shared atlas with batched wheels; rivals hav
     assert.equal(f.wheelBatches.length, 2, `${car.id}: both wheel sides instanced`);
     const v = f.build({ color: '#3366ff' });
     assert.equal(v.cabin.children.length, 0);
-    assert.equal(v.windows.length, 0);
     assert.equal(v.steerPart, null);
     let draws = 0;
     v.root.traverse((o) => o.isMesh && o.visible && draws++);
@@ -271,33 +269,22 @@ test('rival race LODs bake into the shared atlas with batched wheels; rivals hav
   }
 });
 
-test("the player's car: cabin parts apart for the driver view, door windows and steering wheel move", () => {
+test("the player's car: cabin parts apart for the driver view, the steering wheel moves, windows stay closed", () => {
   for (const car of CARS) {
     const rig = DRIVE(car.id);
     const f = new CarFactory(rig);
     const v = f.build({ player: true });
     const hide = rig.meta.hideInCockpit ?? DEFAULT_HIDE_IN_COCKPIT;
     const present = hide.filter((n) => rig.group.getObjectByName(n));
-    // The parts that move (door windows, steering wheel) are groups of their own; every other
-    // cabin part bakes into one group ('parts').
-    const moving = present.filter((n) => rig.meta.windows?.[n]?.open || n === 'steering_wheel');
+    // The steering wheel is a group of its own; every other cabin part (the closed door windows
+    // too, v76) bakes into one group ('parts').
+    const moving = present.filter((n) => n === 'steering_wheel');
     const expected = [...moving, ...(present.length > moving.length ? ['parts'] : [])];
     assert.deepEqual(v.cabin.children.map((g) => g.name.replace(/^cabin-/, '')).sort(), expected.sort(), car.id);
     v.setCabinShown(false);
     assert.equal(v.cabin.visible, false);
     v.setCabinShown(true);
     assert.equal(v.cabin.visible, true);
-    // Windows: as many as the design has, closed at 0 and moved at 1.
-    const poses = rig.meta.windows || {};
-    assert.equal(v.windows.length, Object.values(poses).filter((p) => p?.open && rig.group.getObjectByName(Object.keys(poses).find((k) => poses[k] === p))).length);
-    for (const w of v.windows) {
-      v.setWindows(0);
-      assert.ok(w.group.matrix.equals(new THREE.Matrix4()) || w.group.matrix.elements.every((e, i) => Math.abs(e - new THREE.Matrix4().elements[i]) < 1e-6), `${car.id} closed = rest`);
-      v.setWindows(1);
-      const drop = new THREE.Vector3().setFromMatrixPosition(w.group.matrix).length();
-      assert.ok(drop > 0.05, `${car.id} window moves ${drop.toFixed(3)} m`);
-    }
-    v.setWindows(0);
     // The steering wheel turns about its column with the steering input.
     if (rig.group.getObjectByName('steering_wheel')) {
       assert.ok(v.steerPart, `${car.id} steering wheel part`);
@@ -311,72 +298,27 @@ test("the player's car: cabin parts apart for the driver view, door windows and 
   }
 });
 
-test('door windows: cars with windows in the design, the Tempesta and windows: false have none', () => {
+test('v76: no window button; the door windows are always closed and their glass stays clear', async () => {
+  const [html, css, hud, main, race] = await Promise.all(['../index.html', '../src/ui/style.css', '../src/ui/raceHud.js', '../src/main.js', '../src/race/Race.js'].map(read));
+  for (const src of [html, css, hud, main]) assert.doesNotMatch(src, /rh-win|setWindows|toggleWindows|onWindows/);
+  assert.doesNotMatch(race, /setWindows|DoorWindows|toggleWindows|windowsAvailable/);
   for (const car of CARS) {
-    const meta = cockpits[car.id].meta;
-    const c = new CarCockpit({ source: cockpits[car.id].scene, meta, modelMatrix: DRIVE(car.id).modelMatrix, tier: 'mid' });
-    if (meta.windows === false || car.id === 'tm-tempesta') assert.equal(c.windowNodes.length, 0, `${car.id} has no windows`);
-    else {
-      assert.equal(c.windowNodes.length, 2, `${car.id}: driver and passenger window`);
-      const rest = c.windowNodes.map((w) => w.node.matrix.clone());
-      c.setWindows(1);
-      for (const [i, w] of c.windowNodes.entries()) {
-        const open = w.node.matrix.clone();
-        assert.ok(!open.equals(rest[i]), `${car.id} window ${w.node.name} opens`);
-        assert.ok(open.equals(new THREE.Matrix4().multiplyMatrices(windowPose(w.pose, 1), rest[i])));
-      }
-      c.setWindows(0);
-      c.windowNodes.forEach((w, i) => assert.ok(w.node.matrix.equals(rest[i]), 'closed again'));
+    const { scene, meta } = cockpits[car.id];
+    const rest = new Map();
+    scene.traverse((o) => rest.set(o.name, o.matrix.clone()));
+    const c = new CarCockpit({ source: scene, meta, modelMatrix: DRIVE(car.id).modelMatrix, tier: 'mid' });
+    assert.equal(c.setWindows, undefined);
+    // Window glass where the design had it: where it was modelled (closed) and see-through.
+    for (const name of Object.keys(meta.windows || {})) {
+      const node = c.group.getObjectByName(name);
+      if (!node) continue;
+      assert.ok(node.matrix.equals(rest.get(name)), `${car.id} ${name} closed`);
+      node.traverse((o) => {
+        if (o.isMesh && o.material.transparent) assert.ok(o.material.opacity < 1, `${car.id} ${name} clear`);
+      });
     }
     c.dispose();
   }
-  // Pose maths: closed is the identity, open the design's offset, halfway in between.
-  const pose = { closed: { position: [0, 0, 0], quaternion: [0, 0, 0, 1] }, open: { position: [0, -0.3, 0.02], quaternion: [0, 0, 0, 1] } };
-  assert.ok(windowPose(pose, 0).equals(new THREE.Matrix4()));
-  assert.deepEqual(new THREE.Vector3().setFromMatrixPosition(windowPose(pose, 0.5)).toArray(), [0, -0.15, 0.01]);
-});
-
-test('window state: toggles only in the driver view of a car with windows, eases, resets closed', () => {
-  const w = new DoorWindows();
-  assert.equal(w.toggle({ cockpitView: false, available: true }), false, 'chase view: no');
-  assert.equal(w.toggle({ cockpitView: true, available: false }), false, 'no windows: no');
-  assert.equal(w.down, false);
-  assert.equal(w.toggle({ cockpitView: true, available: true }), true);
-  assert.equal(w.down, true);
-  const ks = [];
-  for (let t = 0; t < WINDOW_TIME + 0.1; t += 0.1) ks.push(w.step(0.1));
-  assert.equal(w.level, 1);
-  assert.ok(ks.filter((k) => k !== null).every((k, i, a) => k >= 0 && k <= 1 && (i === 0 || k >= a[i - 1])), 'eases down');
-  assert.equal(w.step(0.1), null, 'still once there');
-  w.toggle({ cockpitView: true, available: true });
-  w.step(0.3);
-  assert.ok(w.level < 1 && w.level > 0);
-  w.reset();
-  assert.equal(w.level, 0);
-  assert.equal(w.target, 0);
-  assert.equal(w.down, false);
-});
-
-test('window button: shown only in the driver view of a car with windows, multi-touch safe, reset each race', async () => {
-  const [html, css, hud, main, race] = await Promise.all(['../index.html', '../src/ui/style.css', '../src/ui/raceHud.js', '../src/main.js', '../src/race/Race.js'].map(read));
-  assert.match(html, /<button id="rh-win" class="icon-btn glass angled rh-win" aria-label="Windows down" aria-pressed="false">/);
-  // Hidden by default; only the cockpit view with windows shows it.
-  assert.match(css, /\.rh-win \{ display: none;[^}]*touch-action: none; \}/);
-  assert.match(css, /#race-hud\[data-view='cockpit'\]\[data-windows='1'\] \.rh-win \{ display: grid; \}/);
-  // pointerdown (works while other fingers hold the pedals), never reaches the controls under it.
-  const handler = hud.slice(hud.indexOf("winBtn.addEventListener('pointerdown'"), hud.indexOf('});', hud.indexOf("winBtn.addEventListener('pointerdown'")));
-  assert.match(handler, /e\.preventDefault\(\);\s*e\.stopPropagation\(\);/);
-  assert.match(handler, /root\.dataset\.view !== 'cockpit' \|\| root\.dataset\.windows !== '1'/);
-  assert.match(hud, /setWindows\(available, down = false\) \{\s*root\.dataset\.windows = available \? '1' : '0';/);
-  // Every race starts closed, with the button set for the car.
-  const begin = main.slice(main.indexOf('raceHud.setNext(null);'), main.indexOf('}', main.indexOf('raceHud.setNext(null);')));
-  assert.match(begin, /raceHud\.setWindows\(race\.windowsAvailable, false\)/);
-  assert.match(main, /if \(mode !== 'race' \|\| !race\?\.toggleWindows\(\)\) return;/);
-  const beginRace = race.slice(race.indexOf('  begin('), race.indexOf('\n  }\n', race.indexOf('  begin(')));
-  assert.match(beginRace, /this\.setWindowsNow\(0\)/);
-  assert.match(race, /return this\.windows\.toggle\(\{ cockpitView: Boolean\(this\.cockpitShown\), available: this\.windowsAvailable \}\)/);
-  // No save change: nothing about windows is stored.
-  assert.doesNotMatch(await read('../src/core/saveSchema.js'), /window/i);
 });
 
 test('own cockpit: eye from extras.apex.eye, hidden car nodes, steering wheel and hands turn, dials live', () => {
@@ -436,15 +378,11 @@ test('race: own cockpit first, shared cabin only as the fallback; eye, cabin hid
   assert.match(build, /this\.cockpitFx = \{ speedLines: false, particleNearFade: 2\.8, \.\.\.\(meta\.cockpitFx \?\? \{\}\) \}/);
   // The car's own body stays round the cabin, minus the hidden parts.
   assert.match(race, /setCabinShown\(!shown\)/);
-  // The player's car is on its own layer: the race camera sees it, the mirror does not.
+  // The player's car is on its own layer: the race camera sees it.
   assert.match(race, /this\.camera\.layers\.enable\(2\)/);
-  const { scene, meta } = cockpits['sv-stallion'];
-  const c = new CarCockpit({ source: scene, meta, modelMatrix: DRIVE('sv-stallion').modelMatrix, tier: 'high' });
-  assert.equal(c.mirrorCamera.layers.mask, 1, 'mirror sees the world only');
-  c.dispose();
 });
 
-test('live mirrors: every MirrorGlass on mid and high; sky on low-end Auto; live again on a manual High', () => {
+test('v76 mirrors: dark tinted glass on every tier, no render target, no mirror pass; tier rule unchanged', async () => {
   // The tier rule (the GPU detection itself is unchanged).
   assert.equal(cockpitTier({ lowEnd: false, quality: 'high' }), 'high');
   assert.equal(cockpitTier({ lowEnd: false, quality: 'medium' }), 'mid');
@@ -456,19 +394,17 @@ test('live mirrors: every MirrorGlass on mid and high; sky on low-end Auto; live
     const { scene, meta } = cockpits[car.id];
     for (const tier of ['low', 'mid', 'high']) {
       const c = new CarCockpit({ source: scene, meta, modelMatrix: DRIVE(car.id).modelMatrix, tier });
-      // Mirror glass in the cabin, or on the body (the Tempesta's pods over the sidepods).
-      let onBody = 0;
-      DRIVE(car.id).group.traverse((o) => o.isMesh && o.material.name === 'MirrorGlass' && onBody++);
-      assert.ok(c.mirrorMeshes.length + onBody >= 1, `${car.id} has mirror glass`);
-      if (tier !== 'low') assert.ok(c.bodyMirrorMaterial.map === c.mirrorTarget.texture);
+      assert.equal(c.liveMirror, false);
+      assert.equal(c.mirrorTarget, undefined);
+      assert.equal(c.renderMirror, undefined);
+      assert.equal(c.bodyMirrorMaterial, undefined);
       let glass = 0;
       scene.traverse((o) => o.isMesh && o.material.name === 'MirrorGlass' && glass++);
       assert.equal(c.mirrorMeshes.length, glass, `${car.id}: every MirrorGlass surface`);
       for (const m of c.mirrorMeshes) {
-        if (tier === 'low') {
-          assert.equal(c.mirrorTarget, undefined);
-          assert.ok(m.material.vertexColors && !m.material.map, 'sky gradient');
-        } else assert.equal(m.material.map, c.mirrorTarget.texture, `${car.id} ${tier}: live`);
+        assert.ok(m.material.vertexColors && !m.material.map && !m.material.transparent, `${car.id} ${tier}: tinted glass`);
+        const col = m.geometry.attributes.color;
+        for (let i = 0; i < col.count; i++) assert.ok(Math.max(col.getX(i), col.getY(i), col.getZ(i)) < 0.06, `${car.id}: dark`);
       }
       // Clear glass stays see-through on every tier.
       c.group.traverse((o) => {
@@ -477,6 +413,8 @@ test('live mirrors: every MirrorGlass on mid and high; sky on low-end Auto; live
       c.dispose();
     }
   }
+  const race = await read('../src/race/Race.js');
+  assert.doesNotMatch(race, /renderMirror|bodyMirrorMaterial|setMirror/);
 });
 
 test('cockpit effects: no speed lines in the cabin; smoke and sparks fade out near the eye', async () => {
@@ -538,29 +476,12 @@ test('old saves load unchanged: owned cars, paints, rims and the selected car', 
   assert.deepEqual(normalize(loaded), loaded, 'stable on the next load');
 });
 
-test("the player's own wing mirrors show the live rear view in the driver view only", async () => {
-  const id = 'sv-stallion'; // wing mirror glass on the body
-  const f = new CarFactory(DRIVE(id));
+test("the player's own wing mirrors keep their own glass in the atlas (v76: no live rear view)", () => {
+  const f = new CarFactory(DRIVE('sv-stallion'));
   const v = f.build({ player: true });
-  assert.ok(v.mirrorGlass.length > 0, 'body MirrorGlass kept apart');
-  const { scene, meta } = cockpits[id];
-  const live = new CarCockpit({ source: scene, meta, modelMatrix: DRIVE(id).modelMatrix, tier: 'mid' });
-  assert.equal(live.bodyMirrorMaterial.map, live.mirrorTarget.texture);
-  v.setMirror(live.bodyMirrorMaterial);
-  for (const g of v.mirrorGlass) assert.equal(g.mesh.material, live.bodyMirrorMaterial);
-  v.setMirror(null);
-  for (const g of v.mirrorGlass) assert.equal(g.mesh.material, g.own);
-  const low = new CarCockpit({ source: scene, meta, modelMatrix: DRIVE(id).modelMatrix, tier: 'low' });
-  assert.equal(low.bodyMirrorMaterial, null, 'low tier: the glass stays as it is');
-  // Rivals keep their mirror glass in the atlas.
-  const rival = f.build({ color: '#ffffff' });
-  assert.equal(rival.mirrorGlass.length, 0);
-  const race = await read('../src/race/Race.js');
-  assert.match(race, /this\.player\.visual\.setMirror\(shown \? this\.cockpit\.bodyMirrorMaterial : null\)/);
-  const warm = race.slice(race.indexOf('  warmUp() {'), race.indexOf('  start() {'));
-  assert.match(warm, /visual\.setMirror\(this\.cockpitShown \? null : live\);[\s\S]*r\.compile\(scene, this\.camera\);[\s\S]*r\.render\(scene, this\.camera\);[\s\S]*visual\.setMirror\(this\.cockpitShown \? live : null\);/);
-  for (const x of [live, low]) x.dispose();
-  for (const x of [v, rival]) x.dispose();
+  assert.equal(v.mirrorGlass, undefined);
+  assert.equal(v.setMirror, undefined);
+  v.dispose();
   f.dispose();
 });
 
@@ -633,7 +554,6 @@ test('low tier cockpit: a light file per car (<= 15k triangles, 512 px, <= 4 MB 
     assert.equal(normalMaps, 0, `${car.id}: no normal maps`);
     // The same moving parts as the full cabin.
     assert.equal(Boolean(c.wheel), Boolean(cockpits[car.id].scene.getObjectByName('steering_wheel')), car.id);
-    assert.equal(c.windowNodes.length, car.id === 'tm-tempesta' ? 0 : 2, `${car.id} windows`);
     const images = await glbImages(car.model.cockpitLowUrl.replace(/^assets\/models\//, ''));
     let bytes = 0;
     for (const im of images) {
@@ -677,9 +597,7 @@ test('lite cars (low tier): rivals one opaque draw, the player at 512 px with it
     assert.ok(tris <= 40000, `${car.id} lite player triangles ${tris}`);
     // One cabin group (the driver view still hides it), no moving parts, no live-mirror glass.
     assert.deepEqual(p.cabin.children.map((g) => g.name), ['cabin-parts']);
-    assert.equal(p.windows.length, 0);
     assert.equal(p.steerPart, null);
-    assert.equal(p.mirrorGlass.length, 0);
     // A wheel is at most one draw (rim and tyre in the atlas; none of its own when the factory
     // batches flat wheels) and the uprights ride in the body.
     for (const w of p.wheels) {
@@ -729,15 +647,18 @@ test('medium/high player car: atlas and glass parts in one draw each, moving par
   const f = new CarFactory(DRIVE('sv-stallion'));
   const p = f.build({ player: true });
   const atlas = p.root.children.find((c) => c.name === 'parts-atlas');
+  // v76: the closed door windows bake with the cabin, so the glass may already be one mesh.
   const glass = p.root.children.find((c) => c.name === 'parts-Glass');
-  assert.ok(atlas && glass, 'one atlas mesh and one glass mesh');
+  assert.ok(atlas, 'one atlas mesh');
   let separate = 0;
-  p.root.traverse((o) => o.isMesh && o !== atlas && o !== glass && (o.material === atlas.material || o.material === glass.material) && separate++);
-  assert.equal(separate, 0, 'no atlas or glass part left on its own');
+  let glassMeshes = 0;
+  p.root.traverse((o) => o.isMesh && o !== atlas && o.material === atlas.material && separate++);
+  p.root.traverse((o) => o.isMesh && o.material === f.glass && glassMeshes++);
+  assert.equal(separate, 0, 'no atlas part left on its own');
+  assert.ok(glass ? glassMeshes === 1 : glassMeshes <= 1, `glass in one draw (${glassMeshes})`);
   const parts = atlas.material.userData.uParts.value;
   const steer = p.steerPart.group;
   assert.ok(atlas.userData.partGroups.includes(steer), 'the steering wheel turns inside the merged mesh');
-  for (const w of p.windows) assert.ok(glass.userData.partGroups.includes(w.group), 'door windows move inside the merged glass');
   // At rest every part matrix is the identity; turning the front wheel moves only its parts.
   p.root.updateMatrixWorld(true);
   atlas.onBeforeRender();

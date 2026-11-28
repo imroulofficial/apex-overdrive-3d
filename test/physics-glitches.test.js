@@ -15,7 +15,7 @@ import { BASE_STATS } from '../src/data/catalog.js';
 import { STAGES, TRACK_SEGMENTS } from '../src/data/career.js';
 import { mulberry32 } from '../src/race/noise.js';
 import { boxContact, pointInBox, collideCars } from '../src/race/contact.js';
-import { FixedStep, STEP, MAX_STEPS } from '../src/race/fixedStep.js';
+import { FixedStep, STEP, MAX_STEPS, LAG } from '../src/race/fixedStep.js';
 import { capFlight, PROP_FLIGHT, SmashProps } from '../src/race/props.js';
 import { buildRim, RIM_IDS } from '../src/garage/rims.js';
 import { buildBridge } from '../src/race/setPieces.js';
@@ -482,7 +482,8 @@ test('C10: the same number of 1/60 s steps per second at any frame rate from 120
       const n = clock.frame(1 / hz);
       assert.ok(n <= MAX_STEPS);
       steps += n;
-      assert.ok(clock.blend >= 0 && clock.blend <= 1);
+      // v76: down to -LAG / STEP (drawn a little ahead along the last step) while no step was due.
+      assert.ok(clock.blend >= -LAG / STEP - 1e-9 && clock.blend <= 1);
     }
     assert.ok(Math.abs(steps - 600) <= 1, `${hz} fps: ${steps} steps in 10 s`);
   }
