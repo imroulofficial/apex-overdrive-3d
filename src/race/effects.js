@@ -25,18 +25,21 @@ export class Particles {
       transparent: true,
       depthWrite: false,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
-      uniforms: { map: { value: texture }, scale: { value: 400 } },
+      // nearFade (metres, 0 = off): particles fade out toward the camera inside that distance
+      // (the car's own cockpit: no smoke or sparks inside the cabin or on the eye).
+      uniforms: { map: { value: texture }, scale: { value: 400 }, nearFade: { value: 0 } },
       vertexShader: /* glsl */ `
         attribute float alpha;
         attribute float size;
         attribute vec3 color;
         uniform float scale;
+        uniform float nearFade;
         varying float vAlpha;
         varying vec3 vColor;
         void main() {
-          vAlpha = alpha;
           vColor = color;
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          vAlpha = nearFade > 0.0 ? alpha * smoothstep(nearFade * 0.45, nearFade, -mv.z) : alpha;
           gl_PointSize = size * scale / max(0.5, -mv.z);
           gl_Position = projectionMatrix * mv;
         }`,
@@ -55,6 +58,10 @@ export class Particles {
     this.points.renderOrder = 4;
     this.material = mat;
     scene.add(this.points);
+  }
+
+  setNearFade(metres) {
+    this.material.uniforms.nearFade.value = metres;
   }
 
   setViewport(height, fov) {

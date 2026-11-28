@@ -67,13 +67,13 @@ export const gearGlyph = (gear, neutral = false, reversing = false) => (neutral 
 // keeping the cabin's own depth order. It is linear in clip space (every vertex's distance to
 // the near plane shrinks by the same factor), so triangles that reach behind the camera (the
 // door panels) are still clipped exactly where they were.
-const DEPTH_FRONT = 'gl_Position.z = mix(-gl_Position.w, gl_Position.z, 0.1);';
-function inFront(material) {
+export const DEPTH_FRONT = 'gl_Position.z = mix(-gl_Position.w, gl_Position.z, 0.1);';
+export function inFront(material) {
   material.onBeforeCompile = drawOnTop;
   material.fog = false;
   return material;
 }
-function drawOnTop(shader) {
+export function drawOnTop(shader) {
   shader.vertexShader = shader.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>\n${DEPTH_FRONT}`);
 }
 
@@ -98,7 +98,7 @@ const LED = { x0: 139, pitch: 26, y: 15, size: 16 };
 
 // Speedometer and rev counter faces (backlit markings), the digital panel between them and the
 // digit strip, drawn once.
-function clusterTexture(lowEnd) {
+export function clusterTexture(lowEnd) {
   const s = lowEnd ? 0.5 : 1;
   const W = 512 * s;
   const H = 320 * s;
@@ -244,7 +244,7 @@ function buildDisplay() {
   return g;
 }
 
-function displayMaterial(map) {
+export function displayMaterial(map) {
   return new THREE.ShaderMaterial({
     uniforms: {
       map: { value: map },
@@ -338,7 +338,7 @@ const BAKED_SHADE = `#include <aomap_fragment>
   reflectedLight.directDiffuse *= mix(1.0, ambientOcclusion, 0.8);
   reflectedLight.directSpecular *= ambientOcclusion;
 #endif`;
-function drawOnTopShaded(shader) {
+export function drawOnTopShaded(shader) {
   drawOnTop(shader);
   if (shader.fragmentShader) shader.fragmentShader = shader.fragmentShader.replace('#include <aomap_fragment>', BAKED_SHADE);
 }
@@ -405,7 +405,7 @@ function partMesh(asset, name, material, parent, label = name) {
 
 // Low tier mirrors: a sky gradient (light at the top of each glass, road grey at the bottom)
 // instead of the live rear view; from each glass's uv.y, which runs bottom to top.
-function skyGradient(geometry) {
+export function skyGradient(geometry) {
   const g = geometry.clone();
   const uv = g.attributes.uv;
   const col = new Float32Array(uv.count * 3);

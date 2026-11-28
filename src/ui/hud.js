@@ -102,7 +102,16 @@ export function createHud(garage, { onRaceStart, onOpenStore } = {}) {
     (p) => `<button class="swatch${p.product ? ' exclusive' : ''}${p.milestone ? ' chest-paint' : ''}" data-paint="${p.id}" style="--swatch:${p.color}" aria-label="${p.name}"></button>`
   ).join('');
 
+  // The Factory Livery swatch shows the car on the turntable's own colour.
+  const factorySwatch = () => {
+    const own = garage.car?.paintMaterial?.userData?.factoryColor;
+    const el = grid.querySelector('[data-paint="factory"]');
+    if (el) el.style.setProperty('--swatch', own ? `#${own.getHexString()}` : paintById('factory').color);
+  };
+  garage.onCarReady = () => factorySwatch();
+
   function renderPaint() {
+    factorySwatch();
     $$('.swatch', grid).forEach((el) => {
       const id = el.dataset.paint;
       el.classList.toggle('is-selected', id === previewPaint);

@@ -1,0 +1,237 @@
+[
+ {
+  "id": "rp1-vanta",
+  "name": "Lumen EV",
+  "tier": "D",
+  "role": "All-Rounder",
+  "class": "Tier D All-Rounder",
+  "stats": {
+   "speed": 52,
+   "accel": 52,
+   "handling": 58,
+   "nitro": 40
+  },
+  "feel": {
+   "weight": 1,
+   "power": 2,
+   "drift": 1
+  },
+  "unlock": {
+   "type": "starter"
+  },
+  "released": true,
+  "model": {
+   "url": "assets/models/rp1_vanta.glb",
+   "driveUrl": "assets/models/rp1_vanta_drive.glb",
+   "raceUrl": "assets/models/rp1_vanta_race.glb",
+   "length": 4.6
+  }
+ },
+ {
+  "id": "kz-kestrel",
+  "name": "Kestrel Rally",
+  "tier": "D",
+  "role": "Drift Specialist",
+  "class": "Tier D Drift Specialist",
+  "stats": {
+   "speed": 53,
+   "accel": 58,
+   "handling": 68,
+   "nitro": 46
+  },
+  "feel": {
+   "weight": 0.84,
+   "power": 1.7,
+   "drift": 1.38
+  },
+  "unlock": {
+   "type": "coins",
+   "price": 3000
+  },
+  "released": true,
+  "model": {
+   "url": "assets/models/kz_kestrel.glb",
+   "driveUrl": "assets/models/kz_kestrel_drive.glb",
+   "raceUrl": "assets/models/kz_kestrel_race.glb",
+   "length": 4.15
+  }
+ },
+ {
+  "id": "sv-stallion",
+  "name": "Stallion 68",
+  "tier": "C",
+  "role": "Launch King",
+  "class": "Tier C Launch King",
+  "stats": {
+   "speed": 63,
+   "accel": 76,
+   "handling": 50,
+   "nitro": 58
+  },
+  "feel": {
+   "weight": 1.32,
+   "power": 1.35,
+   "drift": 1.3
+  },
+  "unlock": {
+   "type": "stars",
+   "stars": 15,
+   "price": 12000
+  },
+  "released": true,
+  "model": {
+   "url": "assets/models/sv_stallion.glb",
+   "driveUrl": "assets/models/sv_stallion_drive.glb",
+   "raceUrl": "assets/models/sv_stallion_race.glb",
+   "length": 4.75
+  }
+ },
+ {
+  "id": "rb-ridgeback",
+  "name": "Ridgeback Trail",
+  "tier": "C",
+  "role": "All-Weather Endurance",
+  "class": "Tier C All-Weather Endurance",
+  "stats": {
+   "speed": 68,
+   "accel": 61,
+   "handling": 66,
+   "nitro": 54
+  },
+  "feel": {
+   "weight": 1.24,
+   "power": 2.4,
+   "drift": 0.9
+  },
+  "unlock": {
+   "type": "stars",
+   "stars": 35,
+   "price": 18000
+  },
+  "released": true,
+  "model": {
+   "url": "assets/models/rb_ridgeback.glb",
+   "driveUrl": "assets/models/rb_ridgeback_drive.glb",
+   "raceUrl": "assets/models/rb_ridgeback_race.glb",
+   "length": 4.8
+  }
+ },
+ {
+  "id": "ag-aurelia",
+  "name": "Aurelia GT",
+  "tier": "B",
+  "role": "Nitro Specialist",
+  "class": "Tier B Nitro Specialist",
+  "stats": {
+   "speed": 71,
+   "accel": 66,
+   "handling": 68,
+   "nitro": 78
+  },
+  "feel": {
+   "weight": 1,
+   "power": 2.3,
+   "drift": 1.12
+  },
+  "unlock": {
+   "type": "coins",
+   "price": 30000
+  },
+  "released": true,
+  "model": {
+   "url": "assets/models/ag_aurelia.glb",
+   "driveUrl": "assets/models/ag_aurelia_drive.glb",
+   "raceUrl": "assets/models/ag_aurelia_race.glb",
+   "length": 4.6
+  }
+ },
+ {
+  "id": "mz-monza",
+  "name": "Vipera R",
+  "tier": "B",
+  "role": "Cornering Grip",
+  "class": "Tier B Cornering Grip",
+  "stats": {
+   "speed": 69,
+   "accel": 71,
+   "handling": 82,
+   "nitro": 58
+  },
+  "feel": {
+   "weight": 0.9,
+   "power": 2.7,
+   "drift": 0.82
+  },
+  "unlock": {
+   "type": "stars",
+   "stars": 75,
+   "price": 45000
+  },
+  "released": true,
+  "model": {
+   "url": "assets/models/mz_monza.glb",
+   "driveUrl": "assets/models/mz_monza_drive.glb",
+   "raceUrl": "assets/models/mz_monza_race.glb",
+   "length": 4.65
+  }
+ },
+ {
+  "id": "tm-tempesta",
+  "name": "Tempesta FX",
+  "tier": "A",
+  "role": "Downforce Prototype",
+  "class": "Tier A Downforce Prototype",
+  "stats": {
+   "speed": 78,
+   "accel": 77,
+   "handling": 84,
+   "nitro": 66
+  },
+  "feel": {
+   "weight": 0.8,
+   "power": 2.8,
+   "drift": 0.85
+  },
+  "unlock": {
+   "type": "stars",
+   "stars": 120,
+   "price": 75000
+  },
+  "released": true,
+  "model": {
+   "url": "assets/models/tm_tempesta.glb",
+   "driveUrl": "assets/models/tm_tempesta_drive.glb",
+   "raceUrl": "assets/models/tm_tempesta_race.glb",
+   "length": 5.2
+  }
+ },
+ {
+  "id": "rpx-hyperion",
+  "name": "Valkyrie GT-R",
+  "tier": "A",
+  "role": "Top Speed Flagship",
+  "class": "Tier A Top Speed Flagship",
+  "stats": {
+   "speed": 86,
+   "accel": 74,
+   "handling": 72,
+   "nitro": 76
+  },
+  "feel": {
+   "weight": 1.06,
+   "power": 3.1,
+   "drift": 1.08
+  },
+  "unlock": {
+   "type": "iap",
+   "product": "supercar_bundle"
+  },
+  "released": true,
+  "model": {
+   "url": "assets/models/rpx_hyperion.glb",
+   "driveUrl": "assets/models/rpx_hyperion_drive.glb",
+   "raceUrl": "assets/models/rpx_hyperion_race.glb",
+   "length": 4.7
+  }
+ }
+]

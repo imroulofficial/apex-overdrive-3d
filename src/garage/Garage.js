@@ -201,6 +201,7 @@ export class Garage {
     this.car = rig;
     this.carId = def.id;
     this.paint = new PaintTransition(rig.paintMaterial);
+    this.onCarReady?.(rig);
   }
 
   setPaint(color, finish) {

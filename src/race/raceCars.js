@@ -67,13 +67,20 @@ function paintBaked(g, description) {
 
 // Collect meshes under `root` (excluding `skip` subtrees) into one merged mesh per material.
 // Parts mapped to ATLAS are painted into vertex attributes and merged under `atlasMaterial`.
+// `skip(p)` is asked for each ancestor of a mesh up to `root`: true leaves the mesh out, KEEP
+// takes it whatever its further ancestors say.
+const KEEP = 'keep';
 function bake(root, relativeTo, skip = () => false, materialMap = (m) => m, atlasMaterial = null) {
   const buckets = new Map();
   const inv = new THREE.Matrix4().copy(relativeTo.matrixWorld).invert();
   const m = new THREE.Matrix4();
   root.traverse((o) => {
     if (!o.isMesh || o.name === 'beam') return;
-    for (let p = o; p && p !== root; p = p.parent) if (skip(p)) return;
+    for (let p = o; p && p !== root; p = p.parent) {
+      const k = skip(p);
+      if (k === KEEP) break;
+      if (k) return;
+    }
     m.multiplyMatrices(inv, o.matrixWorld);
     for (const { geo, mat } of sliceGroups(o)) {
       const target = materialMap(mat);
@@ -195,6 +202,58 @@ function measureChassis(template, wheelsSrc, box) {
   };
 }
 
+// Under a wheel's `still` group (upright, disc, caliper: modelLoader.js)?
+function inStill(o, wheel) {
+  for (let p = o; p && p !== wheel; p = p.parent) if (p.userData.still) return true;
+  return false;
+}
+
+// Driver-view parts of the player's car (Blender models, extras.apex.hideInCockpit): baked
+// apart from the body so the cockpit view can hide them, the door windows so they can slide
+// down and the steering wheel so it can turn.
+export const DEFAULT_HIDE_IN_COCKPIT = ['interior', 'driver', 'steering_wheel', 'glass', 'window_L', 'window_R'];
+const _m = new THREE.Matrix4();
+const _q = new THREE.Quaternion();
+const _q0 = new THREE.Quaternion();
+const _pv = new THREE.Vector3();
+const _po = new THREE.Vector3();
+const _sv = new THREE.Vector3(1, 1, 1);
+const X_AXIS = new THREE.Vector3(1, 0, 0);
+
+// A door window's pose at `k` (0 closed .. 1 open) from extras.apex.windows[name]
+// ({ closed, open }: position and quaternion of the node in the car frame), as a matrix in that
+// frame.
+export function windowPose(pose, k, out = new THREE.Matrix4()) {
+  const c = pose.closed ?? { position: [0, 0, 0], quaternion: [0, 0, 0, 1] };
+  const o = pose.open;
+  _pv.fromArray(c.position).lerp(_po.fromArray(o.position), k);
+  _q0.fromArray(c.quaternion);
+  _q.fromArray(o.quaternion);
+  _q0.slerp(_q, k);
+  return out.compose(_pv, _q0, _sv);
+}
+
+// Driver view of a car with its own cabin: the player's car is drawn in front of everything
+// else, like the cabin (race/cockpit.js DEPTH_FRONT), so a rival that touches or overlaps it
+// never shows through the bonnet, the sidepods or the doors. A uniform switches it (no
+// recompile when the view changes); the materials get it once, before the warm-up. One switch
+// for the one player car (cached template materials keep it from race to race).
+export const PLAYER_FRONT = { value: 0 };
+export const FRONT_DRAW = 'gl_Position.z = mix(gl_Position.z, mix(-gl_Position.w, gl_Position.z, 0.1), uFront);';
+export function frontDraw(material, uniform = PLAYER_FRONT) {
+  if (!material || material.userData.frontDraw) return;
+  material.userData.frontDraw = true;
+  const prev = material.onBeforeCompile;
+  material.onBeforeCompile = (shader, renderer) => {
+    prev.call(material, shader, renderer);
+    shader.uniforms.uFront = uniform;
+    shader.vertexShader = `uniform float uFront;\n${shader.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>\n  ${FRONT_DRAW}`)}`;
+  };
+  const key = material.customProgramCacheKey.bind(material);
+  material.customProgramCacheKey = () => `${key()}|front`;
+  material.needsUpdate = true;
+}
+
 export class CarFactory {
   // `template` is a car rig from loadCar(); the factory never mutates it.
   constructor(template) {
@@ -241,6 +300,17 @@ export class CarFactory {
     this.flameTex.dispose();
   }
 
+  // The player's car (and this factory's wheel batches) drawn in front in the driver view
+  // (switched by PLAYER_FRONT).
+  frontDrawPlayer(visual) {
+    for (const root of [visual.root, ...this.sharedMeshes]) {
+      root.traverse((o) => {
+        if (o.isMesh) for (const m of [].concat(o.material)) frontDraw(m);
+      });
+    }
+    for (const g of visual.mirrorGlass ?? []) frontDraw(g.own);
+  }
+
   setPlayerPaint(color, finish) {
     applyFinish(this.paint, color, finish);
   }
@@ -254,7 +324,7 @@ export class CarFactory {
     const inv = new THREE.Matrix4().copy(src.matrixWorld).invert();
     const m = new THREE.Matrix4();
     src.traverse((o) => {
-      if (!o.isMesh || o.name === 'caliper') return;
+      if (!o.isMesh || o.name === 'caliper' || inStill(o, src)) return;
       m.multiplyMatrices(inv, o.matrixWorld);
       for (const { geo, mat } of sliceGroups(o)) {
         if (!isFlatMaterial(mat)) flat = false;
@@ -307,8 +377,9 @@ export class CarFactory {
     const materialMap = (mat) => {
       if (mat === this.paint) return paint;
       if (mat.name === 'skip') return null;
-      // Tail lenses are per car so brake lights can glow independently.
-      if (mat.userData.tailLight || mat.userData.headLight) {
+      // Tail lenses are per car so brake lights can glow independently; the player's mirror
+      // glass stays apart so the driver view can show the live rear view in it.
+      if (mat.userData.tailLight || mat.userData.headLight || (player && mat.name === 'MirrorGlass')) {
         if (!own.has(mat)) own.set(mat, mat.clone());
         return own.get(mat);
       }
@@ -316,6 +387,15 @@ export class CarFactory {
     };
     const wheelsSrc = t.children.filter((c) => c.isGroup && c.userData.wheelIndex !== undefined);
     const isWheel = (o) => wheelsSrc.includes(o);
+    // The player's driver-view parts (see DEFAULT_HIDE_IN_COCKPIT) come out of the body bake.
+    const meta = this.template.meta;
+    const cabinNames = player && meta ? new Set(meta.hideInCockpit ?? DEFAULT_HIDE_IN_COCKPIT) : new Set();
+    const cabinNodes = [];
+    if (cabinNames.size) t.traverse((o) => cabinNames.has(o.name) && !cabinNodes.some((n) => isAncestor(n, o)) && cabinNodes.push(o));
+    const isCabin = (o) => cabinNodes.includes(o);
+    // Rivals keep the uprights, discs and calipers in the body (one draw, no steering); the
+    // player's steer with the front wheels.
+    const bodySkip = (p) => (!player && p.userData.still ? KEEP : isWheel(p) || isCabin(p));
 
     const root = new THREE.Group(); // position + yaw + pitch + road roll (suspension)
     // Body lean (cornering roll, squat) pivots at axle height, so the sills never swing
@@ -327,14 +407,45 @@ export class CarFactory {
     body.position.y = -pivot;
     lean.add(body);
     root.add(lean);
-    bake(t, t, isWheel, materialMap, this.atlas).forEach((mesh) => {
+    bake(t, t, bodySkip, materialMap, this.atlas).forEach((mesh) => {
       // One shadow caster per car keeps the shadow pass cheap; the paint shell is the silhouette.
       mesh.castShadow = castShadow && mesh.material === paint;
       // Every opaque part takes the sun's shadow so the car darkens with the road around it.
       mesh.receiveShadow = !mesh.material.transparent;
       body.add(mesh);
     });
-    const lights = [...own.values()];
+    // Cabin parts in groups of their own under the body: windows and the steering wheel move
+    // through a matrix in the rig frame (model frame pose, conjugated by the model matrix).
+    const cabin = new THREE.Group();
+    cabin.name = 'cabin';
+    body.add(cabin);
+    const windows = [];
+    let steer = null;
+    const M = this.template.modelMatrix ?? new THREE.Matrix4();
+    const Minv = new THREE.Matrix4().copy(M).invert();
+    for (const node of cabinNodes) {
+      const group = new THREE.Group();
+      group.name = `cabin-${node.name}`;
+      bake(node, t, () => false, materialMap, this.atlas).forEach((mesh) => {
+        mesh.castShadow = false;
+        mesh.receiveShadow = !mesh.material.transparent;
+        group.add(mesh);
+      });
+      cabin.add(group);
+      const pose = meta?.windows?.[node.name];
+      if (pose?.open) {
+        group.matrixAutoUpdate = false;
+        windows.push({ group, pose, M, Minv });
+      } else if (node.name === 'steering_wheel') {
+        // Turns about its own local x (the column).
+        const S = new THREE.Matrix4().copy(t.matrixWorld).invert().multiply(node.matrixWorld);
+        group.matrixAutoUpdate = false;
+        steer = { group, S, Sinv: new THREE.Matrix4().copy(S).invert() };
+      }
+    }
+    const lights = [...own.values()].filter((m) => m.name !== 'MirrorGlass');
+    const mirrorGlass = [];
+    body.traverse((o) => o.isMesh && o.material.name === 'MirrorGlass' && mirrorGlass.push({ mesh: o, own: o.material }));
     const tail = lights.find((m) => m.userData.tailLight) ?? null;
     const head = lights.find((m) => m.userData.headLight) ?? null;
 
@@ -348,14 +459,23 @@ export class CarFactory {
         batch.slots.push(spin);
       } else {
         // Textured wheels: everything except the caliper spins, one mesh per material.
-        const merged = bake(src, src, (o) => o.name === 'caliper');
+        const merged = bake(src, src, (o) => o.name === 'caliper' || o.userData.still);
         merged.forEach((mesh) => {
           mesh.castShadow = false;
           spin.add(mesh);
         });
       }
+      // The player's upright, disc and caliper: on the wheel, steering, not spinning.
+      const still = player && src.children.find((c) => c.userData.still);
+      if (still) {
+        bake(still, src, () => false, materialMap, this.atlas).forEach((mesh) => {
+          mesh.castShadow = false;
+          wheel.add(mesh);
+        });
+      }
       root.add(wheel);
-      return { wheel, spin, front: index < 2, rest: src.position.y, point: this.wheelPoint(src) };
+      const radius = this.template.wheels?.find((w) => w.wheel === src)?.radius ?? this.template.wheelRadius;
+      return { wheel, spin, radius, front: index < 2, rest: src.position.y, point: this.wheelPoint(src) };
     });
 
     // Nitro flames at the exhausts.
@@ -381,15 +501,26 @@ export class CarFactory {
       flames.push(fl);
     }
     const visual = new CarVisual(root, lean, wheels, tail, flames, flameMat, this.template.wheelRadius);
+    visual.cabin = cabin;
+    visual.windows = windows;
+    visual.steerPart = steer;
     visual.head = head;
+    visual.mirrorGlass = mirrorGlass;
     visual.footprint = this.footprint;
     visual.chassis = this.chassis;
     // Materials made for this car alone (the atlas, wheels and template parts are shared).
-    visual.owned = [...lights, flameMat, ...(player ? [] : [paint])];
+    visual.owned = [...own.values(), flameMat, ...(player ? [] : [paint])];
     return visual;
   }
 
 }
+
+// Radians the model's steering wheel turns at full lock (as the cockpit's: race/cockpit.js).
+const STEER_WHEEL_LOCK = 1.9;
+const isAncestor = (a, o) => {
+  for (let p = o.parent; p; p = p.parent) if (p === a) return true;
+  return false;
+};
 
 const BLUE = new THREE.Color(0x3aa8ff);
 const ORANGE = new THREE.Color(0xff7a1a);
@@ -434,6 +565,24 @@ export class CarVisual {
     this.root.removeFromParent();
     this.root.traverse((o) => o.isMesh && o.geometry.dispose());
     for (const m of this.owned ?? []) m.dispose();
+  }
+
+  // Driver view: the car's own interior, driver, glass, door windows and steering wheel hide
+  // (the cockpit model draws the cabin instead); the rest of the body stays.
+  setCabinShown(on) {
+    if (this.cabin) this.cabin.visible = on;
+  }
+
+  // The body's own mirror glass (wing mirrors of the player's car): the live rear view while
+  // the driver view shows (`material`, race/carCockpit.js bodyMirrorMaterial), else its own
+  // dark glass. Both materials are on the car from the warm-up on, so a switch compiles nothing.
+  setMirror(material) {
+    for (const g of this.mirrorGlass ?? []) g.mesh.material = material ?? g.own;
+  }
+
+  // Door windows 0 (closed) .. 1 (fully down), extras.apex.windows poses.
+  setWindows(k) {
+    for (const w of this.windows ?? []) w.group.matrix.multiplyMatrices(w.M, windowPose(w.pose, k, _m)).multiply(w.Minv);
   }
 
   // Nitro trail colour (FX_COLORS entry) for this car's flames; null keeps the stock blue.
@@ -526,10 +675,16 @@ export class CarVisual {
 
     const steerTarget = v.drifting ? -v.driftDir * 0.5 : this.steerInput ?? 0;
     this.steerVis += (steerTarget - this.steerVis) * Math.min(1, dt * 12);
-    const spinRate = v.forward / this.wheelRadius;
     for (const w of this.wheels) {
-      w.spin.rotation.z -= spinRate * dt;
+      // Each axle rolls at its own rate (a bigger rear tyre turns slower).
+      w.spin.rotation.z -= (v.forward / (w.radius || this.wheelRadius)) * dt;
       if (w.front) w.wheel.rotation.y = -this.steerVis * 0.45;
+    }
+    // The car's own steering wheel (seen through the glass in the follow views).
+    const sp = this.steerPart;
+    if (sp) {
+      const a = (this.steerInput ?? 0) * STEER_WHEEL_LOCK;
+      sp.group.matrix.multiplyMatrices(sp.S, _m.makeRotationAxis(X_AXIS, a)).multiply(sp.Sinv);
     }
 
     if (this.tail) this.tail.emissiveIntensity = v.braking ? 3.6 : LIGHTS.on ? 1.4 : 0.5;

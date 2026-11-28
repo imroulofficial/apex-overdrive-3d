@@ -8,8 +8,15 @@ import { applyFinish, createCarPaint, liveryPaint } from '../garage/carPaint.js'
 // Vehicle spawner. Every car in src/data/cars.js is a real model in public/assets/models/
 // (three files per car, see the README there), turned into one "car rig" interface:
 //
-//   { group, source, paintMaterial, wheels: [{ wheel, spin }], wheelRadius, exhausts,
-//     lightsOn, setLights(on), spinWheels(speed), update(dt), rim, setRim(id), door: null }
+//   { group, source, paintMaterial, wheels: [{ wheel, spin, radius, still }], wheelRadius, exhausts,
+//     lightsOn, setLights(on), spinWheels(speed), update(dt), rim, setRim(id), door: null,
+//     meta, factoryColor, modelMatrix, steeringWheel }
+//
+// Models from the Blender pipeline (versionCode 75) carry `extras.apex` on their root node
+// (`meta`): axles, per-axle wheel radius, the driver's eye, the steering wheel, door window
+// poses, the nodes to hide in the driver view and the factory paint. Their wheel nodes have
+// their origin on the axle, and each wheel's brake disc and caliper hang off an `upright_XX`
+// node that steers with the wheel but never spins (`still`).
 //
 // A model brings its own wheels, aero and lights. Its 'stock' rim is the model's own wheel and
 // the other five rim designs swap in wheels built at the model's tyre size
@@ -18,7 +25,7 @@ import { applyFinish, createCarPaint, liveryPaint } from '../garage/carPaint.js'
 // The garage turntable, the paint system and the race baker (raceCars.js) only talk to that
 // interface, and vehicle physics never looks at meshes at all.
 
-const BASE = import.meta.env.BASE_URL ?? './';
+const BASE = import.meta.env?.BASE_URL ?? './';
 // Same order as carModel.js: front then rear, +z (the car's right side, nose at +X) first.
 const WHEEL_KEYS = ['FR', 'FL', 'RR', 'RL'];
 const WHEEL_PATTERNS = {
@@ -28,8 +35,12 @@ const WHEEL_PATTERNS = {
   RR: /wheel[\s_.-]*(rr|br|rear[\s_.-]*r(ight)?|back[\s_.-]*r(ight)?)\b/i,
 };
 const PAINT_PATTERN = /paint|carbody|body[\s_.-]*col/i;
-const HEAD_PATTERN = /head[\s_.-]*l(ight|amp)|\bdrl\b/i;
-const TAIL_PATTERN = /tail[\s_.-]*l(ight|amp)|brake[\s_.-]*l(ight|amp)/i;
+// Lamp lenses: older models name the lamp mesh or material "headlight" / "taillight"; the
+// Blender cars have `headlight_lens` / `taillight_lens` nodes (the tail lens includes the
+// Tempesta's rain light). All of them glow with the lights and the brakes.
+export const HEAD_PATTERN = /headlight[\s_.-]*lens|head[\s_.-]*l(ight|amp)|\bdrl\b/i;
+export const TAIL_PATTERN = /taillight[\s_.-]*lens|tail[\s_.-]*l(ight|amp)|brake[\s_.-]*l(ight|amp)|rain[\s_.-]*l(ight|amp)/i;
+const UPRIGHT_PATTERN = { FL: /^upright_FL$/, FR: /^upright_FR$/, RL: /^upright_RL$/, RR: /^upright_RR$/ };
 const EXHAUST_PATTERN = /exhaust|muffler|tailpipe/i;
 
 let loader = null;
@@ -99,6 +110,16 @@ export async function loadCar(def, { paintColor, finish, lod = 'garage', rim } =
   throw new Error(`[models] no model could be loaded for ${def.id}`);
 }
 
+// The car's own driver-view cabin (`model.cockpitUrl`): { scene, meta } or null when the car
+// has none (or it cannot be loaded), and the race then uses the shared cabin.
+export async function loadCarCockpit(def) {
+  const url = def.model?.cockpitUrl;
+  if (!url) return null;
+  const gltf = await fetchGltf(resolveUrl(url));
+  if (!gltf) return null;
+  return { scene: gltf.scene, meta: readMeta(gltf.scene) };
+}
+
 // ---------------------------------------------------------------------------
 // glTF → car rig
 // ---------------------------------------------------------------------------
@@ -139,6 +160,26 @@ function flakeUv(mesh, attribute = 'uv') {
   geo.userData.flakeUv = true;
 }
 
+// The Blender pipeline's design data (extras.apex on the model's root node), or null.
+export function readMeta(root) {
+  let meta = null;
+  root.traverse((o) => {
+    if (meta || typeof o.userData?.apex !== 'string') return;
+    try {
+      meta = JSON.parse(o.userData.apex);
+    } catch {
+      meta = null;
+    }
+  });
+  return meta;
+}
+
+// The model's factory paint (extras.apex.factoryPaint, linear RGB) or null.
+export function factoryColorOf(meta) {
+  const p = meta?.factoryPaint;
+  return Array.isArray(p) && p.length === 3 ? new THREE.Color().setRGB(p[0], p[1], p[2], THREE.LinearSRGBColorSpace) : null;
+}
+
 function adaptGltf(source, def, { paintColor, finish, rim = 'stock', url }) {
   const opts = def.model;
   const car = new THREE.Group();
@@ -147,6 +188,8 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', url }) {
   // Inner group carries the normalisation (orientation, scale, centring), so the rig's own
   // root keeps an identity transform.
   const model = source.clone(true);
+  const meta = readMeta(model);
+  const factoryColor = factoryColorOf(meta);
   const fit = new THREE.Group();
   fit.add(model);
   car.add(fit);
@@ -169,7 +212,7 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', url }) {
 
   // Materials: one shared clear-coat paint replaces every paint material so the garage
   // paint shop works on the model; tail and head lenses get controllable emissives.
-  const paint = createCarPaint(paintColor, finish);
+  const paint = createCarPaint(paintColor, finish, factoryColor);
   const head = new THREE.MeshStandardMaterial({ color: 0xdfe8ff, roughness: 0.1, emissive: 0xe8f0ff, emissiveIntensity: 0 });
   const tail = new THREE.MeshStandardMaterial({ color: 0x400608, roughness: 0.15, emissive: 0xff1a1a, emissiveIntensity: 0.15 });
   tail.userData.tailLight = true;
@@ -242,12 +285,26 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', url }) {
     if (!node) throw new Error(`wheel node ${key} not found`);
     const wb = new THREE.Box3().setFromObject(node);
     const wheel = new THREE.Group();
-    wb.getCenter(wheel.position);
+    // A Blender car's wheel node sits on its axle (its bounds are off-centre: rim offset, tyre
+    // lettering); older models pivot at the middle of the wheel's bounds.
+    if (meta && !node.isMesh) node.getWorldPosition(wheel.position);
+    else wb.getCenter(wheel.position);
     car.add(wheel);
     const spin = new THREE.Group();
     wheel.add(spin);
     wheel.updateMatrixWorld(true);
     spin.attach(node);
+    // Upright, brake disc and caliper: they steer with the wheel and never spin.
+    let still = null;
+    const upright = meta ? findNode(model, null, UPRIGHT_PATTERN[key]) : null;
+    if (upright) {
+      still = new THREE.Group();
+      still.name = 'still';
+      still.userData.still = true;
+      wheel.add(still);
+      still.updateMatrixWorld(true);
+      still.attach(upright);
+    }
     // The wheel's biggest mesh (the tyre) keeps its contact shadow.
     let biggest = null;
     let biggestSize = 0;
@@ -258,8 +315,12 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', url }) {
     });
     if (biggest) biggest.castShadow = true;
     wheel.traverse((o) => (o.userData.wheelIndex = index));
-    wheels.push({ wheel, spin, stock: node, swap: null });
-    if (index === 0) wheelRadius = wb.getSize(new THREE.Vector3()).y / 2;
+    // Rolling radius per axle from the design (front and rear tyres differ on some cars), else
+    // from the wheel's bounds.
+    const axle = index < 2 ? 'front' : 'rear';
+    const radius = meta?.wheelRadius?.[axle] > 0 ? meta.wheelRadius[axle] * fit.scale.x : wb.getSize(new THREE.Vector3()).y / 2;
+    wheels.push({ wheel, spin, stock: node, swap: null, radius, still });
+    if (index === 0) wheelRadius = radius;
   });
 
   // Aftermarket rims: the model's wheel comes out of the spinning group and a rim of the
@@ -275,10 +336,13 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', url }) {
       }
       if (id === 'stock') {
         if (!w.stock.parent) w.spin.add(w.stock);
+        if (w.still && !w.still.parent) w.wheel.add(w.still);
         return;
       }
       w.spin.remove(w.stock);
-      w.swap = createSwapWheel(id, Math.sign(w.wheel.position.z) || 1, wheelRadius, lod);
+      // A swap wheel brings its own disc and caliper.
+      if (w.still) w.wheel.remove(w.still);
+      w.swap = createSwapWheel(id, Math.sign(w.wheel.position.z) || 1, w.radius, lod);
       // Seat the swap wheel in the same frame as the model's (spin group is still unrotated
       // in its own frame; only spin.rotation.z ever changes).
       w.spin.add(w.swap.spin);
@@ -302,6 +366,11 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', url }) {
     for (const z of [-0.42, 0.42]) exhausts.push(new THREE.Vector3(box.min.x - 0.04, 0.32, z));
   }
 
+  // Model frame (the design's metres: extras.apex points, window poses) -> rig frame.
+  car.updateMatrixWorld(true);
+  const modelMatrix = model.matrixWorld.clone();
+  const steeringWheel = meta ? findNode(model, 'steering_wheel') : null;
+
   let lightsOn = false;
   let lightLevel = 0;
   let wheelSpeed = 0;
@@ -312,6 +381,10 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', url }) {
     wheels,
     wheelRadius,
     exhausts,
+    meta,
+    factoryColor,
+    modelMatrix,
+    steeringWheel,
     rim,
     setRim(id) {
       if (id === this.rim) return;
@@ -334,7 +407,8 @@ function adaptGltf(source, def, { paintColor, finish, rim = 'stock', url }) {
       head.emissiveIntensity = lightLevel * 3.2;
       tail.emissiveIntensity = 0.15 + lightLevel * 3.5;
       wheelSpeed *= Math.pow(0.35, dt);
-      if (wheelSpeed > 0.01) wheels.forEach(({ spin }) => (spin.rotation.z -= wheelSpeed * dt));
+      // `wheelSpeed` is the front wheels' rate; a bigger rear tyre turns slower.
+      if (wheelSpeed > 0.01) wheels.forEach(({ spin, radius }) => (spin.rotation.z -= (wheelSpeed * wheelRadius * dt) / (radius || wheelRadius)));
     },
   };
 }

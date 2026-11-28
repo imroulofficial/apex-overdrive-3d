@@ -249,7 +249,14 @@ const raceHud = createRaceHud({
   onNext: () => exitToMap({ next: true }),
   onDoubleCoins: () => doubleCoins(),
   onCameraView: () => cycleCameraView(),
+  onWindows: () => toggleWindows(),
 });
+
+// Door windows down / up (driver view, cars with windows); every race starts with them closed.
+function toggleWindows() {
+  if (mode !== 'race' || !race?.toggleWindows()) return;
+  raceHud.setWindows(race.windowsAvailable, race.windows.down);
+}
 
 // Finger-drag free look on empty screen (the canvas): turns only the camera, never the car.
 const freeLook = createFreeLook({
@@ -322,6 +329,7 @@ function beginRace() {
     startNitro: Boolean(raceOpts.startNitro),
   });
   raceHud.setNext(null);
+  raceHud.setWindows(race.windowsAvailable, false);
 }
 
 // From the briefing (or, in debug, straight from the garage). `startNitro` is the rewarded
@@ -341,7 +349,7 @@ async function startRace(s = stage, { startNitro = false } = {}) {
       race?.dispose();
       race = null;
       race = new Race(garage.renderer, track, { onFps: showFps, lowEnd: gpu.lowEnd });
-      await race.prepare({ quality: garage.qualityLevel, paint: currentPaint(), car: carById(state.car), look: carLook(state, state.car), stage: s });
+      await race.prepare({ quality: garage.qualityLevel, manual: state.settings.quality !== 'auto', paint: currentPaint(), car: carById(state.car), look: carLook(state, state.car), stage: s });
     } else {
       await race.setPlayerCar(carById(state.car), currentPaint(), carLook(state, state.car));
       if (race.stage !== s) await race.setStage(s);
