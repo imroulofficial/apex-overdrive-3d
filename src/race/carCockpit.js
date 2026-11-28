@@ -189,7 +189,7 @@ function setGlow(m, v) {
 function unlitCabin(src) {
   const m = new THREE.MeshBasicMaterial({ name: src.name, color: src.color.clone(), map: src.map, side: src.side });
   const em = src.emissiveMap && src.map ? src.emissiveMap : null;
-  m.userData.shade = { value: 1 };
+  m.userData.shade = { value: 1.4 };
   m.userData.glowI = { value: src.emissiveIntensity ?? 1 };
   m.userData.glows = !!em; // a glow material (CarCockpit.glowMaterials); not `emissive`, which the renderer would read
   m.onBeforeCompile = (shader) => {
@@ -513,7 +513,7 @@ export class CarCockpit {
     this.gaugeUniforms.uGlow.value = this.glow;
     for (const g of this.glowMaterials) setGlow(g.m, g.full * (CABIN_DAY_GLOW + (1 - CABIN_DAY_GLOW) * this.glow));
     // The unlit low-tier cabin has no sun or lamps on it: it dims by itself at night and in tunnels.
-    for (const m of this.unlit) m.userData.shade.value = 1 - 0.6 * this.glow;
+    for (const m of this.unlit) m.userData.shade.value = 1.4 - 0.9 * this.glow; // by day a little over the atlas (no sun on it), at night half
     this.gear = gear;
     this.lit = shiftLit(rpm);
     const u = this.displayUniforms;
