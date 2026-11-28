@@ -436,6 +436,14 @@
       <div class="splash-bar"><i></i></div>
       <small>RED PEN STUDIO</small>
     </div>
+    <script>
+      // Fade the splash in from black only once the logo can be drawn, so nothing pops in.
+      (function () {
+        var s = document.getElementById('splash'), i = s.querySelector('img'), go = function () { s.classList.add('is-ready'); };
+        if (i.decode) i.decode().then(go, go); else go();
+        setTimeout(go, 400);
+      })();
+    </script>
 
     <script type="module" src="/src/main.js"></script>
   </body>

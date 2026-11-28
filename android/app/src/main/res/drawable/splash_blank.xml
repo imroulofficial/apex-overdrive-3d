@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fully transparent splash icon. Android 12+ always shows a system splash and does not let
+     apps remove it, so it is drawn as plain black: the same colour as the first frame of the
+     game's own splash (index.html .splash fades in from black). Nothing can flash or jump. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+    <size android:width="1dp" android:height="1dp" />
+</shape>

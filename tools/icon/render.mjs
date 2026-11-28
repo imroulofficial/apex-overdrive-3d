@@ -14,9 +14,10 @@
 //     ic_launcher_background.png                 adaptive background, 108 dp: the art enlarged
 //                                                and blurred, so masks and parallax never show
 //                                                an edge around the foreground
-//   android/app/src/main/res/drawable*/splash.png  legacy (pre-Android 12) launch splash: the
-//                                                rounded icon on black with the studio line.
-//                                                Android 12+ shows the adaptive icon instead.
+//
+// There is no native launch splash image any more (v76): the system splash is plain black with a
+// transparent icon (res/values/styles.xml, res/drawable/splash_blank.xml) so it matches the
+// first frame of the game's own splash in index.html.
 import sharp from 'sharp';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -28,19 +29,6 @@ const res = path.join(root, 'android/app/src/main/res');
 const master = path.resolve(process.argv[2] ?? path.join(here, 'master.png'));
 
 const DENSITIES = { mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4 };
-const SPLASH = {
-  drawable: [480, 320],
-  'drawable-land-mdpi': [480, 320],
-  'drawable-land-hdpi': [800, 480],
-  'drawable-land-xhdpi': [1280, 720],
-  'drawable-land-xxhdpi': [1600, 960],
-  'drawable-land-xxxhdpi': [1920, 1280],
-  'drawable-port-mdpi': [320, 480],
-  'drawable-port-hdpi': [480, 800],
-  'drawable-port-xhdpi': [720, 1280],
-  'drawable-port-xxhdpi': [960, 1600],
-  'drawable-port-xxxhdpi': [1280, 1920],
-};
 
 const meta = await sharp(master).metadata();
 if (meta.width !== meta.height) throw new Error(`master icon must be square, got ${meta.width}x${meta.height}`);
@@ -82,26 +70,6 @@ for (const [density, k] of Object.entries(DENSITIES)) {
     .modulate({ brightness: 0.9 })
     .png()
     .toFile(path.join(dir, 'ic_launcher_background.png'));
-}
-
-for (const [dir, [w, h]] of Object.entries(SPLASH)) {
-  const m = Math.min(w, h);
-  const d = Math.round(m * 0.5);
-  const cy = Math.round(h * 0.45);
-  const studio = Math.round(m * 0.028);
-  const overlay = Buffer.from(`<svg width="${w}" height="${h}">
-    <defs><radialGradient id="g" cx="50%" cy="${(cy / h) * 100}%" r="${(m * 0.6) / Math.max(w, h) * 100}%">
-      <stop offset="0" stop-color="#780a18" stop-opacity="0.55"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient></defs>
-    <rect width="${w}" height="${h}" fill="url(#g)"/>
-    <text x="${w / 2}" y="${cy + d / 2 + m * 0.08}" text-anchor="middle" font-family="Inter, system-ui, sans-serif" font-weight="600"
-      font-size="${studio}" letter-spacing="${studio * 0.5}" fill="#9aa3b2">RED PEN STUDIO</text></svg>`);
-  await sharp({ create: { width: w, height: h, channels: 3, background: '#000' } })
-    .composite([
-      { input: overlay, left: 0, top: 0 },
-      { input: await masked(d, 'rounded'), left: Math.round((w - d) / 2), top: cy - Math.round(d / 2) },
-    ])
-    .png()
-    .toFile(path.join(res, dir, 'splash.png'));
 }
 
 console.log(`Icons written from ${path.relative(root, master)}`);
