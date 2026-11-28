@@ -188,8 +188,8 @@ function isGlass(mat) {
 }
 
 // One car's lamp lenses (head and tail, one draw): glow levels in uniforms (CarVisual.update).
-function createLampMaterial() {
-  const m = createVertexPbrMaterial({ envMapIntensity: 1.1, emissive: 0xffffff, side: THREE.DoubleSide });
+function createLampMaterial(side = THREE.DoubleSide) {
+  const m = createVertexPbrMaterial({ envMapIntensity: 1.1, emissive: 0xffffff, side });
   const base = m.onBeforeCompile;
   const uniforms = { uHead: { value: 0 }, uTail: { value: 0.5 } };
   m.onBeforeCompile = (shader, renderer) => {
@@ -227,6 +227,7 @@ function smaller(tex, size, made) {
 function liteMaterial(src, made) {
   const m = src.clone();
   m.map = smaller(src.map, LITE_COLOR, made);
+  m.side = THREE.FrontSide; // front faces only on the low tier (CarFactory)
   // Roughness and metalness as plain values (a trim-like satin) instead of the ORM map.
   if (m.roughnessMap || m.metalnessMap) {
     m.roughnessMap = m.metalnessMap = null;
@@ -404,13 +405,16 @@ export class CarFactory {
     this.paint = template.paintMaterial;
     this.flameTex = flameTexture();
     // Both faces (the models' parts are double-sided): half the vertices of a mirrored copy.
-    this.atlas = createVertexPbrMaterial({ envMapIntensity: 1.1, side: THREE.DoubleSide });
+    // The low tier (lite) draws front faces only: the parts are closed shells (no open edges in
+    // the Blender files), and both faces cost a second raster of every car pixel there.
+    const side = lite ? THREE.FrontSide : THREE.DoubleSide;
+    this.atlas = createVertexPbrMaterial({ envMapIntensity: 1.1, side });
     // The same shading for the instanced wheels, as its own material: one material drawn both
     // instanced and not makes three.js rebuild its program parameters at every switch, twice
     // a frame per car (garbage the collector then has to clear mid-race).
-    this.wheelAtlas = createVertexPbrMaterial({ envMapIntensity: 1.1, side: THREE.DoubleSide });
+    this.wheelAtlas = createVertexPbrMaterial({ envMapIntensity: 1.1, side });
     // Every car's glass from this factory: blended vertex colour, its alpha per pane.
-    this.glass = createVertexPbrMaterial({ envMapIntensity: 1.1, transparent: true, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true });
+    this.glass = createVertexPbrMaterial({ envMapIntensity: 1.1, transparent: true, depthWrite: false, side, forceSinglePass: true });
     this.glass.name = 'Glass';
     this.liteMats = new Map(); // template material -> its lite copy (player, low tier)
     // The driver-view switch of this factory's shared materials: off for rivals' factories,
@@ -504,6 +508,7 @@ export class CarFactory {
     const p = this.paint;
     p.normalMap = null;
     p.clearcoat = 0;
+    p.side = THREE.FrontSide;
     p.iridescence = 0;
     p.needsUpdate = true;
   }
@@ -569,7 +574,7 @@ export class CarFactory {
     // Lite rivals: the paint joins the atlas (no clear coat), so the whole car is one opaque draw.
     const paint = player ? this.paint : createRivalPaint(color, finish, this.paint.userData.livery);
     const paintInAtlas = lite && !player;
-    const lamps = createLampMaterial();
+    const lamps = createLampMaterial(this.atlas.side);
     frontDraw(lamps, this.front);
     const atlas = { atlasMaterial: this.atlas, glassMaterial: this.glass, lampMaterial: lamps };
     const describe = (m) => (m === this.paint ? describeMaterial(paint) : describeMaterial(m));

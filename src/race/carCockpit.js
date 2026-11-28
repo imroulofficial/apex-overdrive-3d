@@ -72,7 +72,14 @@ export function dialValue(g, kmh, rpm) {
 // starts at `fromDeg` (image angle, counter-clockwise from +x, y up) and runs clockwise.
 function gaugeMaterial(src, tier, uniforms) {
   const params = { map: src.map, emissive: src.emissive?.clone() ?? new THREE.Color(0xffdcaa), emissiveMap: src.emissiveMap ?? src.map };
-  const m = tier === 'high' ? new THREE.MeshStandardMaterial({ ...params, roughness: src.roughness ?? 0.35, metalness: 0 }) : new THREE.MeshLambertMaterial(params);
+  // Low tier: unlit (the dials are lit faces anyway), like the rest of the light cabin.
+  const m =
+    tier === 'high'
+      ? new THREE.MeshStandardMaterial({ ...params, roughness: src.roughness ?? 0.35, metalness: 0 })
+      : tier === 'low'
+        ? new THREE.MeshBasicMaterial({ map: src.map })
+        : new THREE.MeshLambertMaterial(params);
+  const unlit = tier === 'low';
   m.name = 'Gauges';
   m.fog = false;
   m.onBeforeCompile = (shader) => {
@@ -112,7 +119,12 @@ float gNeedle = 0.0;`
 #endif`
       )
       .replace(
-        '#include <emissivemap_fragment>',
+        unlit ? '#include <opaque_fragment>' : '#include <emissivemap_fragment>',
+        unlit
+          ? `outgoingLight *= 0.75 + uGlow * 0.9;
+outgoingLight = mix(outgoingLight, vec3(1.0, 0.35, 0.1) * (1.4 + uGlow * 1.6), gNeedle);
+#include <opaque_fragment>`
+          : 
         `#include <emissivemap_fragment>
 totalEmissiveRadiance *= 0.75 + uGlow * 0.9;
 totalEmissiveRadiance = mix(totalEmissiveRadiance, vec3(1.0, 0.35, 0.1) * (1.4 + uGlow * 1.6), gNeedle);`
