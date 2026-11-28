@@ -11,10 +11,11 @@ export class RaceQuality {
     this.bloomCap = null; // 'low' or 'off' once bloom has been stepped down
   }
 
-  // Once a second of racing, with that second's frame rate.
-  sample(fps) {
+  // Once a second of racing, with that second's frame rate and the paced target rate (v76:
+  // render/frameGovernor.js; a race paced at 30 is slow under 25, one at 60 under 50).
+  sample(fps, target = 60) {
     this.seconds += 1;
-    if (fps < 50) this.slow += 1;
+    if (fps < target * (50 / 60)) this.slow += 1;
   }
 
   // The bloom level to race at, given the player's setting.

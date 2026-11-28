@@ -376,6 +376,31 @@ export function frontDraw(material, uniform = PLAYER_FRONT) {
   material.needsUpdate = true;
 }
 
+// Driver view of a car with its own cabin (v76): the player body is cut away inside the cabin's
+// greenhouse (race/cabinFrame.js clipBox), where the cabin frame draws the roof and pillars.
+// The uniform maps view space onto the box's unit cube (CarCockpit.clipMatrix, set by the race
+// before each render); its rest value maps everything far outside, so nothing is cut. Only the
+// materials the player body is drawn with in the driver view get it (its own program variant).
+const CLIP_NONE = new THREE.Matrix4().makeScale(0, 0, 0).setPosition(9, 9, 9);
+export const PLAYER_CABIN = { value: CLIP_NONE.clone() };
+export function clearCabinClip() {
+  PLAYER_CABIN.value.copy(CLIP_NONE);
+}
+export function cabinClip(material) {
+  if (!material || material.userData.cabinClip) return;
+  material.userData.cabinClip = true;
+  const prev = material.onBeforeCompile;
+  material.onBeforeCompile = (shader, renderer) => {
+    prev.call(material, shader, renderer);
+    shader.uniforms.uCabin = PLAYER_CABIN;
+    shader.vertexShader = `uniform mat4 uCabin;\nvarying vec3 vCabin;\n${shader.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n  vCabin = (uCabin * vec4(mvPosition.xyz, 1.0)).xyz;')}`;
+    shader.fragmentShader = `varying vec3 vCabin;\n${shader.fragmentShader.replace('void main() {', 'void main() {\n  if (all(lessThan(abs(vCabin), vec3(1.0)))) discard;')}`;
+  };
+  const key = material.customProgramCacheKey.bind(material);
+  material.customProgramCacheKey = () => `${key()}|cabin`;
+  material.needsUpdate = true;
+}
+
 // One draw for parts that move apart (the player car's wheels, discs and calipers, cabin,
 // steering wheel and door windows on the medium and high tiers): their triangles merge into one
 // mesh with a `part` index per vertex, and each part follows its own group through a matrix
@@ -434,6 +459,10 @@ function mergeParts(root, meshes, material) {
   root.add(mesh);
   return mesh;
 }
+
+// The wing mirrors' glass (v76: no live rear view): dark tinted glass with a little of the sky
+// in it, in the atlas like the rest of the body.
+const MIRROR_GLASS = { color: new THREE.Color(0x141a21), roughness: 0.12, metalness: 0.6, emissive: 0 };
 
 export class CarFactory {
   // `template` is a car rig from loadCar(); the factory never mutates it.
@@ -520,6 +549,13 @@ export class CarFactory {
       });
     }
     if (this.twins) this.cockpitTwins(visual, this.twins);
+    // The cabin cut (cabinClip) on what the body is drawn with in the driver view: the twins
+    // where there are twins, the body's own opaque materials elsewhere.
+    const twinned = new Set((visual.twins ?? []).map((t) => t.full));
+    visual.root.traverse((o) => {
+      if (!o.isMesh) return;
+      for (const m of [].concat(o.material)) if (!m.transparent && !twinned.has(m)) cabinClip(m);
+    });
   }
 
   // Low tier, driver view: the player's own body round the cabin (bonnet, wings, pillars) in
@@ -539,6 +575,7 @@ export class CarFactory {
           t.reflectivity = m === this.paint ? 0.3 : 0.12 + 0.3 * (m.metalness ?? 0) * (m.vertexColors ? 0.5 : 1);
         }
         frontDraw(t);
+        cabinClip(t);
         // The merged moving parts keep following their groups (one matrix array for both).
         if (m.userData.uParts) partsMaterial(t, m.userData.uParts);
         twins.set(m, t);
@@ -635,7 +672,7 @@ export class CarFactory {
     const lamps = createLampMaterial(this.atlas.side);
     frontDraw(lamps, this.front);
     const atlas = { atlasMaterial: this.atlas, glassMaterial: this.glass, lampMaterial: lamps };
-    const describe = (m) => (m === this.paint ? describeMaterial(paint) : describeMaterial(m));
+    const describe = (m) => (m === this.paint ? describeMaterial(paint) : m.name === 'MirrorGlass' ? MIRROR_GLASS : describeMaterial(m));
     // `baked`: this part may use its baked texture colour (cabin parts; lite rims and tyres).
     // `wheel`: a lite player's wheel part (painted rims join its atlas mesh).
     const mapFor = (baked, wheel = false) => (mat, geo) => {
@@ -644,6 +681,7 @@ export class CarFactory {
       // Head and tail lenses: one mesh per car so its brake lights glow on their own. (v76: the
       // mirror glass joins the atlas on every tier: there is no live rear view to show in it.)
       if (mat.userData.tailLight || mat.userData.headLight) return LAMP;
+      if (mat.name === 'MirrorGlass') return ATLAS;
       if (isGlass(mat)) return GLASS;
       if (isFlatMaterial(mat) || (baked && geo?.attributes._bakedcolor)) return ATLAS;
       if (lite && player && !mat.transparent) {

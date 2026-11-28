@@ -42,14 +42,13 @@ function pass(fragmentShader, uniforms, { output = false } = {}) {
 const BRIGHT = /* glsl */ `
   uniform sampler2D tSrc;
   uniform vec2 texel; // source texel
+  uniform vec2 uScale, uMax; // dynamic resolution: the drawn part of the scene target
   uniform float threshold, knee;
   varying vec2 vUv;
+  vec3 tap(vec2 o) { return texture2D(tSrc, min(vUv * uScale + texel * o, uMax)).rgb; }
   void main() {
     // 4 bilinear taps = a 4x4 box: a clean downsample with no shimmer on thin highlights.
-    vec3 c = texture2D(tSrc, vUv + texel * vec2(-1.0, -1.0)).rgb
-      + texture2D(tSrc, vUv + texel * vec2(1.0, -1.0)).rgb
-      + texture2D(tSrc, vUv + texel * vec2(-1.0, 1.0)).rgb
-      + texture2D(tSrc, vUv + texel * vec2(1.0, 1.0)).rgb;
+    vec3 c = tap(vec2(-1.0, -1.0)) + tap(vec2(1.0, -1.0)) + tap(vec2(-1.0, 1.0)) + tap(vec2(1.0, 1.0));
     c *= 0.25;
     float b = max(c.r, max(c.g, c.b));
     float soft = clamp(b - threshold + knee, 0.0, 2.0 * knee);
@@ -79,18 +78,20 @@ const COMPOSITE = /* glsl */ `
   uniform sampler2D tScene, tBloom, tHalo;
   uniform float strength, halo;
   uniform vec2 texel; // one scene texel
+  uniform vec2 uScale, uMax; // dynamic resolution (v76): the scene fills uScale of its target
   varying vec2 vUv;
   #ifdef USE_FXAA
+    vec3 sceneAt(vec2 uv) { return texture2D(tScene, min(uv, uMax)).rgb; }
     float lumaOf(vec3 c) {
       float l = dot(min(c, vec3(16.0)), vec3(0.299, 0.587, 0.114));
       return sqrt(l / (1.0 + l));
     }
     vec3 fxaa(vec2 uv) {
-      vec3 rgbM = texture2D(tScene, uv).rgb;
-      float lNW = lumaOf(texture2D(tScene, uv + texel * vec2(-1.0, -1.0)).rgb);
-      float lNE = lumaOf(texture2D(tScene, uv + texel * vec2(1.0, -1.0)).rgb);
-      float lSW = lumaOf(texture2D(tScene, uv + texel * vec2(-1.0, 1.0)).rgb);
-      float lSE = lumaOf(texture2D(tScene, uv + texel * vec2(1.0, 1.0)).rgb);
+      vec3 rgbM = sceneAt(uv);
+      float lNW = lumaOf(sceneAt(uv + texel * vec2(-1.0, -1.0)));
+      float lNE = lumaOf(sceneAt(uv + texel * vec2(1.0, -1.0)));
+      float lSW = lumaOf(sceneAt(uv + texel * vec2(-1.0, 1.0)));
+      float lSE = lumaOf(sceneAt(uv + texel * vec2(1.0, 1.0)));
       float lM = lumaOf(rgbM);
       float lMin = min(lM, min(min(lNW, lNE), min(lSW, lSE)));
       float lMax = max(lM, max(max(lNW, lNE), max(lSW, lSE)));
@@ -99,17 +100,18 @@ const COMPOSITE = /* glsl */ `
       float reduce = max((lNW + lNE + lSW + lSE) * 0.03125, 1.0 / 128.0);
       float rcpMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + reduce);
       dir = clamp(dir * rcpMin, vec2(-8.0), vec2(8.0)) * texel;
-      vec3 a = 0.5 * (texture2D(tScene, uv - dir * (1.0 / 6.0)).rgb + texture2D(tScene, uv + dir * (1.0 / 6.0)).rgb);
-      vec3 b = a * 0.5 + 0.25 * (texture2D(tScene, uv - dir * 0.5).rgb + texture2D(tScene, uv + dir * 0.5).rgb);
+      vec3 a = 0.5 * (sceneAt(uv - dir * (1.0 / 6.0)) + sceneAt(uv + dir * (1.0 / 6.0)));
+      vec3 b = a * 0.5 + 0.25 * (sceneAt(uv - dir * 0.5) + sceneAt(uv + dir * 0.5));
       float lB = lumaOf(b);
       return lB < lMin || lB > lMax ? a : b;
     }
   #endif
   void main() {
+    vec2 sUv = min(vUv * uScale, uMax);
     #ifdef USE_FXAA
-      vec3 c = fxaa(vUv);
+      vec3 c = fxaa(sUv);
     #else
-      vec3 c = texture2D(tScene, vUv).rgb;
+      vec3 c = texture2D(tScene, sUv).rgb;
     #endif
     #ifdef USE_BLOOM
       c += texture2D(tBloom, vUv).rgb * strength;
@@ -138,9 +140,14 @@ export class MobileBloom {
     geo.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
     this.quad = new THREE.Mesh(geo);
     this.quad.frustumCulled = false;
-    this.bright = pass(BRIGHT, { tSrc: { value: null }, texel: { value: new THREE.Vector2() }, threshold: { value: 1 }, knee: { value: 0.5 } });
+    // Dynamic resolution (v76, render/frameGovernor.js): the scene renders into the lower-left
+    // `scale` of its target and the passes read only that part. Uniforms and a viewport only.
+    this.scale = 1;
+    this.uScale = { value: new THREE.Vector2(1, 1) };
+    this.uMax = { value: new THREE.Vector2(1, 1) };
+    this.bright = pass(BRIGHT, { tSrc: { value: null }, texel: { value: new THREE.Vector2() }, uScale: this.uScale, uMax: this.uMax, threshold: { value: 1 }, knee: { value: 0.5 } });
     this.blur = pass(BLUR, { tSrc: { value: null }, dir: { value: new THREE.Vector2() } });
-    this.composite = pass(COMPOSITE, { tScene: { value: null }, tBloom: { value: null }, tHalo: { value: null }, strength: { value: 0.5 }, halo: { value: 0.8 }, texel: { value: new THREE.Vector2() } }, { output: true });
+    this.composite = pass(COMPOSITE, { tScene: { value: null }, tBloom: { value: null }, tHalo: { value: null }, strength: { value: 0.5 }, halo: { value: 0.8 }, texel: { value: new THREE.Vector2() }, uScale: this.uScale, uMax: this.uMax }, { output: true });
     this.targets = null;
     this.rebuild();
   }
@@ -175,6 +182,12 @@ export class MobileBloom {
     this.composite.defines = defines;
     this.composite.needsUpdate = true;
     this.dispose(); // render() allocates what the new setup needs
+  }
+
+  // Render scale 0.5..1 of the scene target (dynamic resolution). Takes effect on the next
+  // render; nothing is reallocated.
+  setScale(scale) {
+    this.scale = Math.max(0.5, Math.min(1, scale));
   }
 
   setParams({ threshold, strength }) {
@@ -242,6 +255,12 @@ export class MobileBloom {
     }
     if (!this.targets) this.allocate();
     const T = this.targets;
+    // The drawn part of the scene target (whole pixels), and the last texel centre inside it.
+    const vw = Math.max(1, Math.round(T.scene.width * this.scale));
+    const vh = Math.max(1, Math.round(T.scene.height * this.scale));
+    T.scene.viewport.set(0, 0, vw, vh);
+    this.uScale.value.set(vw / T.scene.width, vh / T.scene.height);
+    this.uMax.value.set((vw - 0.5) / T.scene.width, (vh - 0.5) / T.scene.height);
     r.setRenderTarget(T.scene);
     r.render(scene, camera);
 

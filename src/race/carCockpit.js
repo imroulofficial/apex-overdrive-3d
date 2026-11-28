@@ -16,6 +16,7 @@ import {
   shiftLit,
   skyGradient,
 } from './cockpit.js';
+import { buildCabinFrame, driverEye } from './cabinFrame.js';
 
 
 // The car's own driver-view cabin (versionCode 75): `<car>_cockpit.glb`, built with the car in
@@ -228,6 +229,24 @@ function unlitCabin(src) {
   return m;
 }
 
+// The cabin frame (race/cabinFrame.js): unlit vertex colours, both faces, dimmed at night with
+// the rest of the cabin (uShade, as the low tier's unlit cabin).
+function trimMaterial() {
+  const m = new THREE.MeshBasicMaterial({ name: 'CabinFrame', vertexColors: true, side: THREE.DoubleSide });
+  m.userData.shade = { value: 1.4 };
+  m.userData.shadeK = 1 / 1.4; // 1 by day, about 0.36 at night
+  m.onBeforeCompile = (shader) => {
+    drawOnTop(shader);
+    shader.uniforms.uShade = m.userData.shade;
+    shader.fragmentShader = shader.fragmentShader
+      .replace('void main() {', 'uniform float uShade;\nvoid main() {')
+      .replace('#include <opaque_fragment>', 'outgoingLight *= uShade;\n#include <opaque_fragment>');
+  };
+  m.customProgramCacheKey = () => 'car-cabin-frame';
+  m.fog = false;
+  return m;
+}
+
 // Gear (big) over the speed (three digits) between the two big dials and a row of shift lights
 // above them, in the shared cluster's shader (digits and lights by uniforms only). Built in a
 // frame facing the driver: x toward the dash, y up, z right; sizes in metres.
@@ -405,6 +424,28 @@ export class CarCockpit {
     }
     this.displayUniforms = this.displayMaterial?.uniforms ?? null;
 
+    // The roof and pillars seen from the seat (v76, race/cabinFrame.js): one clean unlit mesh
+    // fitted to the car's glass; the player body is cut away inside `clipBox` (raceCars.js
+    // cabinClip) so its decimated roof never shows from inside.
+    const frame = buildCabinFrame(root, this.meta.eye);
+    this.clipBox = frame?.box ?? null;
+    if (frame) {
+      this.frameMaterial = trimMaterial();
+      this.frame = new THREE.Mesh(frame.geometry, this.frameMaterial);
+      this.frame.name = 'car-cockpit-frame';
+      root.add(this.frame);
+      this.materials.push(this.frameMaterial);
+      this.unlit.push(this.frameMaterial);
+    }
+    this.clipRoot = root;
+    // The driver's eye (model frame): moved back from the wheel to a real seat's distance.
+    this.eye = this.meta.eye ?? null;
+    if (this.eye && this.wheel) {
+      root.updateMatrixWorld(true);
+      const c = new THREE.Box3().setFromObject(this.wheel).getCenter(new THREE.Vector3()).applyMatrix4(_m.copy(root.matrixWorld).invert());
+      this.eye = driverEye(this.eye, c.toArray(), frame ? frame.fit.yt : Infinity);
+    }
+
     group.traverse((o) => {
       o.frustumCulled = false;
       o.castShadow = false;
@@ -478,7 +519,7 @@ export class CarCockpit {
     this.gaugeUniforms.uGlow.value = this.glow;
     for (const g of this.glowMaterials) setGlow(g.m, g.full * (CABIN_DAY_GLOW + (1 - CABIN_DAY_GLOW) * this.glow));
     // The unlit low-tier cabin has no sun or lamps on it: it dims by itself at night and in tunnels.
-    for (const m of this.unlit) m.userData.shade.value = 1.4 - 0.9 * this.glow; // by day a little over the atlas (no sun on it), at night half
+    for (const m of this.unlit) m.userData.shade.value = (m.userData.shadeK ?? 1) * (1.4 - 0.9 * this.glow); // by day a little over the atlas (no sun on it), at night half
     this.gear = gear;
     this.lit = shiftLit(rpm);
     const u = this.displayUniforms;
@@ -495,6 +536,19 @@ export class CarCockpit {
     }
   }
 
+  // View space -> the clip box's unit cube (raceCars.js cabinClip), for this frame's camera.
+  // Null when the cabin has no frame (an open car): nothing of the body is cut away.
+  clipMatrix(camera, out) {
+    if (!this.clipBox) return null;
+    this.group.updateMatrixWorld(true);
+    const b = this.clipBox;
+    b.getCenter(_a);
+    b.getSize(_b).multiplyScalar(0.5);
+    out.makeTranslation(-_a.x, -_a.y, -_a.z).premultiply(_m.makeScale(1 / _b.x, 1 / _b.y, 1 / _b.z));
+    out.multiply(_m.copy(this.clipRoot.matrixWorld).invert()).multiply(camera.matrixWorld);
+    return out;
+  }
+
   // The race's environment map for the medium tier's glass (cabinMaterial).
   setEnvironment(env) {
     this.group.traverse((o) => {
@@ -507,6 +561,7 @@ export class CarCockpit {
     for (const m of this.materials) m.dispose();
     for (const t of this.textures) t.dispose();
     if (this.display) this.display.geometry.dispose();
+    if (this.frame) this.frame.geometry.dispose();
     for (const o of this.mirrorMeshes) o.geometry.dispose();
   }
 }

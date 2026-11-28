@@ -34,8 +34,9 @@ const FOLLOW = {
 export const FOLLOW_YAW = { travelFrom: 3, travelTo: 12, travel: 0.5, drift: 0.65, driftRate: 3, maxOffset: 0.6, maxRate: 3.5 };
 // Driver view: the eye `back` metres behind the nose, `below` under the roof line (within
 // `minY`..`maxY` of the car's origin), `side` metres left of the centre line (left-hand drive).
-// A small FOV kick, so the cockpit stays put on screen.
-export const COCKPIT = { back: 2.2, minX: -0.7, below: 0.3, minY: 0.82, maxY: 1.25, side: -0.36, ahead: 30, drop: 0.9, fov: 6, speedFov: 6, shake: 0.25 };
+// A narrower view than the follow views (v76: a real seat's field of view, about 58 degrees
+// tall) and a small FOV kick with speed, so the cockpit stays put on screen.
+export const COCKPIT = { back: 2.2, minX: -0.7, below: 0.3, minY: 0.82, maxY: 1.25, side: -0.36, ahead: 30, drop: 0.9, fov: -6, speedFov: 4, shake: 0.25 };
 // The driver's head in the cockpit, in metres in the car's frame, all of it small and eased
 // (no motion sickness): braking pitches it forward and down (`brake` m per m/s², up to
 // `maxFwd`), accelerating presses it back (`accel`, up to `maxBack`); cornering leans it to

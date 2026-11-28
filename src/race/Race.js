@@ -9,7 +9,7 @@ import { SmashProps } from './props.js';
 import { Vehicle, statsToParams, NITRO } from './vehicle.js';
 import { DriftChain } from './driftChain.js';
 import { AIDriver } from './ai.js';
-import { CarFactory, ContactShadows, FLAME, LIGHTS, PLAYER_FRONT } from './raceCars.js';
+import { CarFactory, ContactShadows, FLAME, LIGHTS, PLAYER_CABIN, PLAYER_FRONT, clearCabinClip } from './raceCars.js';
 import { carById } from '../data/cars.js';
 import { loadCar, loadCarCockpit } from '../assets/modelLoader.js';
 import { shownPaintColor } from '../garage/carPaint.js';
@@ -39,11 +39,22 @@ import { RaceQuality } from './quality.js';
 import { unifyProgramStates } from '../render/programStates.js';
 import { collideCars } from './contact.js';
 import { FixedStep, STEP } from './fixedStep.js';
+import { FrameGovernor } from '../render/frameGovernor.js';
 
 // One race on a track: owns the 3D scene, the cars, the race state machine
 // (intro → countdown → racing → finished) and reports to the HUD every frame. What kind of
 // race it is (who is on the grid, how it ends, extra rules) comes from the stage's game mode
 // (race/modes/index.js); the host tracks every car's distance along the stage's course.
+
+// Step timer for the loading report: lap(name) adds the ms since the last lap to out[name].
+function loadLap(out) {
+  let t = performance.now();
+  return (name) => {
+    const now = performance.now();
+    out[name] = (out[name] ?? 0) + Math.round(now - t);
+    t = now;
+  };
+}
 
 // The longest frame the clock takes in one go (a stalled tab); fixed steps: race/fixedStep.js.
 const MAX_FRAME = 0.1;
@@ -92,6 +103,8 @@ export class Race {
     this.frame = this.frame.bind(this);
     this.resize = this.resize.bind(this);
     this.tuner = new RaceQuality();
+    // Frame pacing and dynamic resolution while racing (render/frameGovernor.js).
+    this.governor = new FrameGovernor();
   }
 
   // Builds the world once (procedural, a few hundred ms) and pre-compiles its shaders.
@@ -100,7 +113,10 @@ export class Race {
   async prepare({ quality, manual = false, paint, car, look = {}, stage }) {
     if (this.ready) return;
     const renderer = this.renderer;
+    // Where the loading time goes (ms per step, tools/perf/loading.mjs reads it).
+    const lap = loadLap((this.loadTimings = {}));
     this.quality = quality;
+    this.manual = manual;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(64, 1, 0.3, 3200);
     this.camera.layers.enable(1); // the cockpit (race/cockpit.js) lives on layer 1
@@ -121,9 +137,11 @@ export class Race {
     this.tracks = { forward: this.track, reverse: null };
     // Bundled CC0 scans (road, ground, bark, fronds, rocks); loaded once per session.
     const env = await loadEnvAssets(renderer);
+    lap('envAssets');
     this.scenery = (SCENERY[this.def.biome] ?? buildScenery)(this.scene, renderer, this.track, this.def, quality, env);
     const meshes = buildTrackMeshes(this.track, renderer, { groundMaterial: this.scenery.groundMaterial, env });
     this.scene.add(meshes);
+    lap('scenery+track');
     this.wet = meshes.userData.wet; // shared rain uniform: asphalt, kerbs, bridge, trails
     this.directional = { forward: meshes.getObjectByName('directional'), reverse: null };
     this.props = new SmashProps(this.track, this.def, this.scene);
@@ -148,12 +166,15 @@ export class Race {
     this.lens = new LensDrops();
     this.bloom = new MobileBloom(renderer);
     this.weather = null;
+    lap('setPieces+weather');
 
     // The player drives the textured track model of their car; every rival drives the light
     // LOD of the roster car it is assigned (data/rivals.js), one factory per model.
     this.rivalFactories = new Map(); // car id -> Promise<CarFactory>
     this.rivalFactoryList = []; // the ones that have loaded
-    this.factory = new CarFactory(await playerJob, { lite: this.liteCars, twins: this.playerTwins() });
+    const playerTemplate = await playerJob;
+    lap('playerModelWait');
+    this.factory = new CarFactory(playerTemplate, { lite: this.liteCars, twins: this.playerTwins() });
     this.playerCarKey = lookKey(car, look);
     this.playerFeel = car.feel;
     // (Object3D.add() with no arguments logs an error, so empty lists are skipped.)
@@ -184,14 +205,18 @@ export class Race {
     this.factory.frontDrawPlayer(player);
     PLAYER_FRONT.value = 0;
     this.scene.add(player.root);
+    lap('playerCar');
     await this.buildCockpit(car, cockpitJob);
+    lap('cockpit');
     this.racers = [this.player];
     this.pool = new Map(); // rival id -> racer, built on demand per stage
     // One shader program per material for the whole race (render/programStates.js), then
     // static scenery is culled per cell from here on (render/culling.js).
     unifyProgramStates(this.scene);
     this.culling = new SceneCulling(this.scene);
+    lap('culling');
     await this.setStage(stage, { compile: false });
+    lap('stage+rivals');
 
     this.shadowState = renderer.shadowMap.enabled;
     window.addEventListener('resize', this.resize);
@@ -200,6 +225,7 @@ export class Race {
     this.reset({ stats: null });
     this.chase.snap(this.player.vehicle);
     await renderer.compileAsync(this.scene, this.camera);
+    lap('shaders');
     this.ready = true;
   }
 
@@ -359,7 +385,7 @@ export class Race {
     if (own) {
       const meta = own.meta ?? t.meta ?? {};
       this.cockpit = new CarCockpit({ source: own.scene, meta, modelMatrix: t.modelMatrix, tier: this.cockpitTier });
-      const eye = meta.eye ? new THREE.Vector3().fromArray(meta.eye).applyMatrix4(t.modelMatrix) : null;
+      const eye = this.cockpit.eye ? new THREE.Vector3().fromArray(this.cockpit.eye).applyMatrix4(t.modelMatrix) : null;
       this.chase.setOwnEye(eye);
       // In the car's own cabin: no nitro streaks across the glass, smoke and sparks fade out
       // near the eye (extras.apex.cockpitFx).
@@ -416,7 +442,7 @@ export class Race {
     const h = window.innerHeight;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    const ph = h * this.renderer.getPixelRatio();
+    const ph = h * this.renderer.getPixelRatio() * (this.bloom?.scale ?? 1);
     this.smoke.setViewport(ph, this.camera.fov);
     this.sparks.setViewport(ph, this.camera.fov);
     this.waterfall?.userData.setViewport(ph, this.camera.fov);
@@ -548,7 +574,13 @@ export class Race {
     this.gearbox.reset();
     this.chase.resetFreeLook();
     this.chase.snap(this.player.vehicle);
+    // A steady 30 FPS on a low-end GPU on Graphics: Auto, 60 elsewhere; full render scale.
+    this.governor.reset({ target: this.lowEnd && autoQuality ? 30 : 60, scale: 1 });
+    this.paceTarget = this.governor.target;
+    this.applyRenderScale();
+    const w0 = performance.now();
     this.warmUp();
+    this.warmUpMs = Math.round(performance.now() - w0);
     input.setEnabled(false);
     this.chase.intro(this.player.vehicle, 3.2);
     this.engine?.stop();
@@ -626,6 +658,7 @@ export class Race {
     if (this.running) return;
     this.running = true;
     this.last = performance.now();
+    this.governor.lastRun = null;
     this.fpsAcc = 0;
     this.fpsFrames = 0;
     this.renderer.setAnimationLoop(this.frame);
@@ -653,6 +686,7 @@ export class Race {
     this.rainSound?.set(this.weather.rain);
     raceMusic.setPaused(false);
     this.last = performance.now();
+    this.governor.lastRun = null;
     this.input.setEnabled(this.phase === 'racing');
   }
 
@@ -710,17 +744,34 @@ export class Race {
   }
 
   frame(nowMs) {
+    // Frame pacing (v76): only once a whole frame interval of the target rate has passed.
+    if (!this.governor.shouldRun(nowMs)) return;
     // rAF stamps a frame with the time it began, which can be earlier than a long task that
     // ran just before it (the warm-up): never let that run time backwards.
     const dt = Math.max(0, Math.min(MAX_FRAME, (nowMs - this.last) / 1000));
     this.last = nowMs;
     this.trackPerformance(dt);
     if (this.phase !== 'paused') this.update(dt);
+    // Dynamic resolution: late frames lower the render scale a little (only while racing).
+    if (this.phase === 'racing' && this.governor.sample(dt * 1000)) this.applyRenderScale();
     this.render();
+  }
+
+  // The governor's render scale to the scene target, and the point sprites' pixel scale with it.
+  applyRenderScale() {
+    this.bloom.setScale(this.governor.scale);
+    this.resize();
   }
 
   // One frame on screen: the scene through bloom (v76: no mirror pass).
   render() {
+    // Driver view of a car with its own cabin: the body cut away inside the greenhouse
+    // (raceCars.js cabinClip), in this frame's camera space.
+    if (!(this.cockpitShown && this.cockpitFx && this.cockpit?.clipMatrix)) clearCabinClip();
+    else {
+      this.camera.updateMatrixWorld();
+      if (!this.cockpit.clipMatrix(this.camera, PLAYER_CABIN.value)) clearCabinClip();
+    }
     this.bloom.render(this.scene, this.camera);
   }
 
@@ -734,7 +785,9 @@ export class Race {
     this.fpsAcc = 0;
     this.fpsFrames = 0;
     this.onFps?.(fps);
-    if (this.autoQuality && this.phase === 'racing') this.tuner.sample(fps);
+    // Judged against the rate the race started at (a low-end 30 FPS race is not "slow"; a 60
+    // that had to drop to 30 is).
+    if (this.autoQuality && this.phase === 'racing') this.tuner.sample(fps, this.paceTarget);
   }
 
   update(dt) {

@@ -35,6 +35,7 @@ import { chestDialog } from './ui/chest.js';
 import { onAppStateChange, onBackButton } from './core/platform.js';
 import { detectGpu, raceBloom, bloomChosen } from './render/gpuTier.js';
 import { DEFAULT_BLOOM } from './data/weather.js';
+import { keepRaceInGarage } from './race/raceKeep.js';
 
 const $ = (sel) => document.querySelector(sel);
 const canvas = $('#scene');
@@ -196,9 +197,13 @@ async function backToGarage() {
   mapHud.hide();
   map.stop();
   // The track stays loaded while the player is on the map (a retry or the next stage on it
-  // starts at once); back in the garage its geometries, textures and targets are freed.
-  race?.dispose();
-  race = null;
+  // starts at once), and (v76) in the garage too when the phone has the memory for both
+  // (raceKeep.js): Start race from the map is then as quick as Next race. Otherwise its
+  // geometries, textures and targets are freed here.
+  if (race && !keepRaceInGarage(race)) {
+    race.dispose();
+    race = null;
+  }
   garage.resize();
   garage.start();
   hud.snapBody();
@@ -336,12 +341,14 @@ async function startRace(s = stage, { startNitro = false } = {}) {
   const track = trackFor(s);
   await wipe.cover(`LOADING ${TRACK_SEGMENTS[s.trackSegment].name.toUpperCase()}`);
   try {
-    // Switching tracks builds a new Race and frees the old one's GPU resources.
-    if (!race || race.def !== track) {
+    // Switching tracks (or the Graphics setting) builds a new Race and frees the old one's GPU
+    // resources.
+    const manual = state.settings.quality !== 'auto';
+    if (!race || race.def !== track || race.quality !== garage.qualityLevel || race.manual !== manual) {
       race?.dispose();
       race = null;
       race = new Race(garage.renderer, track, { onFps: showFps, lowEnd: gpu.lowEnd });
-      await race.prepare({ quality: garage.qualityLevel, manual: state.settings.quality !== 'auto', paint: currentPaint(), car: carById(state.car), look: carLook(state, state.car), stage: s });
+      await race.prepare({ quality: garage.qualityLevel, manual, paint: currentPaint(), car: carById(state.car), look: carLook(state, state.car), stage: s });
     } else {
       await race.setPlayerCar(carById(state.car), currentPaint(), carLook(state, state.car));
       if (race.stage !== s) await race.setStage(s);

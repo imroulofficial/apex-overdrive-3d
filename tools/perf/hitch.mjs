@@ -26,11 +26,12 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(here, '../..');
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(`--${name}`);
   return i > 0 ? process.argv[i + 1] : fallback;
 };
+// --root dir: profile another build (its dist/), e.g. a worktree of the previous version.
+const root = path.resolve(arg('root', path.resolve(here, '../..')));
 const STAGES = arg('stage', 'ec-01').split(',');
 const SECONDS = Number(arg('seconds', 60));
 const QUALITY = arg('quality', 'high');

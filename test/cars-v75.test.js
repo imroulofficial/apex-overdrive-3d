@@ -373,7 +373,8 @@ test('race: own cockpit first, shared cabin only as the fallback; eye, cabin hid
   const race = await read('../src/race/Race.js');
   const build = race.slice(race.indexOf('  async buildCockpit('), race.indexOf('\n  }\n', race.indexOf('  async buildCockpit(')));
   assert.match(build, /if \(own\) \{[\s\S]*new CarCockpit\([\s\S]*\} else \{[\s\S]*new Cockpit\(/);
-  assert.match(build, /meta\.eye \? new THREE\.Vector3\(\)\.fromArray\(meta\.eye\)\.applyMatrix4\(t\.modelMatrix\)/);
+  // v76: the file's eye moved to a real seat's distance from the wheel (CarCockpit.eye, cabinFrame.js driverEye).
+  assert.match(build, /this\.cockpit\.eye \? new THREE\.Vector3\(\)\.fromArray\(this\.cockpit\.eye\)\.applyMatrix4\(t\.modelMatrix\)/);
   assert.match(build, /this\.chase\.setOwnEye\(eye\)/);
   assert.match(build, /this\.cockpitFx = \{ speedLines: false, particleNearFade: 2\.8, \.\.\.\(meta\.cockpitFx \?\? \{\}\) \}/);
   // The car's own body stays round the cabin, minus the hidden parts.

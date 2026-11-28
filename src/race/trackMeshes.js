@@ -117,12 +117,14 @@ function bannerTexture(title, subtitle) {
 
 // A strip that follows the track between lateral offsets, sampled every `step` samples.
 // `cols` is a list of [d, dy, u] across the strip.
-function ribbon(track, cols, { from = 0, to = track.n, step = 1, vScale = ROAD_TILE, lift = 0 } = {}) {
+function ribbon(track, cols, { from = 0, to = track.n, step = 1, vScale = ROAD_TILE, lift = 0, rows: given = null } = {}) {
   const pos = [];
   const uv = [];
-  const rows = [];
-  for (let k = from; k <= to; k += step) rows.push(Math.min(k, to));
-  if (rows[rows.length - 1] !== to) rows.push(to);
+  const rows = given ?? [];
+  if (!given) {
+    for (let k = from; k <= to; k += step) rows.push(Math.min(k, to));
+    if (rows[rows.length - 1] !== to) rows.push(to);
+  }
   const f = {};
   for (const k of rows) {
     const s = k >= track.n ? track.length : track.s[k];
@@ -148,6 +150,46 @@ function ribbon(track, cols, { from = 0, to = track.n, step = 1, vScale = ROAD_T
   geo.setIndex(index);
   geo.computeVertexNormals();
   return geo;
+}
+
+// The track samples a ribbon at offset `d` needs (v76): a sample is skipped while the straight
+// line between the kept ones passes within `tol` metres of every skipped sample's point (and
+// never more than `maxStep` samples apart). On straights and gentle bends that is one row every
+// few metres instead of every sample; the shape stays within 1 cm of the full ribbon.
+export function adaptiveRows(track, d, from, to, tol = 0.01, maxStep = 24) {
+  const f = {};
+  const n = to - from + 1;
+  const P = new Float64Array(n * 3);
+  for (let k = from; k <= to; k++) {
+    track.frame(k >= track.n ? track.length : track.s[k], f);
+    const i = (k - from) * 3;
+    P[i] = f.x + f.rx * d;
+    P[i + 1] = f.y;
+    P[i + 2] = f.z + f.rz * d;
+  }
+  const off = (a, b, c) => {
+    // Distance of point c from the segment a-b (indices into P).
+    const ax = P[a * 3], ay = P[a * 3 + 1], az = P[a * 3 + 2];
+    const bx = P[b * 3] - ax, by = P[b * 3 + 1] - ay, bz = P[b * 3 + 2] - az;
+    const cx = P[c * 3] - ax, cy = P[c * 3 + 1] - ay, cz = P[c * 3 + 2] - az;
+    const bb = bx * bx + by * by + bz * bz || 1e-9;
+    const t = Math.max(0, Math.min(1, (cx * bx + cy * by + cz * bz) / bb));
+    return Math.hypot(cx - bx * t, cy - by * t, cz - bz * t);
+  };
+  const rows = [from];
+  let a = 0;
+  while (a < n - 1) {
+    let b = a + 1;
+    for (let c = a + 2; c < n && c - a <= maxStep; c++) {
+      let ok = true;
+      for (let m = a + 1; m < c && ok; m++) ok = off(a, c, m) <= tol;
+      if (!ok) break;
+      b = c;
+    }
+    rows.push(from + b);
+    a = b;
+  }
+  return rows;
 }
 
 function fixUpNormals(geo) {
@@ -493,7 +535,8 @@ function buildGuardrails(track) {
   for (const side of [1, -1]) {
     const cols = profile.map(([o, y], k) => [side * (track.fenceOffset + o), y - 0.15, k / (profile.length - 1)]);
     for (const [from, to] of spans(track, gaps(track, side))) {
-      const rail = ribbon(track, cols, { vScale: 4, from, to });
+      // v76: rows only where the rail bends (adaptiveRows), the same shape within 1 cm.
+      const rail = ribbon(track, cols, { vScale: 4, rows: adaptiveRows(track, side * track.fenceOffset, from, to) });
       for (const g of bothFaces(rail)) out.push(paintVertices(g, steel));
     }
   }
