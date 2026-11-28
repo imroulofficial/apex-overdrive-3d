@@ -55,12 +55,12 @@ Low-end GPU with Graphics: High chosen by hand (Stallion, v75, unchanged path): 
 
 | Target (low-end GPU, Graphics Auto) | Result |
 |---|---|
-| Chase frame within +10% of v74 | Average +1% (per car −7% to +19%; run-to-run noise is about ±10%) |
+| Chase frame within +10% of v74 | Average +1% (per car −11% to +19%; run-to-run noise is about ±10%) |
 | Chase draws at most +5 | −1 to +3 per car |
 | Player car textures ≤ 6 MB, 512 px | 2.69 MB (Tempesta 4.02 MB) vs 5.69 MB |
 | Car triangles not above v74 | Scene triangles in the chase view are equal or lower (Tempesta +3k) |
 | Light cabin ≤ 15k tris, ≤ 4 MB, 512 px, merged materials | 13.2k–14.1k tris (Tempesta 4.9k), 1.67–3 MB, one atlas + gauges, 8 draws |
-| Cockpit frame within +20% of v74 | Average +19%; Kestrel, Aurelia and Tempesta within, the other five +25% to +31% |
+| Cockpit frame within +20% of v74 | Average +19%; Kestrel, Aurelia and Tempesta within, the other five +24% to +31% |
 | Prepare within +15% | Average −7% (every car −21% to +5%) |
 | Nothing compiled, uploaded or allocated during the race | 0/0/0 after warm-up and at the switch, every car and tier |
 
