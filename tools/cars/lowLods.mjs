@@ -39,7 +39,7 @@ const ONLY = arg('only', 'cockpit,cap,drive').split(',');
 export const LOW_COCKPIT_TRIS = 14000;
 const HIGH_SHELL_TRIS = 18000;
 // Share of the low cabin's triangle budget per node (the rest goes to the shell).
-const LOW_SHARE = { hands: 2400, cabin_glass: 900, window_L: 260, window_R: 260 };
+const LOW_SHARE = { hands: 2400, window_L: 260, window_R: 260 };
 const LOW_TEX = { Cockpit_base: 512, Cockpit_glow: 256, Gauges_base: 512, Carbon_weave: 256 };
 // Materials whose texture colour is baked into the vertices (any node: the dash's Interior
 // parts sit in the body mesh).
@@ -114,7 +114,7 @@ async function bakeShading(base, occ, size) {
   const [c, o] = await Promise.all([px(base), px(occ)]);
   const out = Buffer.alloc(size * size * 3);
   for (let i = 0; i < size * size; i++) {
-    const k = Math.min(1, o.data[i * o.info.channels] / 255);
+    const k = Math.min(1, 0.2 + 0.9 * (o.data[i * o.info.channels] / 255)); // a little lift: no sun or lamps on it
     for (let j = 0; j < 3; j++) out[i * 3 + j] = Math.round(c.data[i * c.info.channels + j] * k);
   }
   const img = await sharp(out, { raw: { width: size, height: size, channels: 3 } }).webp({ quality: 86, effort: 6 }).toBuffer();
@@ -126,6 +126,10 @@ async function lowCockpit(file) {
   const doc = await io.read(src);
   await doc.transform(dequantize(), weld());
   const before = docTris(doc);
+  // No clear windscreen glass (alpha 0.09 over a fifth of the screen cost about 15% of the
+  // low tier's driver-view frame); the door windows stay, they go up and down.
+  for (const node of doc.getRoot().listNodes()) if (node.getName() === 'cabin_glass') node.dispose();
+  await doc.transform(prune({ keepAttributes: true }));
   const meshes = doc.getRoot().listMeshes();
   const named = (mesh) => nodeOf(doc, mesh)?.getName() ?? '';
   let fixed = 0;
