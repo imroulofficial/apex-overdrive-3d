@@ -80,7 +80,12 @@ const meshesOf = (c) => {
 };
 
 test('quality tier from the GPU tier: low-end GPU -> low, High -> high, otherwise mid', () => {
+  // Low-end: low on Auto (the auto pick may say 'high' for the resolution), high only when
+  // the player chose Graphics: High by hand.
   assert.equal(cockpitTier({ lowEnd: true, quality: 'high' }), 'low');
+  assert.equal(cockpitTier({ lowEnd: true, quality: 'high', manual: false }), 'low');
+  assert.equal(cockpitTier({ lowEnd: true, quality: 'high', manual: true }), 'high');
+  assert.equal(cockpitTier({ lowEnd: true, quality: 'medium', manual: true }), 'low');
   assert.equal(cockpitTier({ lowEnd: true, quality: 'low' }), 'low');
   assert.equal(cockpitTier({ lowEnd: false, quality: 'high' }), 'high');
   assert.equal(cockpitTier({ lowEnd: false, quality: 'medium' }), 'mid');
@@ -105,7 +110,7 @@ test('quality tier from the GPU tier: low-end GPU -> low, High -> high, otherwis
   assert.equal(meshesOf(mid).find((m) => m.name === 'cockpit-mirrors').material.map, mid.mirrorTarget.texture);
   // Race picks the tier from the same GPU flag the ANR fix (F1) uses.
   return read('../src/race/Race.js').then((race) => {
-    assert.match(race, /cockpitTier\(\{ lowEnd: this\.lowEnd, quality \}\)/);
+    assert.match(race, /cockpitTier\(\{ lowEnd: this\.lowEnd, quality, manual \}\)/);
   });
 });
 
@@ -239,8 +244,14 @@ test('the model fits the rig: gloves on the rim, needles on their pivots, sleeve
 test('only a race loads the model, before its warm-up; the garage never does', async () => {
   const race = await read('../src/race/Race.js');
   const prepare = race.slice(race.indexOf('  async prepare('), race.indexOf('  warmUp() {'));
-  assert.match(prepare, /loadCockpitAsset\(this\.cockpitTier\)/);
-  assert.match(prepare, /new Cockpit\(\{ lowEnd: this\.lowEnd, tier: this\.cockpitTier, asset: await cockpitJob \}\)/);
+  // The car's own cockpit loads with the car; the shared one is only a fallback (a car with
+  // no cockpit file), both before the warm-up.
+  assert.match(prepare, /const cockpitJob = loadCarCockpit\(car, \{ tier: this\.cockpitTier \}\)/);
+  assert.match(prepare, /await this\.buildCockpit\(car, cockpitJob\)[\s\S]*\n  \}\n/);
+  const build = race.slice(race.indexOf('  async buildCockpit('), race.indexOf('\n  }\n', race.indexOf('  async buildCockpit(')));
+  assert.match(build, /new CarCockpit\(/);
+  assert.match(build, /new Cockpit\(\{ lowEnd: this\.lowEnd, tier: this\.cockpitTier, asset: await loadCockpitAsset\(this\.cockpitTier\) \}\)/);
+  assert.ok(race.indexOf('await this.buildCockpit(car, cockpitJob)') < race.indexOf('  warmUp() {'));
   for (const f of ['../src/main.js', '../src/garage/Garage.js', '../src/garage/showroom.js']) {
     assert.doesNotMatch(await read(f), /cockpitAsset|assets\/cockpit/, `${f} does not load the cockpit`);
   }

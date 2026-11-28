@@ -1,8 +1,9 @@
-// The 8 launch cars across Tiers D-A, two per tier: the studio's own original models
-// (New Car.zip, 2026-10-23), split and optimised by tools/models/optimize.mjs (see
-// public/assets/models/README.md). Each car has three files: the showroom model (`model.url`),
-// the textured model the player drives on track (`model.driveUrl`) and the light rival LOD
-// (`model.raceUrl`).
+// The 8 launch cars across Tiers D-A, two per tier. Since versionCode 75 every model is the
+// studio's Blender build (tools/cars on the pilot/cars branch; four of them remastered from the
+// original New Car.zip sources), see public/assets/models/README.md. Each car has four files:
+// the showroom model (`model.url`), the textured model the player drives on track
+// (`model.driveUrl`), the light rival LOD (`model.raceUrl`) and its own driver-view cabin
+// (`model.cockpitUrl`).
 //
 // Each car has one job (`role`, shown in the garage) so no two cars overlap:
 //   D  Lumen EV        forgiving all-rounder (starter)   Kestrel Rally   drift specialist
@@ -64,7 +65,10 @@ const car = (id, tier, role, stats, feel, unlock, length) => ({
   stats,
   feel,
   // `length` is metres nose to tail; the loader scales the model to fit.
-  model: { url: `${file(id)}.glb`, driveUrl: `${file(id)}_drive.glb`, raceUrl: `${file(id)}_race.glb`, length },
+  // `cockpitUrl` is the car's own driver-view cabin (v75), `cockpitLowUrl` / `cockpitMidUrl` its
+  // light copies for the low and medium tiers (tools/cars/lowLods.mjs); a car without one uses the shared
+  // cabin (race/cockpit.js).
+  model: { url: `${file(id)}.glb`, driveUrl: `${file(id)}_drive.glb`, raceUrl: `${file(id)}_race.glb`, cockpitUrl: `${file(id)}_cockpit.glb`, cockpitLowUrl: `${file(id)}_cockpit_low.glb`, cockpitMidUrl: `${file(id)}_cockpit_mid.glb`, length },
   unlock,
   released: true,
 });

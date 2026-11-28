@@ -25,7 +25,9 @@ function createFlakeNormalMap(size = 256) {
   return tex;
 }
 
-export function createCarPaint(color = '#c8102e', finish = 'metallic') {
+// `factoryColor` (a THREE.Color, the model's extras.apex.factoryPaint) is the colour the
+// Factory Livery finish shows on this car instead of the catalog swatch.
+export function createCarPaint(color = '#c8102e', finish = 'metallic', factoryColor = null) {
   const material = new THREE.MeshPhysicalMaterial({
     color,
     normalMap: createFlakeNormalMap(),
@@ -33,8 +35,17 @@ export function createCarPaint(color = '#c8102e', finish = 'metallic') {
     iridescenceIOR: 1.6,
     iridescenceThicknessRange: [180, 620],
   });
+  if (factoryColor) material.userData.factoryColor = factoryColor.clone();
   applyFinish(material, color, finish);
   return material;
+}
+
+// The colour a paint shows: the car's own factory colour under the Factory Livery finish (when
+// the model has one), else the paint's catalog colour. Used for the paint itself and for
+// everything that echoes it (cockpit trim, the map marker).
+export function shownPaintColor(material, color, finish) {
+  const own = material?.userData?.factoryColor;
+  return FINISHES[finish]?.factory && own ? `#${own.getHexString()}` : color;
 }
 
 // Paint over a model's own baked livery (cars whose paint shell carries the colour texture,
@@ -70,7 +81,7 @@ export function liveryPaint(material, { factoryLum = 0.5, source = 'map' } = {})
 export function applyFinish(material, color, finish) {
   const f = FINISHES[finish] ?? FINISHES.metallic;
   if (material.userData.livery) material.userData.livery.uFactory.value = f.factory ? 1 : 0;
-  material.color.set(color);
+  material.color.set(shownPaintColor(material, color, finish));
   material.metalness = f.metalness;
   material.roughness = f.roughness;
   material.clearcoat = f.clearcoat;
@@ -94,7 +105,7 @@ export class PaintTransition {
     this.factoryFrom = this.material.userData.livery?.uFactory.value ?? 0;
     applyFinish(this.material, color, finish);
     this.factoryTo = this.material.userData.livery?.uFactory.value ?? 0;
-    this.to.set(color);
+    this.to.set(shownPaintColor(this.material, color, finish));
     this.material.color.copy(this.from);
     this.t = 0;
   }

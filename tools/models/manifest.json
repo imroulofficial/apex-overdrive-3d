@@ -8,7 +8,7 @@
       "license": "Original model owned by Red Pen Studio, clean IP (confirmed by the studio on 2026-10-23)",
       "source": "New Car.zip supplied by Red Pen Studio, New Car 3.glb",
       "commercialRights": true,
-      "changes": "split into body, paint, lenses and four wheels, simplified, texture converted to WebP, meshopt-compressed, rival LOD baked to vertex colours",
+      "changes": "remastered in Blender from the original source (welded, wheels rebuilt as separate nodes with uprights, smoothed glass/lamp/trim borders), own driver-view cabin, showroom/drive/rival LODs, textures in WebP, meshopt-compressed (versionCode 75)",
       "segment": {
         "paint": {
           "maxSat": 0.12,
@@ -35,7 +35,7 @@
       "license": "Original model owned by Red Pen Studio, clean IP (confirmed by the studio on 2026-10-23)",
       "source": "New Car.zip supplied by Red Pen Studio, New Car 6.glb",
       "commercialRights": true,
-      "changes": "split into body, paint, lenses and four wheels, simplified, texture converted to WebP, meshopt-compressed, rival LOD baked to vertex colours",
+      "changes": "rebuilt in Blender on the original design (body, paint, glass, lenses, interior, four wheels with uprights), own driver-view cabin, showroom/drive/rival LODs, textures in WebP, meshopt-compressed (versionCode 75)",
       "segment": {
         "paint": {
           "hue": 205,
@@ -53,7 +53,7 @@
       "license": "Original model owned by Red Pen Studio, clean IP (confirmed by the studio on 2026-10-23)",
       "source": "New Car.zip supplied by Red Pen Studio, New Car 5.glb",
       "commercialRights": true,
-      "changes": "split into body, paint, lenses and four wheels, simplified, texture converted to WebP, meshopt-compressed, rival LOD baked to vertex colours",
+      "changes": "rebuilt in Blender on the original design (body, paint, glass, lenses, interior, four wheels with uprights), own driver-view cabin, showroom/drive/rival LODs, textures in WebP, meshopt-compressed (versionCode 75)",
       "segment": {
         "paint": {
           "hue": 215,
@@ -81,7 +81,7 @@
       "license": "Original model owned by Red Pen Studio, clean IP (confirmed by the studio on 2026-10-23)",
       "source": "New Car.zip supplied by Red Pen Studio, New Car 8.glb",
       "commercialRights": true,
-      "changes": "split into body, paint, lenses and four wheels, simplified, texture converted to WebP, meshopt-compressed, rival LOD baked to vertex colours",
+      "changes": "remastered in Blender from the original source (welded, wheels rebuilt as separate nodes with uprights, smoothed glass/lamp/trim borders), own driver-view cabin, showroom/drive/rival LODs, textures in WebP, meshopt-compressed (versionCode 75)",
       "segment": {
         "paint": {
           "maxSat": 0.15,
@@ -98,7 +98,7 @@
       "license": "Original model owned by Red Pen Studio, clean IP (confirmed by the studio on 2026-10-23)",
       "source": "New Car.zip supplied by Red Pen Studio, New Car 4.glb",
       "commercialRights": true,
-      "changes": "split into body, paint, lenses and four wheels, simplified, texture converted to WebP, meshopt-compressed, rival LOD baked to vertex colours",
+      "changes": "rebuilt in Blender on the original design (body, paint, glass, lenses, interior, four wheels with uprights), own driver-view cabin, showroom/drive/rival LODs, textures in WebP, meshopt-compressed (versionCode 75)",
       "segment": {
         "paint": {
           "maxSat": 0.12,
@@ -134,7 +134,7 @@
       "license": "Original model owned by Red Pen Studio, clean IP (confirmed by the studio on 2026-10-23)",
       "source": "New Car.zip supplied by Red Pen Studio, New Car 7.glb",
       "commercialRights": true,
-      "changes": "split into body, paint, lenses and four wheels, simplified, texture converted to WebP, meshopt-compressed, rival LOD baked to vertex colours",
+      "changes": "remastered in Blender from the original source (welded, wheels rebuilt as separate nodes with uprights, smoothed glass/lamp/trim borders), own driver-view cabin, showroom/drive/rival LODs, textures in WebP, meshopt-compressed (versionCode 75)",
       "segment": {
         "paint": {
           "hue": 0,
@@ -174,7 +174,7 @@
       "license": "Original model owned by Red Pen Studio, clean IP (confirmed by the studio on 2026-10-23)",
       "source": "New Car.zip supplied by Red Pen Studio, New Car 1.glb",
       "commercialRights": true,
-      "changes": "split into body, livery accents (paint), rain light and four wheels, simplified, texture converted to WebP, meshopt-compressed, rival LOD baked to vertex colours",
+      "changes": "rebuilt in Blender on the original design (body, paint, glass, lenses, interior, four wheels with uprights), own driver-view cabin, showroom/drive/rival LODs, textures in WebP, meshopt-compressed (versionCode 75)",
       "segment": {
         "paint": {
           "hue": 0,
@@ -199,7 +199,7 @@
       "license": "Original model owned by Red Pen Studio, clean IP (confirmed by the studio on 2026-10-23)",
       "source": "New Car.zip supplied by Red Pen Studio, New Car 2.glb",
       "commercialRights": true,
-      "changes": "split into body, paint, lenses and four wheels, simplified, texture converted to WebP, meshopt-compressed, rival LOD baked to vertex colours",
+      "changes": "remastered in Blender from the original source (welded, wheels rebuilt as separate nodes with uprights, smoothed glass/lamp/trim borders), own driver-view cabin, showroom/drive/rival LODs, textures in WebP, meshopt-compressed (versionCode 75)",
       "segment": {
         "paint": {
           "hue": 50,

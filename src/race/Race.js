@@ -9,11 +9,14 @@ import { SmashProps } from './props.js';
 import { Vehicle, statsToParams, NITRO } from './vehicle.js';
 import { DriftChain } from './driftChain.js';
 import { AIDriver } from './ai.js';
-import { CarFactory, ContactShadows, FLAME, LIGHTS } from './raceCars.js';
+import { CarFactory, ContactShadows, FLAME, LIGHTS, PLAYER_FRONT } from './raceCars.js';
 import { carById } from '../data/cars.js';
-import { loadCar } from '../assets/modelLoader.js';
+import { loadCar, loadCarCockpit } from '../assets/modelLoader.js';
+import { shownPaintColor } from '../garage/carPaint.js';
 import { ChaseCamera } from './chaseCamera.js';
 import { Cockpit, gearGlyph } from './cockpit.js';
+import { CarCockpit } from './carCockpit.js';
+import { DoorWindows } from './doorWindows.js';
 import { cockpitTier, loadCockpitAsset } from './cockpitAsset.js';
 import { tunnelShade } from './alpineSetPieces.js';
 import { Gearbox } from '../audio/gearbox.js';
@@ -73,6 +76,7 @@ const puff = (color, size, life, grow, alpha) => {
   PUFF.alpha = alpha;
   return PUFF;
 };
+
 // World builders by track biome (data/tracks.js `biome`); the coast is the default.
 const SCENERY = { coast: buildScenery, alpine: buildAlpineScenery, neon: buildNeonScenery };
 
@@ -93,20 +97,27 @@ export class Race {
 
   // Builds the world once (procedural, a few hundred ms) and pre-compiles its shaders.
   // `look` is the player's rim ({ rim }, from inventory.carLook).
-  async prepare({ quality, paint, car, look = {}, stage }) {
+  // `manual`: the player chose this graphics level by hand (settings quality not 'auto').
+  async prepare({ quality, manual = false, paint, car, look = {}, stage }) {
     if (this.ready) return;
     const renderer = this.renderer;
     this.quality = quality;
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(64, 1, 0.3, 3200);
     this.camera.layers.enable(1); // the cockpit (race/cockpit.js) lives on layer 1
+    this.camera.layers.enable(2); // the player's car (the cockpit mirrors never see it)
     this.scene.add(this.camera);
     this.track = new Track(this.def);
-    // The cockpit model for this GPU and graphics level (race/cockpitAsset.js), fetched while the
-    // world builds; the warm-up uploads it with everything else, so switching to the cockpit
-    // mid-race never compiles or uploads anything.
-    this.cockpitTier = cockpitTier({ lowEnd: this.lowEnd, quality });
-    const cockpitJob = loadCockpitAsset(this.cockpitTier);
+    // The cabin for this GPU and graphics level (race/cockpitAsset.js): the car's own cockpit
+    // model (race/carCockpit.js), fetched while the world builds; the warm-up uploads it with
+    // everything else, so switching to the cockpit mid-race never compiles or uploads anything.
+    this.cockpitTier = cockpitTier({ lowEnd: this.lowEnd, quality, manual });
+    // The low tier (a low-end GPU on Graphics Auto) also gets the lite cars (raceCars.js) and the
+    // light cabin file.
+    this.liteCars = this.cockpitTier === 'low';
+    const cockpitJob = loadCarCockpit(car, { tier: this.cockpitTier });
+    // The player's car loads while the world builds, too.
+    const playerJob = loadCar(car, { paintColor: paint.color, finish: paint.finish, lod: 'drive', ...look });
     // Route variations: the reversed road is built the first time a stage needs it.
     this.tracks = { forward: this.track, reverse: null };
     // Bundled CC0 scans (road, ground, bark, fronds, rocks); loaded once per session.
@@ -143,7 +154,7 @@ export class Race {
     // LOD of the roster car it is assigned (data/rivals.js), one factory per model.
     this.rivalFactories = new Map(); // car id -> Promise<CarFactory>
     this.rivalFactoryList = []; // the ones that have loaded
-    this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, lod: 'drive', ...look }));
+    this.factory = new CarFactory(await playerJob, { lite: this.liteCars, twins: this.playerTwins() });
     this.playerCarKey = lookKey(car, look);
     this.playerFeel = car.feel;
     // (Object3D.add() with no arguments logs an error, so empty lists are skipped.)
@@ -157,11 +168,12 @@ export class Race {
     this.speedLines = new SpeedLines(this.camera);
     this.chase = new ChaseCamera(this.camera);
     this.chase.setTrack(this.track);
-    // Driver view: one shared cabin, hidden until the camera sits in it. Its gearbox mirrors
-    // the engine sound's (audio/gearbox.js) to drive the rev counter and the gear readout.
-    this.cockpit = new Cockpit({ lowEnd: this.lowEnd, tier: this.cockpitTier, asset: await cockpitJob });
-    this.scene.add(this.cockpit.group);
+    // Driver view: the car's cabin, hidden until the camera sits in it (built with the player's
+    // car below). Its gearbox mirrors the engine sound's (audio/gearbox.js) to drive the rev
+    // counter and the gear readout.
+    this.cockpit = null;
     this.cockpitShown = null;
+    this.windows = new DoorWindows();
     this.cockpitProj = { i: -1 };
     this.nightGlow = 0;
     this.gearbox = new Gearbox();
@@ -170,7 +182,11 @@ export class Race {
 
     const player = this.factory.build({ player: true });
     this.player = { id: 'player', name: 'You', color: paint.color, isPlayer: true, visual: player };
+    player.root.traverse((o) => o.layers.set(2));
+    this.factory.frontDrawPlayer(player);
+    PLAYER_FRONT.value = 0;
     this.scene.add(player.root);
+    await this.buildCockpit(car, cockpitJob);
     this.racers = [this.player];
     this.pool = new Map(); // rival id -> racer, built on demand per stage
     // One shader program per material for the whole race (render/programStates.js), then
@@ -206,6 +222,8 @@ export class Race {
       r.visual.dispose();
       this.pool.delete(id);
     }
+    // Every new rival model loads at once (not one after another), then each rival is built.
+    for (const r of rivals) if (!this.pool.has(r.id)) this.rivalFactory(r.car);
     for (const r of rivals) {
       if (this.pool.has(r.id)) continue;
       const factory = await this.rivalFactory(r.car);
@@ -224,12 +242,18 @@ export class Race {
     }
   }
 
+  // The driver view's cheaper bodywork round the cabin (raceCars.js cockpitTwins): Lambert on the
+  // low tier, glossy Lambert on the medium one, the full materials on high.
+  playerTwins() {
+    return this.cockpitTier === 'low' ? 'lambert' : this.cockpitTier === 'mid' ? 'gloss' : null;
+  }
+
   // The factory that builds rivals in `carId` (the rival LOD, loaded once per race).
   rivalFactory(carId) {
     const id = carById(carId).id;
     if (!this.rivalFactories.has(id)) {
       this.rivalFactories.set(id, loadCar(carById(id), { lod: 'race' }).then((template) => {
-        const factory = new CarFactory(template);
+        const factory = new CarFactory(template, { lite: this.liteCars });
         if (factory.sharedMeshes.length) this.scene.add(...factory.sharedMeshes);
         this.rivalFactoryList.push(factory);
         return factory;
@@ -307,18 +331,71 @@ export class Race {
     if (lookKey(car, look) === this.playerCarKey) return;
     const old = this.player.visual;
     const oldFactory = this.factory;
-    this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, lod: 'drive', ...look }));
+    this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, lod: 'drive', ...look }), { lite: this.liteCars, twins: this.playerTwins() });
     this.playerCarKey = lookKey(car, look);
     this.player.visual = this.factory.build({ player: true });
+    this.player.visual.root.traverse((o) => o.layers.set(2));
+    this.factory.frontDrawPlayer(this.player.visual);
     this.scene.remove(...oldFactory.sharedMeshes);
     this.scene.add(this.player.visual.root, ...this.factory.sharedMeshes);
     old.dispose();
     oldFactory.dispose();
     if (this.player.vehicle) this.player.visual.update(this.player.vehicle, 0, 0);
     this.factory.syncWheels();
+    await this.buildCockpit(car);
     this.cockpitShown = null; // the new car's body is shown or hidden on the next frame
     this.fitCamera();
     await this.renderer.compileAsync(this.scene, this.camera);
+  }
+
+  // The player car's cabin: its own cockpit model when it has one (race/carCockpit.js), else
+  // the shared cabin (race/cockpit.js, loaded only then). Its eye, cockpit effects and door
+  // windows come with it.
+  async buildCockpit(car, job = loadCarCockpit(car, { tier: this.cockpitTier })) {
+    const own = await job;
+    if (this.cockpit) {
+      this.cockpit.group.removeFromParent();
+      this.cockpit.dispose();
+    }
+    const t = this.factory.template;
+    if (own) {
+      const meta = own.meta ?? t.meta ?? {};
+      this.cockpit = new CarCockpit({ source: own.scene, meta, modelMatrix: t.modelMatrix, tier: this.cockpitTier });
+      const eye = meta.eye ? new THREE.Vector3().fromArray(meta.eye).applyMatrix4(t.modelMatrix) : null;
+      this.chase.setOwnEye(eye);
+      // In the car's own cabin: no nitro streaks across the glass, smoke and sparks fade out
+      // near the eye (extras.apex.cockpitFx).
+      this.cockpitFx = { speedLines: false, particleNearFade: 2.8, ...(meta.cockpitFx ?? {}) };
+    } else {
+      this.cockpit = new Cockpit({ lowEnd: this.lowEnd, tier: this.cockpitTier, asset: await loadCockpitAsset(this.cockpitTier) });
+      this.chase.setOwnEye(null);
+      this.cockpitFx = null;
+    }
+    this.scene.add(this.cockpit.group);
+    this.setWindowsNow(0);
+  }
+
+  // Door windows (cockpit view, cars with extras.apex.windows): the HUD button toggles them
+  // down and up; each race starts with them closed. Never saved.
+  get windowsAvailable() {
+    return Boolean(this.cockpit?.windowNodes?.length);
+  }
+
+  toggleWindows() {
+    return this.windows.toggle({ cockpitView: Boolean(this.cockpitShown), available: this.windowsAvailable });
+  }
+
+  setWindowsNow(k) {
+    this.windows.reset(k);
+    this.cockpit?.setWindows?.(k);
+    this.player?.visual.setWindows(k);
+  }
+
+  updateWindows(dt) {
+    const k = this.windows.step(dt);
+    if (k === null) return;
+    this.cockpit.setWindows?.(k);
+    this.player.visual.setWindows(k);
   }
 
   // The follow views and the driver's eye need the model's nose and roof line.
@@ -481,8 +558,11 @@ export class Race {
     this.hud = hud;
     this.onFinish = onFinish;
     this.factory.setPlayerPaint(paint.color, paint.finish);
-    this.cockpit.setPaint(paint.color);
-    this.player.color = paint.color;
+    // Factory Livery shows the car's own colour (extras.apex.factoryPaint), never the swatch.
+    const shown = shownPaintColor(this.factory.paint, paint.color, paint.finish);
+    this.cockpit.setPaint(shown);
+    this.player.color = shown;
+    this.setWindowsNow(0);
     this.playerSmoke = fx?.smoke ? new THREE.Color(fx.smoke.color) : SMOKE;
     this.player.visual.setNitroFx(fx?.nitro ?? null);
     if (this.shadowState !== this.renderer.shadowMap.enabled) {
@@ -538,6 +618,9 @@ export class Race {
         for (const u of [...Object.values(m.uniforms ?? {}), ...Object.values(m.userData?.uniforms ?? {})]) if (u?.value?.isTexture) textures.add(u.value);
       }
     });
+    // The medium tier's glossy driver-view materials reflect the race's sky (set before compiling).
+    this.player?.visual?.setCockpitEnvironment(scene.environment);
+    this.cockpit?.setEnvironment?.(scene.environment);
     for (const t of textures) if (!t.isRenderTargetTexture) r.initTexture(t);
     r.compile(scene, this.camera);
     this.warmTarget ??= new THREE.WebGLRenderTarget(8, 8, { depthBuffer: true });
@@ -554,6 +637,31 @@ export class Race {
     this.bloom.render(scene, this.camera);
     // The cockpit's live mirror target, allocated and drawn once (mid and high GPUs).
     this.cockpit.renderMirror(r, scene, true);
+    // The player's wing mirrors in their other material too (live in the driver view, their
+    // own glass outside it), so switching views compiles nothing.
+    const live = this.cockpit.bodyMirrorMaterial;
+    const visual = this.player?.visual;
+    if (live && visual?.mirrorGlass?.length) {
+      visual.setMirror(this.cockpitShown ? null : live);
+      // Compiled for the screen and drawn once into a target (the bloom chain's format).
+      r.compile(scene, this.camera);
+      const prev = r.getRenderTarget();
+      r.setRenderTarget(this.warmTarget);
+      r.render(scene, this.camera);
+      r.setRenderTarget(prev);
+      visual.setMirror(this.cockpitShown ? live : null);
+    }
+    // The body twins for the driver view (raceCars.js cockpitTwins), the same way.
+    if (visual?.twins?.length) {
+      const own = Boolean(this.cockpitShown && this.cockpitFx);
+      visual.setCockpitLook(!own);
+      r.compile(scene, this.camera);
+      const prev = r.getRenderTarget();
+      r.setRenderTarget(this.warmTarget);
+      r.render(scene, this.camera);
+      r.setRenderTarget(prev);
+      visual.setCockpitLook(own);
+    }
   }
 
   start() {
@@ -735,7 +843,10 @@ export class Race {
     this.updateCockpit(dt, playerInput);
     this.culling.update(this.camera);
     const lineLevel = player.tier === 2 ? 1 : player.tier === 1 ? 0.5 : 0;
-    this.speedLines.update(dt, simulate ? lineLevel : 0, Math.max(20, player.speed), player.tier);
+    // In the car's own cabin the nitro streaks stay off (extras.apex.cockpitFx.speedLines).
+    const lines = this.cockpitShown && this.cockpitFx && !this.cockpitFx.speedLines ? 0 : lineLevel;
+    this.speedLines.update(dt, simulate ? lines : 0, Math.max(20, player.speed), player.tier);
+    this.updateWindows(dt);
 
     this.processEvents();
     this.updateEngine(playerInput, dt);
@@ -1308,8 +1419,17 @@ export class Race {
     if (shown !== this.cockpitShown) {
       this.cockpitShown = shown;
       this.cockpit.setVisible(shown);
-      this.player.visual.root.visible = !shown;
-      for (const m of this.factory.sharedMeshes) m.visible = !shown;
+      // The car's own cabin sits inside the car: only its interior, driver, glass, windows and
+      // steering wheel hide. The shared cabin hides the whole car round it.
+      const own = Boolean(this.cockpitFx);
+      this.player.visual.root.visible = own || !shown;
+      this.player.visual.setCabinShown(!shown);
+      this.player.visual.setMirror(shown ? this.cockpit.bodyMirrorMaterial : null);
+      this.player.visual.setCockpitLook(shown && own);
+      PLAYER_FRONT.value = shown && own ? 1 : 0;
+      for (const m of this.factory.sharedMeshes) m.visible = own || !shown;
+      const fade = shown && own ? this.cockpitFx.particleNearFade ?? 0 : 0;
+      for (const p of [this.smoke, this.sparks]) p.setNearFade(fade);
       // Rain: drops run on the windscreen, and no falling streaks inside the cabin.
       this.lens.setGlass(shown);
       this.rain.setCabin(shown);

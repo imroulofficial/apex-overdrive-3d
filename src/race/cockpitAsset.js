@@ -27,9 +27,11 @@ export const COCKPIT_PARTS = [
 ];
 
 // Quality tier from the GPU tier (render/gpuTier.js, the F1 ANR fix) and the race's graphics
-// level: a low-end GPU always gets the low tier, High gets high, anything else mid.
-export function cockpitTier({ lowEnd = false, quality = 'medium' } = {}) {
-  if (lowEnd) return 'low';
+// level: High gets high, anything else mid, and a low-end GPU gets the low tier (sky-gradient
+// mirrors, no extra pass) unless the player chose Graphics: High by hand (`manual`, settings
+// quality not 'auto'): then the full cabin and the live mirror too (v75, the owner's "path খ").
+export function cockpitTier({ lowEnd = false, quality = 'medium', manual = false } = {}) {
+  if (lowEnd) return manual && quality === 'high' ? 'high' : 'low';
   return quality === 'high' ? 'high' : 'mid';
 }
 

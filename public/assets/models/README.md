@@ -1,31 +1,56 @@
 # Car models (.glb)
 
 Every car in the game is a real model from this folder; there is no procedural fallback, so a
-car whose files are missing fails to load. Each car ships three levels of detail, named after
-the permanent car id:
+car whose files are missing fails to load. Each car ships three levels of detail and its own
+driver-view cabin, named after the permanent car id:
 
 | File | Used for | Budget |
 | --- | --- | --- |
 | `<id>.glb` | Garage showroom (turntable, close-ups) | 150k triangles, 10 MB, colour textures 2048 px |
 | `<id>_drive.glb` | The player's own car on track | 60k triangles, 3 MB, textures 1024 px |
 | `<id>_race.glb` | Rival cars (flat vertex colours, no textures) | 10k triangles with any rim, 0.5 MB |
+| `<id>_cockpit.glb` | The cockpit view (dash, seats, steering wheel with hands, dials, mirrors) | 60k triangles, 1.5 MB |
+
+## versionCode 75: the Blender cars
+
+Since v75 all eight cars are built in Blender by the studio's car pipeline (`tools/cars` on the
+`pilot/cars` branch, not shipped with the game): Tempesta FX, Aurelia GT, Stallion 68 and
+Kestrel Rally modelled on the original designs, and Lumen EV, Vipera R, Valkyrie GT-R and
+Ridgeback Trail remastered from the original `New Car.zip` sources. Their files carry the
+design data as `extras.apex` (a JSON string) on the root node, which the game reads
+(`src/assets/modelLoader.js`, `src/race/carCockpit.js`):
+
+- `axles`, `wheelbase`, `wheelRadius.front` / `.rear` (rolling radius per axle), `halfTrack`;
+  each `wheel_XX` node's origin is on its axle, and `upright_XX` (disc, caliper, upright)
+  steers with the wheel without spinning;
+- `eye` (the driver's eye, car frame: x forward, y up, z right), `steeringWheel`, `gauges`
+  (dial faces in the `Gauges` atlas: label, scale, sweep), `mirrorGlass` (every `MirrorGlass`
+  surface shows the live rear view);
+- `windows` (`window_L` / `window_R` closed and open poses, or `false` for a car without door
+  windows), `hideInCockpit` (body nodes the cockpit view hides: interior, driver, glass, door
+  windows, steering wheel), `cockpitFx` (no speed lines, particles fade near the eye);
+- `factoryPaint` (linear RGB): the colour the Factory Livery shows on that car.
+
+Lamp lenses are `headlight_lens` / `taillight_lens` nodes (the Tempesta's rain light is part
+of its tail lens). Glass keeps its alpha so the cabin shows through.
 
 `test/car-models.test.js` fails when a file goes over budget. The loader falls back to a more
 detailed file when a lower LOD is missing.
 
 | Car | Tier | Files | Source |
 | --- | --- | --- | --- |
-| Lumen EV (starter) | D | `rp1_vanta*.glb` | New Car 3 |
-| Kestrel Rally | D | `kz_kestrel*.glb` | New Car 6 |
-| Stallion 68 | C | `sv_stallion*.glb` | New Car 5 |
-| Ridgeback Trail | C | `rb_ridgeback*.glb` | New Car 8 |
-| Aurelia GT | B | `ag_aurelia*.glb` | New Car 4 |
-| Vipera R | B | `mz_monza*.glb` | New Car 7 |
-| Tempesta FX | A | `tm_tempesta*.glb` | New Car 1 |
-| Valkyrie GT-R (Supercar Bundle) | A | `rpx_hyperion*.glb` | New Car 2 |
+| Lumen EV (starter) | D | `rp1_vanta*.glb` | New Car 3 (remastered, v75) |
+| Kestrel Rally | D | `kz_kestrel*.glb` | New Car 6 (Blender model, v75) |
+| Stallion 68 | C | `sv_stallion*.glb` | New Car 5 (Blender model, v75) |
+| Ridgeback Trail | C | `rb_ridgeback*.glb` | New Car 8 (remastered, v75) |
+| Aurelia GT | B | `ag_aurelia*.glb` | New Car 4 (Blender model, v75) |
+| Vipera R | B | `mz_monza*.glb` | New Car 7 (remastered, v75) |
+| Tempesta FX | A | `tm_tempesta*.glb` | New Car 1 (Blender model, v75) |
+| Valkyrie GT-R (Supercar Bundle) | A | `rpx_hyperion*.glb` | New Car 2 (remastered, v75) |
 
-All eight are the studio's own original models from `New Car.zip` (2026-10-23); see
-`CREDITS.md`. File names follow the permanent car ids, not the display names. A `.glb` brings
+All eight are the studio's own original designs from `New Car.zip` (2026-10-23); see
+`CREDITS.md`. The import pipeline below (`tools/models/optimize.mjs`) built the files up to v74
+and still documents the single-mesh source models. File names follow the permanent car ids, not the display names. A `.glb` brings
 its own wheels. The Stock rim shows the model's own wheels; the other five rims swap in
 procedural rims at the model's tyre size.
 
@@ -82,7 +107,7 @@ marked `commercialRights: true` with the studio's licence line.
   It is replaced by the game's clear-coat paint so the paint shop works. Override with
   `model.paintMaterials: ['Body', ...]`.
 - **Lights (optional):** materials or meshes named `headlight…` / `taillight…` /
-  `brakelight…` get the game's emissive lenses (light toggle, brake glow).
+  `brakelight…` / `rainlight…` (or `headlight_lens` / `taillight_lens` nodes) get the game's emissive lenses (light toggle, brake glow).
 - **Exhausts (optional):** nodes named `exhaust…` anchor the nitro flames; otherwise they
   come out of the centre of the rear bumper.
 

@@ -89,6 +89,7 @@ export class ChaseCamera {
     // Free-look offsets: yaw (+ = look right) and pitch (+ = from higher up / look up).
     this.free = { yaw: 0, pitch: 0, held: false, fromYaw: 0, fromPitch: 0, t: 0 };
     this.eye = { x: 0, y: 0, z: 0 };
+    this.ownEye = null;
     // Cockpit head motion (HEAD): offset from the eye, eased accelerations, landing spring.
     this.head = { x: 0, y: 0, z: 0, lon: 0, lat: 0, fwd: 0, yaw: 0, land: 0, landV: 0, air: 0, wasAir: false, t: 0, primed: false };
     this._v = new THREE.Vector3();
@@ -210,10 +211,16 @@ export class ChaseCamera {
   // The driver's eye (plus the head motion), looking straight down the car's nose; heading
   // and pitch follow the car rigidly, no roll, so the horizon stays level.
   cockpitFor(car, pos, look) {
-    const e = cockpitEye(this.size, this.eye);
+    const e = this.ownEye ? Object.assign(this.eye, this.ownEye) : cockpitEye(this.size, this.eye);
     const h = this.head;
     this.carPoint(car, e.x + h.x, e.y + h.y, e.z + h.z, pos);
     this.aim(car, pos, look, COCKPIT.ahead, COCKPIT.drop);
+  }
+
+  // The car's own driver's eye (extras.apex.eye in the car's frame: x forward, y up, z right),
+  // or null for the eye fitted to the model's nose and roof (cockpitEye).
+  setOwnEye(eye) {
+    this.ownEye = eye ? { x: eye.x, y: eye.y, z: eye.z } : null;
   }
 
   resetHead() {

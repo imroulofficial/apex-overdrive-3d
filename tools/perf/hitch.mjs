@@ -15,6 +15,9 @@
 // so the race runs the low-end path (Low quality, no bloom, the simple cockpit). --view picks
 // the race camera view (settings.cameraView) before the race starts.
 //
+// --car id races that car; --manual-high (with --lowend) is a low-end GPU where the player chose
+// Graphics: High by hand (v75: the full cabin and the live mirror there).
+//
 // --realtime drives the race with the browser's own requestAnimationFrame loop (wall-clock dt,
 // the auto-quality checks, the audio metronome) instead of fixed 1/60 s steps.
 import { preview } from 'vite';
@@ -35,6 +38,8 @@ const OUT = arg('out', null);
 const REALTIME = process.argv.includes('--realtime');
 const LOWEND = process.argv.includes('--lowend');
 const VIEW = arg('view', null);
+const CAR = arg('car', null);
+const MANUAL_HIGH = process.argv.includes('--manual-high');
 // SwiftShader renders every pixel on the CPU: a small buffer keeps a 60 s run to minutes. What
 // a frame asks of the driver (compiles, uploads, allocations) does not depend on its size.
 const WIDTH = Number(arg('width', 480));
@@ -119,7 +124,11 @@ await page.evaluate((q) => {
   window.__app.ads.maybeShowInterstitial = async () => false;
   window.__app.ads.setBanner = () => {};
   window.__app.dialogue && (window.__app.dialogue.play = async () => {});
-  if (q) window.__garage.setQuality(q);
+  if (q && q !== 'manual-high') window.__garage.setQuality(q);
+  if (q === 'manual-high') {
+    window.__app.state.settings.quality = 'high';
+    window.__garage.setQuality('high');
+  }
   const gl = window.__garage.renderer.getContext();
   const c = { compile: 0, link: 0, uploadBytes: 0, uploads: 0, texUploads: 0, rtAlloc: 0 };
   window.__gl = c;
@@ -152,10 +161,10 @@ await page.evaluate((q) => {
   });
   for (const n of ['texImage2D', 'texSubImage2D', 'texImage3D', 'texSubImage3D', 'compressedTexImage2D']) wrap(n, () => c.texUploads++);
   for (const n of ['renderbufferStorage', 'renderbufferStorageMultisample', 'texStorage2D']) wrap(n, () => c.rtAlloc++);
-}, LOWEND ? null : QUALITY);
+}, LOWEND ? (MANUAL_HIGH ? 'manual-high' : null) : QUALITY);
 
 async function profile(id) {
-  await page.evaluate(async ({ id, view }) => {
+  await page.evaluate(async ({ id, view, car }) => {
     const app = window.__app;
     if (app.mode === 'race') await app.exitToMap();
     if (app.mode === 'map') await app.backToGarage();
@@ -163,8 +172,14 @@ async function profile(id) {
     const audio = await app.audioLoaded();
     console.log(`[hitch] audio ${JSON.stringify(audio?.carMixer ?? null)}`);
     if (view) app.state.settings.cameraView = view;
+    if (car) {
+      // Own the car for the run (in memory only).
+      if (!app.state.cars[car]) app.state.cars[car] = JSON.parse(JSON.stringify(app.state.cars[app.state.car]));
+      if (!app.state.ownedCars.includes(car)) app.state.ownedCars.push(car);
+      app.state.car = car;
+    }
     await app.startRace(app.pickStage(id));
-  }, { id, view: VIEW });
+  }, { id, view: VIEW, car: CAR });
   return page.evaluate(async ({ seconds, realtime, fps }) => {
     const r = window.__app.race;
     const gl = r.renderer.getContext();

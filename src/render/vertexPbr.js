@@ -39,8 +39,9 @@ export function paintVerticesBy(geo, colorAt, pbr = {}) {
 }
 
 // Merges geometries that already carry color + pbr attributes (non-indexed or indexed mix).
-export function mergePainted(geos) {
-  const keep = ['position', 'normal', 'color', 'pbr'];
+// `extra`: further attributes every one of them carries (raceCars.js lamps).
+export function mergePainted(geos, extra = []) {
+  const keep = ['position', 'normal', 'color', 'pbr', ...extra];
   const clean = geos.map((g) => {
     const out = g.index ? g.toNonIndexed() : g;
     for (const name of Object.keys(out.attributes)) if (!keep.includes(name)) out.deleteAttribute(name);

@@ -1,0 +1,2279 @@
+{
+ "rp1-vanta-low": {
+  "v74": {
+   "car": "rp1-vanta",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": true,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 733.7,
+    "drawCalls": 93,
+    "triangles": 323858
+   },
+   "tier": "low",
+   "cockpitShown": true,
+   "prepareMs": 23213,
+   "cockpitLoadMs": 1284,
+   "frameMs": 628,
+   "frameMsMedian": 633.1,
+   "drawCalls": 92,
+   "triangles": 270280,
+   "cockpitDraws": 11,
+   "cockpitTriangles": 14530,
+   "cockpitTextureMB": 2.82,
+   "textures": [
+    "cabin_lit 512x512",
+    "wheel_lit 512x512",
+    "tex 256x160"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 53,
+   "programs": 105
+  },
+  "v75": {
+   "car": "rp1-vanta",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": true,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 717.7,
+    "drawCalls": 92,
+    "triangles": 320899
+   },
+   "tier": "low",
+   "cockpitShown": true,
+   "prepareMs": 24124,
+   "cockpitLoadMs": null,
+   "frameMs": 735.9,
+   "frameMsMedian": 746.2,
+   "drawCalls": 93,
+   "triangles": 295313,
+   "cockpitDraws": 8,
+   "cockpitTriangles": 14028,
+   "cockpitTextureMB": 2.82,
+   "textures": [
+    "Cockpit_base 512x512",
+    "Gauges_base 512x512",
+    "tex 256x160"
+   ],
+   "carTextureMB": 2.69,
+   "gpuTextures": 70,
+   "programs": 118
+  }
+ },
+ "kz-kestrel-low": {
+  "v74": {
+   "car": "kz-kestrel",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": true,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 708.7,
+    "drawCalls": 92,
+    "triangles": 321066
+   },
+   "tier": "low",
+   "cockpitShown": true,
+   "prepareMs": 23638,
+   "cockpitLoadMs": 1737,
+   "frameMs": 694.9,
+   "frameMsMedian": 716.4,
+   "drawCalls": 93,
+   "triangles": 270826,
+   "cockpitDraws": 11,
+   "cockpitTriangles": 14530,
+   "cockpitTextureMB": 2.82,
+   "textures": [
+    "cabin_lit 512x512",
+    "wheel_lit 512x512",
+    "tex 256x160"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 53,
+   "programs": 105
+  },
+  "v75": {
+   "car": "kz-kestrel",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": true,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 729.5,
+    "drawCalls": 92,
+    "triangles": 320533
+   },
+   "tier": "low",
+   "cockpitShown": true,
+   "prepareMs": 23751,
+   "cockpitLoadMs": null,
+   "frameMs": 792.4,
+   "frameMsMedian": 800.6,
+   "drawCalls": 93,
+   "triangles": 297826,
+   "cockpitDraws": 8,
+   "cockpitTriangles": 14114,
+   "cockpitTextureMB": 2.82,
+   "textures": [
+    "Cockpit_base 512x512",
+    "Gauges_base 512x512",
+    "tex 256x160"
+   ],
+   "carTextureMB": 2.69,
+   "gpuTextures": 70,
+   "programs": 118
+  }
+ },
+ "sv-stallion-low": {
+  "v74": {
+   "car": "sv-stallion",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": true,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 747.6,
+    "drawCalls": 92,
+    "triangles": 323856
+   },
+   "tier": "low",
+   "cockpitShown": true,
+   "prepareMs": 24438,
+   "cockpitLoadMs": 2922,
+   "frameMs": 669.5,
+   "frameMsMedian": 676.1,
+   "drawCalls": 93,
+   "triangles": 270742,
+   "cockpitDraws": 11,
+   "cockpitTriangles": 14530,
+   "cockpitTextureMB": 2.82,
+   "textures": [
+    "cabin_lit 512x512",
+    "wheel_lit 512x512",
+    "tex 256x160"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 53,
+   "programs": 105
+  },
+  "v75": {
+   "car": "sv-stallion",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": true,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 712.5,
+    "drawCalls": 92,
+    "triangles": 318195
+   },
+   "tier": "low",
+   "cockpitShown": true,
+   "prepareMs": 24079,
+   "cockpitLoadMs": null,
+   "frameMs": 797.4,
+   "frameMsMedian": 790.5,
+   "drawCalls": 93,
+   "triangles": 307792,
+   "cockpitDraws": 8,
+   "cockpitTriangles": 14070,
+   "cockpitTextureMB": 2.82,
+   "textures": [
+    "Cockpit_base 512x512",
+    "Gauges_base 512x512",
+    "tex 256x160"
+   ],
+   "carTextureMB": 2.69,
+   "gpuTextures": 70,
+   "programs": 118
+  }
+ },
+ "rb-ridgeback-low": {
+  "v74": {
+   "car": "rb-ridgeback",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": true,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 728.8,
+    "drawCalls": 93,
+    "triangles": 323411
+   },
+   "tier": "low",
+   "cockpitShown": true,
+   "prepareMs": 25200,
+   "cockpitLoadMs": 1819,
+   "frameMs": 613.4,
+   "frameMsMedian": 607,
+   "drawCalls": 93,
+   "triangles": 277809,
+   "cockpitDraws": 11,
+   "cockpitTriangles": 14530,
+   "cockpitTextureMB": 2.82,
+   "textures": [
+    "cabin_lit 512x512",
+    "wheel_lit 512x512",
+    "tex 256x160"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 53,
+   "programs": 105
+  },
+  "v75": {
+   "car": "rb-ridgeback",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": true,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 716.8,
+    "drawCalls": 92,
+    "triangles": 322095
+   },
+   "tier": "low",
+   "cockpitShown": true,
+   "prepareMs": 21922,
+   "cockpitLoadMs": null,
+   "frameMs": 742.8,
+   "frameMsMedian": 733.9,
+   "drawCalls": 91,
+   "triangles": 301916,
+   "cockpitDraws": 7,
+   "cockpitTriangles": 14010,
+   "cockpitTextureMB": 2.67,
+   "textures": [
+    "Cockpit_base 512x512",
+    "Gauges_base 512x512"
+   ],
+   "carTextureMB": 2.69,
+   "gpuTextures": 69,
+   "programs": 116
+  }
+ },
+ "ag-aurelia-low": {
+  "v74": {
+   "car": "ag-aurelia",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": true,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 795.7,
+    "drawCalls": 93,
+    "triangles": 318875
+   },
+   "tier": "low",
+   "cockpitShown": true,
+   "prepareMs": 27297,
+   "cockpitLoadMs": 2117,
+   "frameMs": 612.1,
+   "frameMsMedian": 617.3,
+   "drawCalls": 89,
+   "triangles": 263589,
+   "cockpitDraws": 11,
+   "cockpitTriangles": 14530,
+   "cockpitTextureMB": 2.82,
+   "textures": [
+    "cabin_lit 512x512",
+    "wheel_lit 512x512",
+    "tex 256x160"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 53,
+   "programs": 105
+  },
+  "v75": {
+   "car": "ag-aurelia",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": true,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 738.3,
+    "drawCalls": 92,
+    "triangles": 316298
+   },
+   "tier": "low",
+   "cockpitShown": true,
+   "prepareMs": 23546,
+   "cockpitLoadMs": null,
+   "frameMs": 795.5,
+   "frameMsMedian": 806.4,
+   "drawCalls": 90,
+   "triangles": 290507,
+   "cockpitDraws": 8,
+   "cockpitTriangles": 14074,
+   "cockpitTextureMB": 2.82,
+   "textures": [
+    "Cockpit_base 512x512",
+    "Gauges_base 512x512",
+    "tex 256x160"
+   ],
+   "carTextureMB": 2.69,
+   "gpuTextures": 70,
+   "programs": 118
+  }
+ },
+ "mz-monza-low": {
+  "v74": {
+   "car": "mz-monza",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": true,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 725.8,
+    "drawCalls": 92,
+    "triangles": 320308
+   },
+   "tier": "low",
+   "cockpitShown": true,
+   "prepareMs": 23513,
+   "cockpitLoadMs": 1272,
+   "frameMs": 671.5,
+   "frameMsMedian": 665.2,
+   "drawCalls": 93,
+   "triangles": 270580,
+   "cockpitDraws": 11,
+   "cockpitTriangles": 14530,
+   "cockpitTextureMB": 2.82,
+   "textures": [
+    "cabin_lit 512x512",
+    "wheel_lit 512x512",
+    "tex 256x160"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 53,
+   "programs": 105
+  },
+  "v75": {
+   "car": "mz-monza",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": true,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 680.7,
+    "drawCalls": 89,
+    "triangles": 307925
+   },
+   "tier": "low",
+   "cockpitShown": true,
+   "prepareMs": 24992,
+   "cockpitLoadMs": null,
+   "frameMs": 705,
+   "frameMsMedian": 710.6,
+   "drawCalls": 89,
+   "triangles": 289844,
+   "cockpitDraws": 8,
+   "cockpitTriangles": 13776,
+   "cockpitTextureMB": 3,
+   "textures": [
+    "Cockpit_base 512x512",
+    "Gauges_base 512x512",
+    "Carbon_weave 256x256"
+   ],
+   "carTextureMB": 2.69,
+   "gpuTextures": 70,
+   "programs": 118
+  }
+ },
+ "tm-tempesta-low": {
+  "v74": {
+   "car": "tm-tempesta",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": true,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 725.6,
+    "drawCalls": 91,
+    "triangles": 319127
+   },
+   "tier": "low",
+   "cockpitShown": true,
+   "prepareMs": 25817,
+   "cockpitLoadMs": 2122,
+   "frameMs": 760.6,
+   "frameMsMedian": 771.9,
+   "drawCalls": 93,
+   "triangles": 270580,
+   "cockpitDraws": 11,
+   "cockpitTriangles": 14530,
+   "cockpitTextureMB": 2.82,
+   "textures": [
+    "cabin_lit 512x512",
+    "wheel_lit 512x512",
+    "tex 256x160"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 53,
+   "programs": 105
+  },
+  "v75": {
+   "car": "tm-tempesta",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": true,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 758.1,
+    "drawCalls": 93,
+    "triangles": 318319
+   },
+   "tier": "low",
+   "cockpitShown": true,
+   "prepareMs": 23145,
+   "cockpitLoadMs": null,
+   "frameMs": 658.7,
+   "frameMsMedian": 650.3,
+   "drawCalls": 87,
+   "triangles": 278945,
+   "cockpitDraws": 5,
+   "cockpitTriangles": 4892,
+   "cockpitTextureMB": 1.67,
+   "textures": [
+    "Carbon_weave 256x256",
+    "Cockpit_base 512x512"
+   ],
+   "carTextureMB": 4.02,
+   "gpuTextures": 69,
+   "programs": 116
+  }
+ },
+ "rpx-hyperion-low": {
+  "v74": {
+   "car": "rpx-hyperion",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": true,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 715.8,
+    "drawCalls": 93,
+    "triangles": 321501
+   },
+   "tier": "low",
+   "cockpitShown": true,
+   "prepareMs": 26725,
+   "cockpitLoadMs": 2255,
+   "frameMs": 597.5,
+   "frameMsMedian": 599,
+   "drawCalls": 89,
+   "triangles": 263922,
+   "cockpitDraws": 11,
+   "cockpitTriangles": 14530,
+   "cockpitTextureMB": 2.82,
+   "textures": [
+    "cabin_lit 512x512",
+    "wheel_lit 512x512",
+    "tex 256x160"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 53,
+   "programs": 105
+  },
+  "v75": {
+   "car": "rpx-hyperion",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": true,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 665.7,
+    "drawCalls": 92,
+    "triangles": 317364
+   },
+   "tier": "low",
+   "cockpitShown": true,
+   "prepareMs": 23755,
+   "cockpitLoadMs": null,
+   "frameMs": 762.1,
+   "frameMsMedian": 747,
+   "drawCalls": 91,
+   "triangles": 290854,
+   "cockpitDraws": 9,
+   "cockpitTriangles": 13234,
+   "cockpitTextureMB": 3,
+   "textures": [
+    "Cockpit_base 512x512",
+    "Gauges_base 512x512",
+    "Carbon_weave 256x256"
+   ],
+   "carTextureMB": 2.69,
+   "gpuTextures": 70,
+   "programs": 118
+  }
+ },
+ "rp1-vanta-medium": {
+  "v74": {
+   "car": "rp1-vanta",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 897.1,
+    "drawCalls": 106,
+    "triangles": 392871
+   },
+   "tier": "mid",
+   "cockpitShown": true,
+   "prepareMs": 37364,
+   "cockpitLoadMs": 4961,
+   "frameMs": 981.6,
+   "frameMsMedian": 991.7,
+   "drawCalls": 130,
+   "triangles": 495818,
+   "cockpitDraws": 12,
+   "cockpitTriangles": 54766,
+   "cockpitTextureMB": 7.69,
+   "textures": [
+    "cabin_albedo 512x512",
+    "cabin_orm 256x256",
+    "cabin_normal 512x512",
+    "carbon_albedo 256x256",
+    "carbon_normal 256x256",
+    "wheel_albedo 512x512",
+    "wheel_orm 256x256",
+    "wheel_normal 512x512",
+    "tex 512x320",
+    "cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 67,
+   "programs": 125
+  },
+  "v75": {
+   "car": "rp1-vanta",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 928.6,
+    "drawCalls": 106,
+    "triangles": 392852
+   },
+   "tier": "mid",
+   "cockpitShown": true,
+   "prepareMs": 32719,
+   "cockpitLoadMs": null,
+   "frameMs": 1077.2,
+   "frameMsMedian": 1080.2,
+   "drawCalls": 135,
+   "triangles": 521484,
+   "cockpitDraws": 9,
+   "cockpitTriangles": 38124,
+   "cockpitTextureMB": 7.43,
+   "textures": [
+    "Cockpit_base 1024x1024",
+    "Cockpit_glow 128x128",
+    "Cockpit_normal 256x256",
+    "Gauges_base 512x512",
+    "car-cockpit-mirror 256x96",
+    "tex 256x160"
+   ],
+   "carTextureMB": 7.35,
+   "gpuTextures": 82,
+   "programs": 142
+  }
+ },
+ "kz-kestrel-medium": {
+  "v74": {
+   "car": "kz-kestrel",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 907,
+    "drawCalls": 105,
+    "triangles": 385999
+   },
+   "tier": "mid",
+   "cockpitShown": true,
+   "prepareMs": 38602,
+   "cockpitLoadMs": 3311,
+   "frameMs": 980.8,
+   "frameMsMedian": 1009.7,
+   "drawCalls": 132,
+   "triangles": 478002,
+   "cockpitDraws": 12,
+   "cockpitTriangles": 54766,
+   "cockpitTextureMB": 7.69,
+   "textures": [
+    "cabin_albedo 512x512",
+    "cabin_orm 256x256",
+    "cabin_normal 512x512",
+    "carbon_albedo 256x256",
+    "carbon_normal 256x256",
+    "wheel_albedo 512x512",
+    "wheel_orm 256x256",
+    "wheel_normal 512x512",
+    "tex 512x320",
+    "cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 67,
+   "programs": 125
+  },
+  "v75": {
+   "car": "kz-kestrel",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 905.6,
+    "drawCalls": 106,
+    "triangles": 391351
+   },
+   "tier": "mid",
+   "cockpitShown": true,
+   "prepareMs": 34391,
+   "cockpitLoadMs": null,
+   "frameMs": 1183.2,
+   "frameMsMedian": 1145.1,
+   "drawCalls": 142,
+   "triangles": 529223,
+   "cockpitDraws": 9,
+   "cockpitTriangles": 42316,
+   "cockpitTextureMB": 7.43,
+   "textures": [
+    "Cockpit_base 1024x1024",
+    "Cockpit_glow 128x128",
+    "Cockpit_normal 256x256",
+    "Gauges_base 512x512",
+    "car-cockpit-mirror 256x96",
+    "tex 256x160"
+   ],
+   "carTextureMB": 9.78,
+   "gpuTextures": 82,
+   "programs": 146
+  }
+ },
+ "sv-stallion-medium": {
+  "v74": {
+   "car": "sv-stallion",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 879.2,
+    "drawCalls": 106,
+    "triangles": 398491
+   },
+   "tier": "mid",
+   "cockpitShown": true,
+   "prepareMs": 37013,
+   "cockpitLoadMs": 3976,
+   "frameMs": 968.3,
+   "frameMsMedian": 947.2,
+   "drawCalls": 134,
+   "triangles": 500274,
+   "cockpitDraws": 12,
+   "cockpitTriangles": 54766,
+   "cockpitTextureMB": 7.69,
+   "textures": [
+    "cabin_albedo 512x512",
+    "cabin_orm 256x256",
+    "cabin_normal 512x512",
+    "carbon_albedo 256x256",
+    "carbon_normal 256x256",
+    "wheel_albedo 512x512",
+    "wheel_orm 256x256",
+    "wheel_normal 512x512",
+    "tex 512x320",
+    "cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 67,
+   "programs": 125
+  },
+  "v75": {
+   "car": "sv-stallion",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 973.4,
+    "drawCalls": 106,
+    "triangles": 387297
+   },
+   "tier": "mid",
+   "cockpitShown": true,
+   "prepareMs": 37073,
+   "cockpitLoadMs": null,
+   "frameMs": 1177.6,
+   "frameMsMedian": 1185.3,
+   "drawCalls": 140,
+   "triangles": 533895,
+   "cockpitDraws": 9,
+   "cockpitTriangles": 40656,
+   "cockpitTextureMB": 7.43,
+   "textures": [
+    "Cockpit_base 1024x1024",
+    "Cockpit_glow 128x128",
+    "Cockpit_normal 256x256",
+    "Gauges_base 512x512",
+    "car-cockpit-mirror 256x96",
+    "tex 256x160"
+   ],
+   "carTextureMB": 9.78,
+   "gpuTextures": 82,
+   "programs": 146
+  }
+ },
+ "rb-ridgeback-medium": {
+  "v74": {
+   "car": "rb-ridgeback",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 875.7,
+    "drawCalls": 106,
+    "triangles": 391757
+   },
+   "tier": "mid",
+   "cockpitShown": true,
+   "prepareMs": 36207,
+   "cockpitLoadMs": 4189,
+   "frameMs": 1012.6,
+   "frameMsMedian": 1029.3,
+   "drawCalls": 133,
+   "triangles": 503579,
+   "cockpitDraws": 12,
+   "cockpitTriangles": 54766,
+   "cockpitTextureMB": 7.69,
+   "textures": [
+    "cabin_albedo 512x512",
+    "cabin_orm 256x256",
+    "cabin_normal 512x512",
+    "carbon_albedo 256x256",
+    "carbon_normal 256x256",
+    "wheel_albedo 512x512",
+    "wheel_orm 256x256",
+    "wheel_normal 512x512",
+    "tex 512x320",
+    "cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 67,
+   "programs": 125
+  },
+  "v75": {
+   "car": "rb-ridgeback",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 857.6,
+    "drawCalls": 105,
+    "triangles": 386981
+   },
+   "tier": "mid",
+   "cockpitShown": true,
+   "prepareMs": 31527,
+   "cockpitLoadMs": null,
+   "frameMs": 1016.2,
+   "frameMsMedian": 1021.9,
+   "drawCalls": 138,
+   "triangles": 498622,
+   "cockpitDraws": 8,
+   "cockpitTriangles": 35526,
+   "cockpitTextureMB": 7.27,
+   "textures": [
+    "Cockpit_base 1024x1024",
+    "Cockpit_glow 128x128",
+    "Cockpit_normal 256x256",
+    "Gauges_base 512x512",
+    "car-cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 7.35,
+   "gpuTextures": 81,
+   "programs": 140
+  }
+ },
+ "ag-aurelia-medium": {
+  "v74": {
+   "car": "ag-aurelia",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 855.7,
+    "drawCalls": 106,
+    "triangles": 390064
+   },
+   "tier": "mid",
+   "cockpitShown": true,
+   "prepareMs": 36672,
+   "cockpitLoadMs": 3879,
+   "frameMs": 910.6,
+   "frameMsMedian": 925.8,
+   "drawCalls": 132,
+   "triangles": 472804,
+   "cockpitDraws": 12,
+   "cockpitTriangles": 54766,
+   "cockpitTextureMB": 7.69,
+   "textures": [
+    "cabin_albedo 512x512",
+    "cabin_orm 256x256",
+    "cabin_normal 512x512",
+    "carbon_albedo 256x256",
+    "carbon_normal 256x256",
+    "wheel_albedo 512x512",
+    "wheel_orm 256x256",
+    "wheel_normal 512x512",
+    "tex 512x320",
+    "cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 67,
+   "programs": 125
+  },
+  "v75": {
+   "car": "ag-aurelia",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 917,
+    "drawCalls": 107,
+    "triangles": 391609
+   },
+   "tier": "mid",
+   "cockpitShown": true,
+   "prepareMs": 37249,
+   "cockpitLoadMs": null,
+   "frameMs": 1071.6,
+   "frameMsMedian": 1086.2,
+   "drawCalls": 136,
+   "triangles": 502158,
+   "cockpitDraws": 9,
+   "cockpitTriangles": 41568,
+   "cockpitTextureMB": 7.43,
+   "textures": [
+    "Cockpit_base 1024x1024",
+    "Cockpit_glow 128x128",
+    "Cockpit_normal 256x256",
+    "Gauges_base 512x512",
+    "car-cockpit-mirror 256x96",
+    "tex 256x160"
+   ],
+   "carTextureMB": 9.78,
+   "gpuTextures": 82,
+   "programs": 146
+  }
+ },
+ "mz-monza-medium": {
+  "v74": {
+   "car": "mz-monza",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 850,
+    "drawCalls": 105,
+    "triangles": 392701
+   },
+   "tier": "mid",
+   "cockpitShown": true,
+   "prepareMs": 37092,
+   "cockpitLoadMs": 4552,
+   "frameMs": 954.1,
+   "frameMsMedian": 975.4,
+   "drawCalls": 129,
+   "triangles": 469330,
+   "cockpitDraws": 12,
+   "cockpitTriangles": 54766,
+   "cockpitTextureMB": 7.69,
+   "textures": [
+    "cabin_albedo 512x512",
+    "cabin_orm 256x256",
+    "cabin_normal 512x512",
+    "carbon_albedo 256x256",
+    "carbon_normal 256x256",
+    "wheel_albedo 512x512",
+    "wheel_orm 256x256",
+    "wheel_normal 512x512",
+    "tex 512x320",
+    "cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 67,
+   "programs": 125
+  },
+  "v75": {
+   "car": "mz-monza",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 979.2,
+    "drawCalls": 105,
+    "triangles": 378540
+   },
+   "tier": "mid",
+   "cockpitShown": true,
+   "prepareMs": 33119,
+   "cockpitLoadMs": null,
+   "frameMs": 1192.5,
+   "frameMsMedian": 1218.5,
+   "drawCalls": 137,
+   "triangles": 496630,
+   "cockpitDraws": 9,
+   "cockpitTriangles": 36566,
+   "cockpitTextureMB": 7.69,
+   "textures": [
+    "Cockpit_base 1024x1024",
+    "Cockpit_glow 128x128",
+    "Cockpit_normal 256x256",
+    "Gauges_base 512x512",
+    "Carbon_weave 256x256",
+    "Carbon_weave_normal 128x128",
+    "car-cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 7.35,
+   "gpuTextures": 83,
+   "programs": 142
+  }
+ },
+ "tm-tempesta-medium": {
+  "v74": {
+   "car": "tm-tempesta",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 1172.4,
+    "drawCalls": 104,
+    "triangles": 380427
+   },
+   "tier": "mid",
+   "cockpitShown": true,
+   "prepareMs": 43852,
+   "cockpitLoadMs": 3888,
+   "frameMs": 1126.2,
+   "frameMsMedian": 1125.9,
+   "drawCalls": 131,
+   "triangles": 469307,
+   "cockpitDraws": 12,
+   "cockpitTriangles": 54766,
+   "cockpitTextureMB": 7.69,
+   "textures": [
+    "cabin_albedo 512x512",
+    "cabin_orm 256x256",
+    "cabin_normal 512x512",
+    "carbon_albedo 256x256",
+    "carbon_normal 256x256",
+    "wheel_albedo 512x512",
+    "wheel_orm 256x256",
+    "wheel_normal 512x512",
+    "tex 512x320",
+    "cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 67,
+   "programs": 125
+  },
+  "v75": {
+   "car": "tm-tempesta",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 1019.7,
+    "drawCalls": 107,
+    "triangles": 383564
+   },
+   "tier": "mid",
+   "cockpitShown": true,
+   "prepareMs": 33908,
+   "cockpitLoadMs": null,
+   "frameMs": 1038.9,
+   "frameMsMedian": 1043.6,
+   "drawCalls": 134,
+   "triangles": 471800,
+   "cockpitDraws": 5,
+   "cockpitTriangles": 7844,
+   "cockpitTextureMB": 6.08,
+   "textures": [
+    "Carbon_weave 256x256",
+    "Carbon_weave_normal 128x128",
+    "Cockpit_base 1024x1024",
+    "Cockpit_normal 256x256"
+   ],
+   "carTextureMB": 11.11,
+   "gpuTextures": 83,
+   "programs": 141
+  }
+ },
+ "rpx-hyperion-medium": {
+  "v74": {
+   "car": "rpx-hyperion",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 812.4,
+    "drawCalls": 106,
+    "triangles": 393732
+   },
+   "tier": "mid",
+   "cockpitShown": true,
+   "prepareMs": 34562,
+   "cockpitLoadMs": 3467,
+   "frameMs": 904.7,
+   "frameMsMedian": 903.4,
+   "drawCalls": 130,
+   "triangles": 469318,
+   "cockpitDraws": 12,
+   "cockpitTriangles": 54766,
+   "cockpitTextureMB": 7.69,
+   "textures": [
+    "cabin_albedo 512x512",
+    "cabin_orm 256x256",
+    "cabin_normal 512x512",
+    "carbon_albedo 256x256",
+    "carbon_normal 256x256",
+    "wheel_albedo 512x512",
+    "wheel_orm 256x256",
+    "wheel_normal 512x512",
+    "tex 512x320",
+    "cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 67,
+   "programs": 125
+  },
+  "v75": {
+   "car": "rpx-hyperion",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 889.2,
+    "drawCalls": 105,
+    "triangles": 385882
+   },
+   "tier": "mid",
+   "cockpitShown": true,
+   "prepareMs": 35562,
+   "cockpitLoadMs": null,
+   "frameMs": 1104.3,
+   "frameMsMedian": 1098.4,
+   "drawCalls": 138,
+   "triangles": 506728,
+   "cockpitDraws": 10,
+   "cockpitTriangles": 35878,
+   "cockpitTextureMB": 7.69,
+   "textures": [
+    "Cockpit_base 1024x1024",
+    "Cockpit_glow 128x128",
+    "Cockpit_normal 256x256",
+    "Gauges_base 512x512",
+    "Carbon_weave 256x256",
+    "Carbon_weave_normal 128x128",
+    "car-cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 7.35,
+   "gpuTextures": 83,
+   "programs": 142
+  }
+ },
+ "rp1-vanta-high": {
+  "v74": {
+   "car": "rp1-vanta",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 1008.6,
+    "drawCalls": 108,
+    "triangles": 424022
+   },
+   "tier": "high",
+   "cockpitShown": true,
+   "prepareMs": 44781,
+   "cockpitLoadMs": 5546,
+   "frameMs": 1248.5,
+   "frameMsMedian": 1270.6,
+   "drawCalls": 131,
+   "triangles": 518692,
+   "cockpitDraws": 12,
+   "cockpitTriangles": 54766,
+   "cockpitTextureMB": 25.69,
+   "textures": [
+    "cabin_albedo 1024x1024",
+    "cabin_orm 512x512",
+    "cabin_normal 1024x1024",
+    "carbon_albedo 256x256",
+    "carbon_normal 256x256",
+    "wheel_albedo 1024x1024",
+    "wheel_orm 512x512",
+    "wheel_normal 1024x1024",
+    "tex 512x320",
+    "cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 67,
+   "programs": 127
+  },
+  "v75": {
+   "car": "rp1-vanta",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 1059.1,
+    "drawCalls": 107,
+    "triangles": 416884
+   },
+   "tier": "high",
+   "cockpitShown": true,
+   "prepareMs": 42690,
+   "cockpitLoadMs": null,
+   "frameMs": 1410,
+   "frameMsMedian": 1412.2,
+   "drawCalls": 136,
+   "triangles": 548203,
+   "cockpitDraws": 9,
+   "cockpitTriangles": 38124,
+   "cockpitTextureMB": 15.69,
+   "textures": [
+    "Cockpit_base 1024x1024",
+    "Cockpit_orm 512x512",
+    "Cockpit_glow 512x512",
+    "Cockpit_normal 512x512",
+    "Gauges_base 1024x1024",
+    "car-cockpit-mirror 256x96",
+    "tex 512x320"
+   ],
+   "carTextureMB": 5.1,
+   "gpuTextures": 83,
+   "programs": 138
+  }
+ },
+ "kz-kestrel-high": {
+  "v74": {
+   "car": "kz-kestrel",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 921.1,
+    "drawCalls": 107,
+    "triangles": 420754
+   },
+   "tier": "high",
+   "cockpitShown": true,
+   "prepareMs": 46107,
+   "cockpitLoadMs": 6375,
+   "frameMs": 1240.4,
+   "frameMsMedian": 1243.5,
+   "drawCalls": 134,
+   "triangles": 496795,
+   "cockpitDraws": 12,
+   "cockpitTriangles": 54766,
+   "cockpitTextureMB": 25.69,
+   "textures": [
+    "cabin_albedo 1024x1024",
+    "cabin_orm 512x512",
+    "cabin_normal 1024x1024",
+    "carbon_albedo 256x256",
+    "carbon_normal 256x256",
+    "wheel_albedo 1024x1024",
+    "wheel_orm 512x512",
+    "wheel_normal 1024x1024",
+    "tex 512x320",
+    "cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 67,
+   "programs": 127
+  },
+  "v75": {
+   "car": "kz-kestrel",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 1098.3,
+    "drawCalls": 108,
+    "triangles": 424371
+   },
+   "tier": "high",
+   "cockpitShown": true,
+   "prepareMs": 46678,
+   "cockpitLoadMs": null,
+   "frameMs": 1756.2,
+   "frameMsMedian": 1741.3,
+   "drawCalls": 141,
+   "triangles": 564691,
+   "cockpitDraws": 9,
+   "cockpitTriangles": 42316,
+   "cockpitTextureMB": 15.69,
+   "textures": [
+    "Cockpit_base 1024x1024",
+    "Cockpit_orm 512x512",
+    "Cockpit_glow 512x512",
+    "Cockpit_normal 512x512",
+    "Gauges_base 1024x1024",
+    "car-cockpit-mirror 256x96",
+    "tex 512x320"
+   ],
+   "carTextureMB": 9.78,
+   "gpuTextures": 83,
+   "programs": 142
+  }
+ },
+ "sv-stallion-high": {
+  "v74": {
+   "car": "sv-stallion",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 1083.1,
+    "drawCalls": 107,
+    "triangles": 423274
+   },
+   "tier": "high",
+   "cockpitShown": true,
+   "prepareMs": 52314,
+   "cockpitLoadMs": 9106,
+   "frameMs": 1192.7,
+   "frameMsMedian": 1187.9,
+   "drawCalls": 132,
+   "triangles": 520160,
+   "cockpitDraws": 12,
+   "cockpitTriangles": 54766,
+   "cockpitTextureMB": 25.69,
+   "textures": [
+    "cabin_albedo 1024x1024",
+    "cabin_orm 512x512",
+    "cabin_normal 1024x1024",
+    "carbon_albedo 256x256",
+    "carbon_normal 256x256",
+    "wheel_albedo 1024x1024",
+    "wheel_orm 512x512",
+    "wheel_normal 1024x1024",
+    "tex 512x320",
+    "cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 67,
+   "programs": 127
+  },
+  "v75": {
+   "car": "sv-stallion",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 986.3,
+    "drawCalls": 108,
+    "triangles": 420408
+   },
+   "tier": "high",
+   "cockpitShown": true,
+   "prepareMs": 36897,
+   "cockpitLoadMs": null,
+   "frameMs": 1578,
+   "frameMsMedian": 1595.9,
+   "drawCalls": 141,
+   "triangles": 527311,
+   "cockpitDraws": 9,
+   "cockpitTriangles": 40656,
+   "cockpitTextureMB": 15.69,
+   "textures": [
+    "Cockpit_base 1024x1024",
+    "Cockpit_orm 512x512",
+    "Cockpit_glow 512x512",
+    "Cockpit_normal 512x512",
+    "Gauges_base 1024x1024",
+    "car-cockpit-mirror 256x96",
+    "tex 512x320"
+   ],
+   "carTextureMB": 9.78,
+   "gpuTextures": 83,
+   "programs": 142
+  }
+ },
+ "rb-ridgeback-high": {
+  "v74": {
+   "car": "rb-ridgeback",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 1038.9,
+    "drawCalls": 108,
+    "triangles": 423770
+   },
+   "tier": "high",
+   "cockpitShown": true,
+   "prepareMs": 47947,
+   "cockpitLoadMs": 6395,
+   "frameMs": 1197.6,
+   "frameMsMedian": 1226.9,
+   "drawCalls": 134,
+   "triangles": 529746,
+   "cockpitDraws": 12,
+   "cockpitTriangles": 54766,
+   "cockpitTextureMB": 25.69,
+   "textures": [
+    "cabin_albedo 1024x1024",
+    "cabin_orm 512x512",
+    "cabin_normal 1024x1024",
+    "carbon_albedo 256x256",
+    "carbon_normal 256x256",
+    "wheel_albedo 1024x1024",
+    "wheel_orm 512x512",
+    "wheel_normal 1024x1024",
+    "tex 512x320",
+    "cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 67,
+   "programs": 127
+  },
+  "v75": {
+   "car": "rb-ridgeback",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 1066.1,
+    "drawCalls": 107,
+    "triangles": 417948
+   },
+   "tier": "high",
+   "cockpitShown": true,
+   "prepareMs": 44715,
+   "cockpitLoadMs": null,
+   "frameMs": 1485.9,
+   "frameMsMedian": 1502.2,
+   "drawCalls": 139,
+   "triangles": 553068,
+   "cockpitDraws": 8,
+   "cockpitTriangles": 35526,
+   "cockpitTextureMB": 14.85,
+   "textures": [
+    "Cockpit_base 1024x1024",
+    "Cockpit_orm 512x512",
+    "Cockpit_glow 512x512",
+    "Cockpit_normal 512x512",
+    "Gauges_base 1024x1024",
+    "car-cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 5.1,
+   "gpuTextures": 82,
+   "programs": 136
+  }
+ },
+ "ag-aurelia-high": {
+  "v74": {
+   "car": "ag-aurelia",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 925.7,
+    "drawCalls": 108,
+    "triangles": 423110
+   },
+   "tier": "high",
+   "cockpitShown": true,
+   "prepareMs": 42326,
+   "cockpitLoadMs": 4689,
+   "frameMs": 1056.2,
+   "frameMsMedian": 1064.3,
+   "drawCalls": 132,
+   "triangles": 490409,
+   "cockpitDraws": 12,
+   "cockpitTriangles": 54766,
+   "cockpitTextureMB": 25.69,
+   "textures": [
+    "cabin_albedo 1024x1024",
+    "cabin_orm 512x512",
+    "cabin_normal 1024x1024",
+    "carbon_albedo 256x256",
+    "carbon_normal 256x256",
+    "wheel_albedo 1024x1024",
+    "wheel_orm 512x512",
+    "wheel_normal 1024x1024",
+    "tex 512x320",
+    "cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 67,
+   "programs": 127
+  },
+  "v75": {
+   "car": "ag-aurelia",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 1044.7,
+    "drawCalls": 108,
+    "triangles": 416271
+   },
+   "tier": "high",
+   "cockpitShown": true,
+   "prepareMs": 43140,
+   "cockpitLoadMs": null,
+   "frameMs": 1517.6,
+   "frameMsMedian": 1553.2,
+   "drawCalls": 137,
+   "triangles": 536372,
+   "cockpitDraws": 9,
+   "cockpitTriangles": 41568,
+   "cockpitTextureMB": 15.69,
+   "textures": [
+    "Cockpit_base 1024x1024",
+    "Cockpit_orm 512x512",
+    "Cockpit_glow 512x512",
+    "Cockpit_normal 512x512",
+    "Gauges_base 1024x1024",
+    "car-cockpit-mirror 256x96",
+    "tex 512x320"
+   ],
+   "carTextureMB": 8.78,
+   "gpuTextures": 83,
+   "programs": 142
+  }
+ },
+ "mz-monza-high": {
+  "v74": {
+   "car": "mz-monza",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 933.2,
+    "drawCalls": 107,
+    "triangles": 425681
+   },
+   "tier": "high",
+   "cockpitShown": true,
+   "prepareMs": 43373,
+   "cockpitLoadMs": 4224,
+   "frameMs": 1154.5,
+   "frameMsMedian": 1136.3,
+   "drawCalls": 130,
+   "triangles": 490530,
+   "cockpitDraws": 12,
+   "cockpitTriangles": 54766,
+   "cockpitTextureMB": 25.69,
+   "textures": [
+    "cabin_albedo 1024x1024",
+    "cabin_orm 512x512",
+    "cabin_normal 1024x1024",
+    "carbon_albedo 256x256",
+    "carbon_normal 256x256",
+    "wheel_albedo 1024x1024",
+    "wheel_orm 512x512",
+    "wheel_normal 1024x1024",
+    "tex 512x320",
+    "cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 67,
+   "programs": 127
+  },
+  "v75": {
+   "car": "mz-monza",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 1092.2,
+    "drawCalls": 107,
+    "triangles": 410230
+   },
+   "tier": "high",
+   "cockpitShown": true,
+   "prepareMs": 39394,
+   "cockpitLoadMs": null,
+   "frameMs": 1436.5,
+   "frameMsMedian": 1443.2,
+   "drawCalls": 138,
+   "triangles": 517917,
+   "cockpitDraws": 9,
+   "cockpitTriangles": 36566,
+   "cockpitTextureMB": 18.85,
+   "textures": [
+    "Cockpit_base 1024x1024",
+    "Cockpit_orm 512x512",
+    "Cockpit_glow 512x512",
+    "Cockpit_normal 512x512",
+    "Gauges_base 1024x1024",
+    "Carbon_weave 512x512",
+    "Carbon_orm 512x512",
+    "Carbon_weave_normal 512x512",
+    "car-cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 5.1,
+   "gpuTextures": 85,
+   "programs": 138
+  }
+ },
+ "tm-tempesta-high": {
+  "v74": {
+   "car": "tm-tempesta",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 1121.6,
+    "drawCalls": 106,
+    "triangles": 415999
+   },
+   "tier": "high",
+   "cockpitShown": true,
+   "prepareMs": 51386,
+   "cockpitLoadMs": 7752,
+   "frameMs": 1328.1,
+   "frameMsMedian": 1359.6,
+   "drawCalls": 135,
+   "triangles": 501797,
+   "cockpitDraws": 12,
+   "cockpitTriangles": 54766,
+   "cockpitTextureMB": 25.69,
+   "textures": [
+    "cabin_albedo 1024x1024",
+    "cabin_orm 512x512",
+    "cabin_normal 1024x1024",
+    "carbon_albedo 256x256",
+    "carbon_normal 256x256",
+    "wheel_albedo 1024x1024",
+    "wheel_orm 512x512",
+    "wheel_normal 1024x1024",
+    "tex 512x320",
+    "cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 67,
+   "programs": 127
+  },
+  "v75": {
+   "car": "tm-tempesta",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 1126.7,
+    "drawCalls": 109,
+    "triangles": 413186
+   },
+   "tier": "high",
+   "cockpitShown": true,
+   "prepareMs": 45732,
+   "cockpitLoadMs": null,
+   "frameMs": 1190.2,
+   "frameMsMedian": 1214.6,
+   "drawCalls": 133,
+   "triangles": 490242,
+   "cockpitDraws": 5,
+   "cockpitTriangles": 7844,
+   "cockpitTextureMB": 12,
+   "textures": [
+    "Carbon_weave 512x512",
+    "Carbon_orm 512x512",
+    "Carbon_weave_normal 512x512",
+    "Cockpit_base 1024x1024",
+    "Cockpit_orm 512x512",
+    "Cockpit_normal 512x512"
+   ],
+   "carTextureMB": 12.45,
+   "gpuTextures": 85,
+   "programs": 136
+  }
+ },
+ "rpx-hyperion-high": {
+  "v74": {
+   "car": "rpx-hyperion",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 1001.4,
+    "drawCalls": 108,
+    "triangles": 426624
+   },
+   "tier": "high",
+   "cockpitShown": true,
+   "prepareMs": 46036,
+   "cockpitLoadMs": 6581,
+   "frameMs": 1215.3,
+   "frameMsMedian": 1202.4,
+   "drawCalls": 135,
+   "triangles": 513517,
+   "cockpitDraws": 12,
+   "cockpitTriangles": 54766,
+   "cockpitTextureMB": 25.69,
+   "textures": [
+    "cabin_albedo 1024x1024",
+    "cabin_orm 512x512",
+    "cabin_normal 1024x1024",
+    "carbon_albedo 256x256",
+    "carbon_normal 256x256",
+    "wheel_albedo 1024x1024",
+    "wheel_orm 512x512",
+    "wheel_normal 1024x1024",
+    "tex 512x320",
+    "cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 5.69,
+   "gpuTextures": 67,
+   "programs": 127
+  },
+  "v75": {
+   "car": "rpx-hyperion",
+   "sinceWarmUp": {
+    "programs": 0,
+    "textures": 0,
+    "geometries": 0
+   },
+   "view": "chase",
+   "lowend": false,
+   "manualHigh": false,
+   "switched": {
+    "added": [],
+    "cockpitShown": true,
+    "newPrograms": 0,
+    "newTextures": 0,
+    "newGeometries": 0
+   },
+   "chase": {
+    "frameMsMedian": 948.6,
+    "drawCalls": 107,
+    "triangles": 415859
+   },
+   "tier": "high",
+   "cockpitShown": true,
+   "prepareMs": 40754,
+   "cockpitLoadMs": null,
+   "frameMs": 1478.6,
+   "frameMsMedian": 1469.8,
+   "drawCalls": 141,
+   "triangles": 526387,
+   "cockpitDraws": 10,
+   "cockpitTriangles": 35878,
+   "cockpitTextureMB": 18.85,
+   "textures": [
+    "Cockpit_base 1024x1024",
+    "Cockpit_orm 512x512",
+    "Cockpit_glow 512x512",
+    "Cockpit_normal 512x512",
+    "Gauges_base 1024x1024",
+    "Carbon_weave 512x512",
+    "Carbon_orm 512x512",
+    "Carbon_weave_normal 512x512",
+    "car-cockpit-mirror 256x96"
+   ],
+   "carTextureMB": 5.1,
+   "gpuTextures": 85,
+   "programs": 138
+  }
+ },
+ "sv-stallion-lowhigh": {
+  "car": "sv-stallion",
+  "sinceWarmUp": {
+   "programs": 0,
+   "textures": 0,
+   "geometries": 0
+  },
+  "view": "chase",
+  "lowend": true,
+  "manualHigh": true,
+  "switched": {
+   "added": [],
+   "cockpitShown": true,
+   "newPrograms": 0,
+   "newTextures": 0,
+   "newGeometries": 0
+  },
+  "chase": {
+   "frameMsMedian": 1087.9,
+   "drawCalls": 108,
+   "triangles": 420526
+  },
+  "tier": "high",
+  "cockpitShown": true,
+  "prepareMs": 38803,
+  "cockpitLoadMs": null,
+  "frameMs": 1646.6,
+  "frameMsMedian": 1652.6,
+  "drawCalls": 141,
+  "triangles": 558052,
+  "cockpitDraws": 9,
+  "cockpitTriangles": 40656,
+  "cockpitTextureMB": 15.69,
+  "textures": [
+   "Cockpit_base 1024x1024",
+   "Cockpit_orm 512x512",
+   "Cockpit_glow 512x512",
+   "Cockpit_normal 512x512",
+   "Gauges_base 1024x1024",
+   "car-cockpit-mirror 256x96",
+   "tex 512x320"
+  ],
+  "carTextureMB": 9.78,
+  "gpuTextures": 83,
+  "programs": 157
+ }
+}
