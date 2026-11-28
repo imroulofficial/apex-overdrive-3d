@@ -126,6 +126,13 @@ totalEmissiveRadiance = mix(totalEmissiveRadiance, vec3(1.0, 0.35, 0.1) * (1.4 +
 // and low turn the opaque ones into Lambert (about a third cheaper per pixel). Glass keeps its
 // alpha. All draw on top.
 function cabinMaterial(src, tier) {
+  if (src.transparent && tier === 'low') {
+    // Clear glass over the whole windscreen: unlit on the low tier.
+    const m = new THREE.MeshBasicMaterial({ name: src.name, color: src.color.clone(), opacity: src.opacity, transparent: true, depthWrite: false, side: src.side });
+    m.onBeforeCompile = drawOnTop;
+    m.fog = false;
+    return m;
+  }
   if (src.transparent) {
     const m = src.clone();
     m.depthWrite = false;
@@ -134,6 +141,7 @@ function cabinMaterial(src, tier) {
     return m;
   }
   let m;
+  if (tier === 'low' && src.isMeshStandardMaterial) return unlitCabin(src);
   if (tier === 'high' || !src.isMeshStandardMaterial) {
     m = src.clone();
     // Inside a roofed cabin the sky reflects far less than on the open body (as the shared cabin).
@@ -154,6 +162,38 @@ function cabinMaterial(src, tier) {
     });
     m.onBeforeCompile = drawOnTopShaded;
   }
+  m.fog = false;
+  return m;
+}
+
+function setGlow(m, v) {
+  if (m.userData.glowI) m.userData.glowI.value = v;
+  else m.emissiveIntensity = v;
+}
+
+// Low tier (the phones that had ANRs): the cabin unlit, as v74's low cabin. Its colour atlas has
+// the baked shading in it (tools/cars/lowLods.mjs). It dims at night and in tunnels (uShade) and
+// its baked night light (the emissive map) adds on top (uGlowI), like the lit tiers' emissive.
+function unlitCabin(src) {
+  const m = new THREE.MeshBasicMaterial({ name: src.name, color: src.color.clone(), map: src.map, side: src.side });
+  const em = src.emissiveMap && src.map ? src.emissiveMap : null;
+  m.userData.shade = { value: 1 };
+  m.userData.glowI = { value: src.emissiveIntensity ?? 1 };
+  m.userData.glows = !!em; // a glow material (CarCockpit.glowMaterials); not `emissive`, which the renderer would read
+  m.onBeforeCompile = (shader) => {
+    drawOnTop(shader);
+    shader.uniforms.uShade = m.userData.shade;
+    shader.uniforms.uGlowI = m.userData.glowI;
+    shader.uniforms.uGlowMap = { value: em };
+    shader.uniforms.uGlowCol = { value: em ? src.emissive.clone() : new THREE.Color(0) };
+    shader.fragmentShader = shader.fragmentShader
+      .replace('void main() {', 'uniform float uShade;\nuniform float uGlowI;\nuniform sampler2D uGlowMap;\nuniform vec3 uGlowCol;\nvoid main() {')
+      .replace(
+        '#include <opaque_fragment>',
+        em ? 'outgoingLight = outgoingLight * uShade + texture2D(uGlowMap, vMapUv).rgb * uGlowCol * uGlowI;\n#include <opaque_fragment>' : 'outgoingLight *= uShade;\n#include <opaque_fragment>',
+      );
+  };
+  m.customProgramCacheKey = () => `car-cabin-unlit-${!!em}`;
   m.fog = false;
   return m;
 }
@@ -318,8 +358,9 @@ export class CarCockpit {
     }
     // The cabin's baked night light (emissive map on the Cockpit material) is meant for the
     // dark: by day it only lifts the cabin a little, at night and in tunnels it is all there.
-    this.glowMaterials = [...mats.values()].filter((m) => m.emissive?.getHex() > 0 && m.name !== 'Gauges').map((m) => ({ m, full: m.emissiveIntensity }));
-    for (const g of this.glowMaterials) g.m.emissiveIntensity = g.full * CABIN_DAY_GLOW;
+    this.glowMaterials = [...mats.values()].filter((m) => (m.userData.glows || m.emissive?.getHex() > 0) && m.name !== 'Gauges').map((m) => ({ m, full: m.userData.glowI?.value ?? m.emissiveIntensity }));
+    for (const g of this.glowMaterials) setGlow(g.m, g.full * CABIN_DAY_GLOW);
+    this.unlit = [...mats.values()].filter((m) => m.userData.shade);
     this.materials = [...mats.values(), mirrorMat, ...(this.bodyMirrorMaterial ? [this.bodyMirrorMaterial] : [])];
     this.mirrorMeshes = mirrorMeshes;
 
@@ -458,7 +499,9 @@ export class CarCockpit {
     }
     this.glow += (glow - this.glow) * Math.min(1, dt * 3);
     this.gaugeUniforms.uGlow.value = this.glow;
-    for (const g of this.glowMaterials) g.m.emissiveIntensity = g.full * (CABIN_DAY_GLOW + (1 - CABIN_DAY_GLOW) * this.glow);
+    for (const g of this.glowMaterials) setGlow(g.m, g.full * (CABIN_DAY_GLOW + (1 - CABIN_DAY_GLOW) * this.glow));
+    // The unlit low-tier cabin has no sun or lamps on it: it dims by itself at night and in tunnels.
+    for (const m of this.unlit) m.userData.shade.value = 1 - 0.6 * this.glow;
     this.gear = gear;
     this.lit = shiftLit(rpm);
     const u = this.displayUniforms;

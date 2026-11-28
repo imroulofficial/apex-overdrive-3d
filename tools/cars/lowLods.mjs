@@ -108,6 +108,19 @@ async function resizeTexture(tex, size) {
   tex.setImage(new Uint8Array(img)).setMimeType('image/webp');
 }
 
+// Colour times the baked shading (red channel of `occ`), at `size` px.
+async function bakeShading(base, occ, size) {
+  const px = (tex, channels) => sharp(Buffer.from(tex.getImage())).resize(size, size, { kernel: 'lanczos3' }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const [c, o] = await Promise.all([px(base), px(occ)]);
+  const out = Buffer.alloc(size * size * 3);
+  for (let i = 0; i < size * size; i++) {
+    const k = Math.min(1, o.data[i * o.info.channels] / 255);
+    for (let j = 0; j < 3; j++) out[i * 3 + j] = Math.round(c.data[i * c.info.channels + j] * k);
+  }
+  const img = await sharp(out, { raw: { width: size, height: size, channels: 3 } }).webp({ quality: 86, effort: 6 }).toBuffer();
+  base.setImage(new Uint8Array(img)).setMimeType('image/webp').setExtras({ ...base.getExtras(), shaded: true });
+}
+
 async function lowCockpit(file) {
   const src = path.join(DIR, `${file}_cockpit.glb`);
   const doc = await io.read(src);
@@ -131,6 +144,13 @@ async function lowCockpit(file) {
   await doc.transform(normals({ overwrite: false }), weld());
   // Textures: colour 512 px, glow 256 px, no normal or ORM maps.
   doc.createExtension(EXTTextureWebP).setRequired(true);
+  // The low tier draws the cabin unlit (as v74's low cabin): its colour atlas gets the baked
+  // shading (the ORM map's red channel: ambient occlusion times the light through the glass).
+  for (const mat of doc.getRoot().listMaterials()) {
+    const base = mat.getBaseColorTexture();
+    const occ = mat.getOcclusionTexture();
+    if (base && occ) await bakeShading(base, occ, LOW_TEX[base.getName()] ?? 512);
+  }
   for (const mat of doc.getRoot().listMaterials()) {
     if (mat.getNormalTexture()) mat.setNormalTexture(null);
     if (mat.getMetallicRoughnessTexture()) mat.setMetallicRoughnessTexture(null).setRoughnessFactor(0.75).setMetallicFactor(0);
@@ -138,7 +158,7 @@ async function lowCockpit(file) {
   }
   for (const tex of doc.getRoot().listTextures()) {
     const size = LOW_TEX[tex.getName()];
-    if (size) await resizeTexture(tex, size);
+    if (size && !tex.getExtras().shaded) await resizeTexture(tex, size);
   }
   await doc.transform(prune({ keepAttributes: true }), dedup(), meshopt({ encoder: MeshoptEncoder, level: 'high' }));
   const out = path.join(DIR, `${file}_cockpit_low.glb`);

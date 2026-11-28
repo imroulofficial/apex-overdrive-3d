@@ -116,6 +116,8 @@ export class Race {
     // light cabin file.
     this.liteCars = this.cockpitTier === 'low';
     const cockpitJob = loadCarCockpit(car, { tier: this.cockpitTier });
+    // The player's car loads while the world builds, too.
+    const playerJob = loadCar(car, { paintColor: paint.color, finish: paint.finish, lod: 'drive', ...look });
     // Route variations: the reversed road is built the first time a stage needs it.
     this.tracks = { forward: this.track, reverse: null };
     // Bundled CC0 scans (road, ground, bark, fronds, rocks); loaded once per session.
@@ -152,7 +154,7 @@ export class Race {
     // LOD of the roster car it is assigned (data/rivals.js), one factory per model.
     this.rivalFactories = new Map(); // car id -> Promise<CarFactory>
     this.rivalFactoryList = []; // the ones that have loaded
-    this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, lod: 'drive', ...look }), { lite: this.liteCars });
+    this.factory = new CarFactory(await playerJob, { lite: this.liteCars });
     this.playerCarKey = lookKey(car, look);
     this.playerFeel = car.feel;
     // (Object3D.add() with no arguments logs an error, so empty lists are skipped.)
@@ -220,6 +222,8 @@ export class Race {
       r.visual.dispose();
       this.pool.delete(id);
     }
+    // Every new rival model loads at once (not one after another), then each rival is built.
+    for (const r of rivals) if (!this.pool.has(r.id)) this.rivalFactory(r.car);
     for (const r of rivals) {
       if (this.pool.has(r.id)) continue;
       const factory = await this.rivalFactory(r.car);
@@ -637,6 +641,17 @@ export class Race {
       r.render(scene, this.camera);
       r.setRenderTarget(prev);
       visual.setMirror(this.cockpitShown ? live : null);
+    }
+    // The low tier's body twins for the driver view (raceCars.js cockpitTwins), the same way.
+    if (visual?.twins?.length) {
+      const own = Boolean(this.cockpitShown && this.cockpitFx);
+      visual.setCockpitLook(!own);
+      r.compile(scene, this.camera);
+      const prev = r.getRenderTarget();
+      r.setRenderTarget(this.warmTarget);
+      r.render(scene, this.camera);
+      r.setRenderTarget(prev);
+      visual.setCockpitLook(own);
     }
   }
 
@@ -1401,6 +1416,7 @@ export class Race {
       this.player.visual.root.visible = own || !shown;
       this.player.visual.setCabinShown(!shown);
       this.player.visual.setMirror(shown ? this.cockpit.bodyMirrorMaterial : null);
+      this.player.visual.setCockpitLook(shown && own);
       PLAYER_FRONT.value = shown && own ? 1 : 0;
       for (const m of this.factory.sharedMeshes) m.visible = own || !shown;
       const fade = shown && own ? this.cockpitFx.particleNearFade ?? 0 : 0;

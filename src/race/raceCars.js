@@ -466,6 +466,31 @@ export class CarFactory {
       });
     }
     for (const g of visual.mirrorGlass ?? []) frontDraw(g.own);
+    if (this.lite) this.cockpitTwins(visual);
+  }
+
+  // Low tier, driver view: the player's own body round the cabin (bonnet, wings, pillars) in
+  // Lambert twins of its materials instead of the physically based ones, which cost about a
+  // third of the frame there (the bonnet fills the windscreen). Same colours and maps; the lamps
+  // keep theirs. CarVisual.setCockpitLook() swaps them in and out; the race's warm-up compiles both.
+  cockpitTwins(visual) {
+    const twins = new Map();
+    const twin = (m) => {
+      if (!twins.has(m)) {
+        const t = new THREE.MeshLambertMaterial({ name: `${m.name}-cockpit`, color: m.color, map: m.map ?? null, vertexColors: m.vertexColors, side: m.side });
+        frontDraw(t);
+        twins.set(m, t);
+      }
+      return twins.get(m);
+    };
+    visual.twins = [];
+    visual.root.traverse((o) => {
+      if (!o.isMesh || Array.isArray(o.material)) return;
+      const m = o.material;
+      if (m.transparent || m.userData.lamps || !(m.isMeshStandardMaterial || m.isMeshPhysicalMaterial)) return;
+      visual.twins.push({ mesh: o, full: m, twin: twin(m) });
+    });
+    visual.owned = [...(visual.owned ?? []), ...twins.values()];
   }
 
   setPlayerPaint(color, finish) {
@@ -777,6 +802,14 @@ export class CarVisual {
   // The body's own mirror glass (wing mirrors of the player's car): the live rear view while
   // the driver view shows (`material`, race/carCockpit.js bodyMirrorMaterial), else its own
   // dark glass. Both materials are on the car from the warm-up on, so a switch compiles nothing.
+  // Low tier: the cheap Lambert twins of the body's materials in the driver view (CarFactory.cockpitTwins).
+  setCockpitLook(on) {
+    for (const t of this.twins ?? []) {
+      if (on) t.twin.color.copy(t.full.color);
+      t.mesh.material = on ? t.twin : t.full;
+    }
+  }
+
   setMirror(material) {
     for (const g of this.mirrorGlass ?? []) g.mesh.material = material ?? g.own;
   }
