@@ -751,7 +751,8 @@ export class CarFactory {
     const mirrorGlass = [];
     body.traverse((o) => o.isMesh && o.material.name === 'MirrorGlass' && mirrorGlass.push({ mesh: o, own: o.material }));
 
-    const wheelMap = mapFor(true, lite);
+    // (Painted rims join the atlas on lite cars and on the player car: one draw for all four.)
+    const wheelMap = mapFor(true, lite || player);
     const wheels = wheelsSrc.map((src, index) => {
       const wheel = new THREE.Group();
       wheel.position.copy(src.position);
