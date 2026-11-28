@@ -152,7 +152,16 @@ test('calipers, discs and uprights steer with the wheel and never spin', () => {
     // Player on track: the upright is baked onto the wheel pivot (steers), not its spin group.
     const f = new CarFactory(DRIVE(car.id));
     const p = f.build({ player: true });
-    for (const w of p.wheels) assert.ok(w.wheel.children.some((c) => c.isMesh), `${car.id}: still parts on the player's wheel`);
+    // (Medium/high: merged into the car's one atlas draw, following the wheel pivot as a part.)
+    const merged = p.root.children.find((c) => c.name === 'parts-atlas');
+    assert.ok(merged, `${car.id}: player's atlas parts merged into one draw`);
+    for (const w of p.wheels) {
+      assert.ok(merged.userData.partGroups.includes(w.wheel), `${car.id}: still parts follow the steering pivot`);
+      // (Node decodes no textures, so its wheels are flat and batch instead.)
+      if (!f.wheelBatches.length) assert.ok(merged.userData.partGroups.includes(w.spin), `${car.id}: rim and tyre follow the spin group`);
+    }
+    const idx = merged.geometry.attributes.part;
+    assert.ok(idx && new Set(idx.array).size === merged.userData.partGroups.length, 'every part has triangles');
     p.dispose();
     f.dispose();
   }
@@ -569,7 +578,7 @@ test("driver view: the player's car draws in front (no rival shows through it), 
     m.onBeforeCompile(shader);
     assert.equal(shader.uniforms.uFront, PLAYER_FRONT);
     assert.ok(shader.vertexShader.includes(FRONT_DRAW));
-    assert.match(m.customProgramCacheKey(), /\|front$/);
+    assert.match(m.customProgramCacheKey(), /\|front(\||$)/);
   }
   // Rivals share the same program (one program per material kind) but their switch stays at 0, so they never draw in front.
   const rf = new CarFactory(rigs['tm-tempesta'].race);
@@ -635,7 +644,7 @@ test('low tier cockpit: a light file per car (<= 15k triangles, 512 px, <= 4 MB 
     c.dispose();
   }
   // Other tiers keep the full cabin.
-  assert.ok((await quiet(() => loadCarCockpit(CARS[0], { tier: 'mid' }))).url.endsWith('_cockpit.glb'));
+  assert.ok((await quiet(() => loadCarCockpit(CARS[0], { tier: 'high' }))).url.endsWith('_cockpit.glb'));
 });
 
 test('lite cars (low tier): rivals one opaque draw, the player at 512 px with its cabin, rims and tyres in the atlas', () => {
@@ -697,7 +706,7 @@ test('every tier: one glass mesh and one lamp mesh per car; the cabin and dash i
     // Glass keeps its alpha (per vertex) and draws in one pass, both faces.
     r.root.traverse((o) => {
       if (!o.isMesh || o.material.name !== 'Glass') return;
-      assert.ok(o.material.transparent && o.material.forceSinglePass && o.material.side === THREE.DoubleSide);
+      assert.ok(o.material.transparent && o.material.forceSinglePass && o.material.side === THREE.FrontSide);
       const a = o.geometry.attributes.color;
       assert.equal(a.itemSize, 4);
       let clear = false;
@@ -713,5 +722,71 @@ test('every tier: one glass mesh and one lamp mesh per car; the cabin and dash i
     parts?.traverse((o) => o.isMesh && assert.ok(!o.material.map, `${car.id} cabin ${o.material.name} uses the atlas`));
     p.dispose();
     pf.dispose();
+  }
+});
+
+test('medium/high player car: atlas and glass parts in one draw each, moving parts follow their groups', () => {
+  const f = new CarFactory(DRIVE('sv-stallion'));
+  const p = f.build({ player: true });
+  const atlas = p.root.children.find((c) => c.name === 'parts-atlas');
+  const glass = p.root.children.find((c) => c.name === 'parts-Glass');
+  assert.ok(atlas && glass, 'one atlas mesh and one glass mesh');
+  let separate = 0;
+  p.root.traverse((o) => o.isMesh && o !== atlas && o !== glass && (o.material === atlas.material || o.material === glass.material) && separate++);
+  assert.equal(separate, 0, 'no atlas or glass part left on its own');
+  const parts = atlas.material.userData.uParts.value;
+  const steer = p.steerPart.group;
+  assert.ok(atlas.userData.partGroups.includes(steer), 'the steering wheel turns inside the merged mesh');
+  for (const w of p.windows) assert.ok(glass.userData.partGroups.includes(w.group), 'door windows move inside the merged glass');
+  // At rest every part matrix is the identity; turning the front wheel moves only its parts.
+  p.root.updateMatrixWorld(true);
+  atlas.onBeforeRender();
+  for (let i = 0; i < atlas.userData.partGroups.length; i++) assert.ok(parts[i].equals(new THREE.Matrix4()) || parts[i].elements.every((v, k) => Math.abs(v - new THREE.Matrix4().elements[k]) < 1e-6));
+  const front = p.wheels[0].wheel;
+  front.rotation.y = 0.4;
+  p.root.updateMatrixWorld(true);
+  atlas.onBeforeRender();
+  const i = atlas.userData.partGroups.indexOf(front);
+  assert.ok(Math.abs(parts[i].elements[0] - Math.cos(0.4)) < 1e-6, 'its matrix turns with the pivot');
+  // The driver view collapses the cabin's parts.
+  p.setCabinShown(false);
+  p.root.updateMatrixWorld(true);
+  atlas.onBeforeRender();
+  const c = atlas.userData.partGroups.findIndex((g) => g.name === 'cabin-parts');
+  assert.ok(c >= 0 && parts[c].elements.slice(0, 12).every((v) => Math.abs(v) < 1e-9), 'hidden cabin collapses');
+  p.dispose();
+  f.dispose();
+});
+
+test('medium tier cockpit: its own file per car (the full mesh, lit; <= 1024 px, under 8 MB on the GPU with the display and mirror)', async () => {
+  for (const car of CARS) {
+    const mid = await quiet(() => loadCarCockpit(car, { tier: 'mid' }));
+    assert.ok(mid?.url.endsWith('_cockpit_mid.glb'), `${car.id} loads its medium cabin`);
+    const imgs = await glbImages(mid.url.split('/').pop());
+    assert.ok(imgs.every((i) => i.w <= 1024 && i.h <= 1024), `${car.id}: 1024 px at most`);
+    // GPU bytes with mipmaps, plus the half-size cluster display (256 x 160) and the mirror target.
+    const mb = (imgs.reduce((n, i) => n + (i.w * i.h * 16) / 3, 0) + 256 * 160 * 4 * (4 / 3) + 256 * 96 * 8) / 1048576;
+    assert.ok(mb <= 8, `${car.id}: ${mb.toFixed(2)} MB`);
+    assert.ok(!imgs.some((i) => /_orm$/.test(i.name ?? '')), 'no ORM map (Lambert)');
+    let tris = 0;
+    mid.scene.traverse((o) => o.isMesh && (tris += (o.geometry.index?.count ?? o.geometry.attributes.position.count) / 3));
+    const full = await quiet(() => loadCarCockpit(car, { tier: 'high' }));
+    let fullTris = 0;
+    full.scene.traverse((o) => o.isMesh && (fullTris += (o.geometry.index?.count ?? o.geometry.attributes.position.count) / 3));
+    assert.equal(tris, fullTris, 'the same mesh as the approved cabin');
+  }
+});
+
+test('car parts draw front faces only on every tier (no second raster of the bodywork)', () => {
+  for (const lite of [false, true]) {
+    const f = new CarFactory(DRIVE('sv-stallion'), { lite });
+    for (const v of [f.build({ player: true }), f.build({ color: '#ff0000' })]) {
+      v.root.traverse((o) => {
+        if (!o.isMesh || o.material.blending === THREE.AdditiveBlending) return; // nitro flames
+        assert.equal(o.material.side, THREE.FrontSide, `${lite ? 'lite' : 'full'} ${o.name || o.material.name}`);
+      });
+      v.dispose();
+    }
+    f.dispose();
   }
 });

@@ -14,7 +14,7 @@
 //                           them into its vertex-colour atlas (one draw instead of one per
 //                           material) on every tier
 //
-//   node tools/cars/lowLods.mjs [--cars rp1_vanta,...] [--only cockpit,cap,drive]
+//   node tools/cars/lowLods.mjs [--cars rp1_vanta,...] [--only cockpit,mid,cap,drive]
 //
 // Idempotent: the low cockpit is rebuilt from the full one, the cap only touches shells over
 // budget, and the drive bake overwrites its attribute.
@@ -34,7 +34,7 @@ const arg = (name, fallback) => {
   return i > 0 ? process.argv[i + 1] : fallback;
 };
 const FILES = arg('cars', 'rp1_vanta,kz_kestrel,sv_stallion,rb_ridgeback,ag_aurelia,mz_monza,tm_tempesta,rpx_hyperion').split(',');
-const ONLY = arg('only', 'cockpit,cap,drive').split(',');
+const ONLY = arg('only', 'cockpit,mid,cap,drive').split(',');
 
 export const LOW_COCKPIT_TRIS = 14000;
 const HIGH_SHELL_TRIS = 18000;
@@ -44,7 +44,8 @@ const LOW_TEX = { Cockpit_base: 512, Cockpit_glow: 256, Gauges_base: 512, Carbon
 // Materials whose texture colour is baked into the vertices (any node: the dash's Interior
 // parts sit in the body mesh).
 const DRIVE_BAKE = /^(Interior|Driver|Rim|Tyre)$/;
-// ... and every textured part of the cabin nodes (the steering wheel's Body parts).
+// ... and every textured part of the cabin nodes (the steering wheel's Body parts) and of the
+// uprights (discs and calipers).
 const DRIVE_BAKE_NODES = /^(interior|driver|steering_wheel)$/;
 
 await MeshoptDecoder.ready;
@@ -109,12 +110,12 @@ async function resizeTexture(tex, size) {
 }
 
 // Colour times the baked shading (red channel of `occ`), at `size` px.
-async function bakeShading(base, occ, size) {
+async function bakeShading(base, occ, size, lift = 0.2, gain = 0.9) {
   const px = (tex, channels) => sharp(Buffer.from(tex.getImage())).resize(size, size, { kernel: 'lanczos3' }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
   const [c, o] = await Promise.all([px(base), px(occ)]);
   const out = Buffer.alloc(size * size * 3);
   for (let i = 0; i < size * size; i++) {
-    const k = Math.min(1, 0.2 + 0.9 * (o.data[i * o.info.channels] / 255)); // a little lift: no sun or lamps on it
+    const k = Math.min(1, lift + gain * (o.data[i * o.info.channels] / 255)); // low: a little lift (no sun or lamps on it)
     for (let j = 0; j < 3; j++) out[i * 3 + j] = Math.round(c.data[i * c.info.channels + j] * k);
   }
   const img = await sharp(out, { raw: { width: size, height: size, channels: 3 } }).webp({ quality: 86, effort: 6 }).toBuffer();
@@ -169,6 +170,35 @@ async function lowCockpit(file) {
   await io.write(out, doc);
   const texBytes = doc.getRoot().listTextures().reduce((n, t) => n + t.getImage().byteLength, 0);
   console.log(`${file}_cockpit_low.glb  ${before} -> ${docTris(doc)} tris, ${doc.getRoot().listTextures().map((t) => t.getName()).join(' ')} (${texBytes >> 10} KB), ${(await fs.stat(out)).size >> 10} KB`);
+}
+
+// The medium tier's cabin (`*_cockpit_mid.glb`): the full mesh, lit (Lambert) as approved, with
+// textures that fit 8 MB on the GPU: colour 1024 px with the baked shading in it (as the lit
+// tiers apply it: mostly on the light), normal map 256 px, night glow 128 px, gauges 512 px,
+// carbon 256 px, no ORM map (Lambert uses no roughness or metalness).
+const MID_TEX = { Cockpit_base: 1024, Cockpit_normal: 256, Cockpit_glow: 128, Gauges_base: 512, Carbon_weave: 256, Carbon_weave_normal: 128 };
+async function midCockpit(file) {
+  const src = path.join(DIR, `${file}_cockpit.glb`);
+  const doc = await io.read(src);
+  doc.createExtension(EXTTextureWebP).setRequired(true);
+  for (const mat of doc.getRoot().listMaterials()) {
+    const base = mat.getBaseColorTexture();
+    const occ = mat.getOcclusionTexture();
+    if (base && occ) await bakeShading(base, occ, MID_TEX[base.getName()] ?? 1024, 0.2, 0.8);
+  }
+  for (const mat of doc.getRoot().listMaterials()) {
+    if (mat.getMetallicRoughnessTexture()) mat.setMetallicRoughnessTexture(null).setRoughnessFactor(0.75).setMetallicFactor(0);
+    if (mat.getOcclusionTexture()) mat.setOcclusionTexture(null);
+  }
+  for (const tex of doc.getRoot().listTextures()) {
+    const size = MID_TEX[tex.getName()] ?? 512;
+    if (!tex.getExtras().shaded) await resizeTexture(tex, Math.min(size, tex.getSize()?.[0] ?? size));
+  }
+  await doc.transform(prune({ keepAttributes: true }), dedup(), meshopt({ encoder: MeshoptEncoder, level: 'high' }));
+  const out = path.join(DIR, `${file}_cockpit_mid.glb`);
+  await io.write(out, doc);
+  const gpu = doc.getRoot().listTextures().reduce((n, t) => n + ((t.getSize()?.[0] ?? 0) * (t.getSize()?.[1] ?? 0) * 4 * 4) / 3, 0);
+  console.log(`${file}_cockpit_mid.glb  ${docTris(doc)} tris, ${doc.getRoot().listTextures().map((t) => `${t.getName()} ${t.getSize()?.[0]}`).join(', ')}, GPU ${(gpu / 1048576).toFixed(2)} MB, ${(await fs.stat(out)).size >> 10} KB`);
 }
 
 async function capCockpit(file) {
@@ -229,6 +259,9 @@ async function bakeDrive(file) {
   };
   let baked = 0;
   const cabinMeshes = new Set(doc.getRoot().listNodes().filter((n) => DRIVE_BAKE_NODES.test(n.getName()) && n.getMesh()).map((n) => n.getMesh()));
+  // The uprights' discs and calipers too, so they join the player car's one atlas draw.
+  const under = (n) => n.listChildren().flatMap((c) => [c, ...under(c)]);
+  for (const up of doc.getRoot().listNodes().filter((n) => /^upright_/.test(n.getName()))) for (const n of under(up)) if (n.getMesh()) cabinMeshes.add(n.getMesh());
   for (const mesh of doc.getRoot().listMeshes()) {
     for (const prim of mesh.listPrimitives()) {
       const mat = prim.getMaterial();
@@ -269,5 +302,6 @@ async function bakeDrive(file) {
 for (const file of FILES) {
   if (ONLY.includes('cap')) await capCockpit(file);
   if (ONLY.includes('cockpit')) await lowCockpit(file);
+  if (ONLY.includes('mid')) await midCockpit(file);
   if (ONLY.includes('drive')) await bakeDrive(file);
 }

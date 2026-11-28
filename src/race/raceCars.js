@@ -394,10 +394,72 @@ export function frontDraw(material, uniform = PLAYER_FRONT) {
   material.needsUpdate = true;
 }
 
+// One draw for parts that move apart (the player car's wheels, discs and calipers, cabin,
+// steering wheel and door windows on the medium and high tiers): their triangles merge into one
+// mesh with a `part` index per vertex, and each part follows its own group through a matrix
+// array (uParts) set just before the mesh draws. No skinning (its bone texture would upload
+// every frame). A hidden cabin scales its group to 0, which collapses its triangles.
+export const MAX_PARTS = 16;
+export function partsMaterial(material, uParts = { value: Array.from({ length: MAX_PARTS }, () => new THREE.Matrix4()) }) {
+  if (material.userData.uParts) return material;
+  material.userData.uParts = uParts;
+  const prev = material.onBeforeCompile;
+  material.onBeforeCompile = (shader, renderer) => {
+    prev.call(material, shader, renderer);
+    shader.uniforms.uParts = uParts;
+    shader.vertexShader = `uniform mat4 uParts[${MAX_PARTS}];\nattribute float part;\n${shader.vertexShader}`
+      .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n  mat4 partM = uParts[int(part + 0.5)];\n  objectNormal = mat3(partM) * objectNormal;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n  transformed = (partM * vec4(transformed, 1.0)).xyz;');
+  };
+  const key = material.customProgramCacheKey.bind(material);
+  material.customProgramCacheKey = () => `${key()}|parts`;
+  material.needsUpdate = true;
+  return material;
+}
+
+// Merges `meshes` (all drawing `material`, anywhere under `root`) into one mesh on `root`.
+function mergeParts(root, meshes, material) {
+  if (meshes.length < 2) return null;
+  root.updateMatrixWorld(true);
+  const rootInv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const groups = [];
+  const geos = [];
+  for (const m of meshes) {
+    let i = groups.indexOf(m.parent);
+    if (i < 0) i = groups.push(m.parent) - 1;
+    const g = m.geometry.clone().applyMatrix4(_m.multiplyMatrices(rootInv, m.matrixWorld));
+    g.setAttribute('part', new THREE.BufferAttribute(new Float32Array(g.attributes.position.count).fill(i), 1));
+    geos.push(g);
+    m.removeFromParent();
+    m.geometry.dispose();
+  }
+  if (groups.length > MAX_PARTS) throw new Error('mergeParts: too many moving parts');
+  const mesh = new THREE.Mesh(mergeGeometries(geos), partsMaterial(material));
+  for (const g of geos) g.dispose();
+  mesh.name = `parts-${material.name || 'atlas'}`;
+  mesh.userData.partGroups = groups;
+  mesh.frustumCulled = false; // its parts move; the car is on screen anyway
+  mesh.castShadow = false;
+  mesh.receiveShadow = !material.transparent;
+  // Part matrix = root⁻¹ · group now · (root⁻¹ · group at merge)⁻¹.
+  const bind = groups.map((g) => new THREE.Matrix4().multiplyMatrices(rootInv, g.matrixWorld).invert());
+  const inv = new THREE.Matrix4();
+  const parts = material.userData.uParts.value;
+  mesh.onBeforeRender = () => {
+    inv.copy(mesh.matrixWorld).invert();
+    for (let i = 0; i < groups.length; i++) parts[i].multiplyMatrices(inv, groups[i].matrixWorld).multiply(bind[i]);
+  };
+  root.add(mesh);
+  return mesh;
+}
+
 export class CarFactory {
   // `template` is a car rig from loadCar(); the factory never mutates it.
   // `lite`: the low tier (see the top of this file).
-  constructor(template, { lite = false } = {}) {
+  // `twins`: the driver view's cheaper bodywork round the cabin (cockpitTwins): 'lambert' on the
+  // low tier, 'gloss' on the medium one, none on high.
+  constructor(template, { lite = false, twins = lite ? 'lambert' : null } = {}) {
+    this.twins = twins;
     this.template = template;
     this.lite = lite;
     this.made = []; // the lite textures this factory made
@@ -405,9 +467,15 @@ export class CarFactory {
     this.paint = template.paintMaterial;
     this.flameTex = flameTexture();
     // Both faces (the models' parts are double-sided): half the vertices of a mirrored copy.
-    // The low tier (lite) draws front faces only: the parts are closed shells (no open edges in
-    // the Blender files), and both faces cost a second raster of every car pixel there.
-    const side = lite ? THREE.FrontSide : THREE.DoubleSide;
+    // Front faces only on every tier: the parts are closed shells (no open edges in the Blender
+    // files), and the back faces cost a second raster of every car pixel (about a third of the
+    // driver view, where the inside of the bodywork faces the camera). The template's own opaque
+    // materials (paint, textured body) too.
+    const side = THREE.FrontSide;
+    template.group.traverse((o) => {
+      if (o.isMesh) for (const m of [].concat(o.material)) if (!m.transparent) m.side = THREE.FrontSide;
+    });
+    this.paint.side = THREE.FrontSide;
     this.atlas = createVertexPbrMaterial({ envMapIntensity: 1.1, side });
     // The same shading for the instanced wheels, as its own material: one material drawn both
     // instanced and not makes three.js rebuild its program parameters at every switch, twice
@@ -470,19 +538,28 @@ export class CarFactory {
       });
     }
     for (const g of visual.mirrorGlass ?? []) frontDraw(g.own);
-    if (this.lite) this.cockpitTwins(visual);
+    if (this.twins) this.cockpitTwins(visual, this.twins);
   }
 
   // Low tier, driver view: the player's own body round the cabin (bonnet, wings, pillars) in
   // Lambert twins of its materials instead of the physically based ones, which cost about a
   // third of the frame there (the bonnet fills the windscreen). Same colours and maps; the lamps
   // keep theirs. CarVisual.setCockpitLook() swaps them in and out; the race's warm-up compiles both.
-  cockpitTwins(visual) {
+  // Medium ('gloss'): Lambert with the race's sky reflected (envMap, set by the race before its
+  // warm-up), so the paint keeps its shine at a fraction of the clear-coat shader's cost.
+  cockpitTwins(visual, kind = 'lambert') {
     const twins = new Map();
     const twin = (m) => {
       if (!twins.has(m)) {
         const t = new THREE.MeshLambertMaterial({ name: `${m.name}-cockpit`, color: m.color, map: m.map ?? null, vertexColors: m.vertexColors, side: m.side });
+        if (kind === 'gloss') {
+          t.userData.env = true;
+          t.combine = THREE.MixOperation;
+          t.reflectivity = m === this.paint ? 0.3 : 0.12 + 0.3 * (m.metalness ?? 0) * (m.vertexColors ? 0.5 : 1);
+        }
         frontDraw(t);
+        // The merged moving parts keep following their groups (one matrix array for both).
+        if (m.userData.uParts) partsMaterial(t, m.userData.uParts);
         twins.set(m, t);
       }
       return twins.get(m);
@@ -491,7 +568,7 @@ export class CarFactory {
     visual.root.traverse((o) => {
       if (!o.isMesh || Array.isArray(o.material)) return;
       const m = o.material;
-      if (m.transparent || m.userData.lamps || !(m.isMeshStandardMaterial || m.isMeshPhysicalMaterial)) return;
+      if (m.transparent || m.userData.lamps || m.name === 'MirrorGlass' || !(m.isMeshStandardMaterial || m.isMeshPhysicalMaterial)) return;
       visual.twins.push({ mesh: o, full: m, twin: twin(m) });
     });
     visual.owned = [...(visual.owned ?? []), ...twins.values()];
@@ -727,6 +804,16 @@ export class CarFactory {
       body.add(fl);
       flames.push(fl);
     }
+    // Medium and high player car: every atlas part in one draw, all its glass in another.
+    if (player && !lite) {
+      const of = (mat) => {
+        const list = [];
+        root.traverse((o) => o.isMesh && o.material === mat && list.push(o));
+        return list;
+      };
+      mergeParts(root, of(this.atlas), this.atlas);
+      mergeParts(root, of(this.glass), this.glass);
+    }
     const visual = new CarVisual(root, lean, wheels, null, flames, flameMat, this.template.wheelRadius);
     let hasLamps = false;
     root.traverse((o) => o.isMesh && o.material === lamps && (hasLamps = true));
@@ -801,13 +888,20 @@ export class CarVisual {
   // Driver view: the car's own interior, driver, glass, door windows and steering wheel hide
   // (the cockpit model draws the cabin instead); the rest of the body stays.
   setCabinShown(on) {
-    if (this.cabin) this.cabin.visible = on;
+    if (!this.cabin) return;
+    this.cabin.visible = on;
+    this.cabin.scale.setScalar(on ? 1 : 0); // its parts in the merged meshes collapse (mergeParts)
   }
 
   // The body's own mirror glass (wing mirrors of the player's car): the live rear view while
   // the driver view shows (`material`, race/carCockpit.js bodyMirrorMaterial), else its own
   // dark glass. Both materials are on the car from the warm-up on, so a switch compiles nothing.
   // Low tier: the cheap Lambert twins of the body's materials in the driver view (CarFactory.cockpitTwins).
+  // `env`: the race's environment map for the medium tier's glossy twins.
+  setCockpitEnvironment(env) {
+    for (const t of this.twins ?? []) if (t.twin.userData.env) t.twin.envMap = env;
+  }
+
   setCockpitLook(on) {
     for (const t of this.twins ?? []) {
       if (on) t.twin.color.copy(t.full.color);

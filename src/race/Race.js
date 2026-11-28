@@ -154,7 +154,7 @@ export class Race {
     // LOD of the roster car it is assigned (data/rivals.js), one factory per model.
     this.rivalFactories = new Map(); // car id -> Promise<CarFactory>
     this.rivalFactoryList = []; // the ones that have loaded
-    this.factory = new CarFactory(await playerJob, { lite: this.liteCars });
+    this.factory = new CarFactory(await playerJob, { lite: this.liteCars, twins: this.playerTwins() });
     this.playerCarKey = lookKey(car, look);
     this.playerFeel = car.feel;
     // (Object3D.add() with no arguments logs an error, so empty lists are skipped.)
@@ -242,6 +242,12 @@ export class Race {
     }
   }
 
+  // The driver view's cheaper bodywork round the cabin (raceCars.js cockpitTwins): Lambert on the
+  // low tier, glossy Lambert on the medium one, the full materials on high.
+  playerTwins() {
+    return this.cockpitTier === 'low' ? 'lambert' : this.cockpitTier === 'mid' ? 'gloss' : null;
+  }
+
   // The factory that builds rivals in `carId` (the rival LOD, loaded once per race).
   rivalFactory(carId) {
     const id = carById(carId).id;
@@ -325,7 +331,7 @@ export class Race {
     if (lookKey(car, look) === this.playerCarKey) return;
     const old = this.player.visual;
     const oldFactory = this.factory;
-    this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, lod: 'drive', ...look }), { lite: this.liteCars });
+    this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, lod: 'drive', ...look }), { lite: this.liteCars, twins: this.playerTwins() });
     this.playerCarKey = lookKey(car, look);
     this.player.visual = this.factory.build({ player: true });
     this.player.visual.root.traverse((o) => o.layers.set(2));
@@ -612,6 +618,9 @@ export class Race {
         for (const u of [...Object.values(m.uniforms ?? {}), ...Object.values(m.userData?.uniforms ?? {})]) if (u?.value?.isTexture) textures.add(u.value);
       }
     });
+    // The medium tier's glossy driver-view materials reflect the race's sky (set before compiling).
+    this.player?.visual?.setCockpitEnvironment(scene.environment);
+    this.cockpit?.setEnvironment?.(scene.environment);
     for (const t of textures) if (!t.isRenderTargetTexture) r.initTexture(t);
     r.compile(scene, this.camera);
     this.warmTarget ??= new THREE.WebGLRenderTarget(8, 8, { depthBuffer: true });
@@ -642,7 +651,7 @@ export class Race {
       r.setRenderTarget(prev);
       visual.setMirror(this.cockpitShown ? live : null);
     }
-    // The low tier's body twins for the driver view (raceCars.js cockpitTwins), the same way.
+    // The body twins for the driver view (raceCars.js cockpitTwins), the same way.
     if (visual?.twins?.length) {
       const own = Boolean(this.cockpitShown && this.cockpitFx);
       visual.setCockpitLook(!own);

@@ -145,6 +145,15 @@ function cabinMaterial(src, tier) {
     m.fog = false;
     return m;
   }
+  if (src.transparent && tier === 'mid') {
+    // Clear glass over the windscreen on the medium tier: the sky's reflection on a tint, unlit
+    // (CarCockpit.setEnvironment hands it the race's environment before the warm-up).
+    const m = new THREE.MeshBasicMaterial({ name: src.name, color: src.color.clone(), opacity: src.opacity, transparent: true, depthWrite: false, side: src.side, combine: THREE.AddOperation, reflectivity: 0.12 });
+    m.userData.env = true;
+    m.onBeforeCompile = drawOnTop;
+    m.fog = false;
+    return m;
+  }
   if (src.transparent) {
     const m = src.clone();
     m.depthWrite = false;
@@ -414,7 +423,7 @@ export class CarCockpit {
       const gap = l.spot.centre.distanceTo(r.spot.centre) - l.spot.radius - r.spot.radius;
       const radius = Math.max(l.spot.radius, r.spot.radius);
       if (gap > 0.02) {
-        this.displayMaterial = displayMaterial(this.keep(clusterTexture(this.lowEnd)));
+        this.displayMaterial = displayMaterial(this.keep(clusterTexture(this.tier !== 'high'))); // half size below high (the medium cabin's 8 MB)
         this.display = new THREE.Mesh(miniDisplay(gap, radius), this.displayMaterial);
         this.display.name = 'car-cockpit-display';
         // Facing the eye: local -x toward the driver.
@@ -532,6 +541,13 @@ export class CarCockpit {
 
   // The live rear view, as the shared cabin's (race/cockpit.js renderMirror): from the middle
   // mirror, looking back down the car. `force` renders now (the warm-up).
+  // The race's environment map for the medium tier's glass (cabinMaterial).
+  setEnvironment(env) {
+    this.group.traverse((o) => {
+      if (o.isMesh && o.material.userData.env) o.material.envMap = env;
+    });
+  }
+
   renderMirror(renderer, scene, force = false) {
     if (!this.liveMirror || (!force && !this.group.visible)) return false;
     if (!force && this.mirrorFrame++ % MIRROR.every !== 0) return false;

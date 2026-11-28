@@ -132,6 +132,8 @@ const result = await page.evaluate(
       tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
       for (const v of [...Object.values(o.material), ...Object.values(o.material.uniforms ?? {}).map((u) => u.value)]) if (v?.isTexture) textures.add(v);
     });
+    // The race's sky map (scene.environment) is shared with every car and the road, not the cabin's.
+    textures.delete(r.scene.environment);
     // The player's car on track (its own textures, v75) apart from the cockpit's.
     const carTextures = new Set();
     r.player.visual.root.traverse((o) => {
