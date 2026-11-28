@@ -4,7 +4,7 @@
 // the low-end GPU on Graphics Auto vs a manually chosen Graphics: High.
 //
 //   npm run build && node tools/qa/carShots.mjs [--out dir] [--cars id,...] [--only set,...]
-//     sets: garage, day, night, lowend, lowhigh
+//     sets: garage, day, night, lowend, lowhigh, medium
 //
 // Races are stepped by hand at 30 FPS (r.update; only the last frames are drawn), as
 // tools/qa/hudShots.mjs, so every shot is taken at a known race time.
@@ -22,7 +22,7 @@ const arg = (name, fallback) => {
 const OUT = path.resolve(arg('out', path.join(root, 'qa-shots/cars')));
 const CARS = arg('cars', 'rp1-vanta,kz-kestrel,sv-stallion,rb-ridgeback,ag-aurelia,mz-monza,tm-tempesta,rpx-hyperion').split(',');
 const ONLY = arg('only', null)?.split(',');
-const SETS = ['garage', 'day', 'night', 'lowend', 'lowhigh'].filter((s) => !ONLY || ONLY.includes(s));
+const SETS = ['garage', 'day', 'night', 'lowend', 'lowhigh', 'medium'].filter((s) => !ONLY || ONLY.includes(s));
 const [W, H, DPR] = [915, 412, 1.5];
 
 const pw = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
@@ -149,6 +149,13 @@ for (const car of CARS) {
           const info = await page.evaluate(() => ({ colour: `#${window.__garage.car.paintMaterial.color.getHexString()}`, rim: window.__garage.car.rim }));
           await shot(page, car, name, info);
         }
+      } else if (set === 'medium') {
+        // Graphics: Medium on a normal GPU (most touch phones): the driver view, then the chase view.
+        await race(page, { car, stage: 'ec-01', view: 'cockpit', quality: 'medium' });
+        await shot(page, car, 'medium-cockpit', await state(page));
+        for (let i = 0; i < 3 && (await page.evaluate(() => window.__app.state.settings.cameraView)) !== 'chase'; i++) await page.keyboard.press('KeyC');
+        await frames(page, 30);
+        await shot(page, car, 'medium-chase', await state(page));
       } else if (set === 'day') {
         await race(page, { car, stage: 'ec-01', view: 'cockpit', quality: 'high' });
         await shot(page, car, 'cockpit-day', await state(page));
