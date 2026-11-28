@@ -246,7 +246,7 @@ test('only a race loads the model, before its warm-up; the garage never does', a
   const prepare = race.slice(race.indexOf('  async prepare('), race.indexOf('  warmUp() {'));
   // The car's own cockpit loads with the car; the shared one is only a fallback (a car with
   // no cockpit file), both before the warm-up.
-  assert.match(prepare, /const cockpitJob = loadCarCockpit\(car\)/);
+  assert.match(prepare, /const cockpitJob = loadCarCockpit\(car, \{ tier: this\.cockpitTier \}\)/);
   assert.match(prepare, /await this\.buildCockpit\(car, cockpitJob\)[\s\S]*\n  \}\n/);
   const build = race.slice(race.indexOf('  async buildCockpit('), race.indexOf('\n  }\n', race.indexOf('  async buildCockpit(')));
   assert.match(build, /new CarCockpit\(/);

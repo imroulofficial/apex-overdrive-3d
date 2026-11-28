@@ -112,7 +112,10 @@ export class Race {
     // model (race/carCockpit.js), fetched while the world builds; the warm-up uploads it with
     // everything else, so switching to the cockpit mid-race never compiles or uploads anything.
     this.cockpitTier = cockpitTier({ lowEnd: this.lowEnd, quality, manual });
-    const cockpitJob = loadCarCockpit(car);
+    // The low tier (a low-end GPU on Graphics Auto) also gets the lite cars (raceCars.js) and the
+    // light cabin file.
+    this.liteCars = this.cockpitTier === 'low';
+    const cockpitJob = loadCarCockpit(car, { tier: this.cockpitTier });
     // Route variations: the reversed road is built the first time a stage needs it.
     this.tracks = { forward: this.track, reverse: null };
     // Bundled CC0 scans (road, ground, bark, fronds, rocks); loaded once per session.
@@ -149,7 +152,7 @@ export class Race {
     // LOD of the roster car it is assigned (data/rivals.js), one factory per model.
     this.rivalFactories = new Map(); // car id -> Promise<CarFactory>
     this.rivalFactoryList = []; // the ones that have loaded
-    this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, lod: 'drive', ...look }));
+    this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, lod: 'drive', ...look }), { lite: this.liteCars });
     this.playerCarKey = lookKey(car, look);
     this.playerFeel = car.feel;
     // (Object3D.add() with no arguments logs an error, so empty lists are skipped.)
@@ -240,7 +243,7 @@ export class Race {
     const id = carById(carId).id;
     if (!this.rivalFactories.has(id)) {
       this.rivalFactories.set(id, loadCar(carById(id), { lod: 'race' }).then((template) => {
-        const factory = new CarFactory(template);
+        const factory = new CarFactory(template, { lite: this.liteCars });
         if (factory.sharedMeshes.length) this.scene.add(...factory.sharedMeshes);
         this.rivalFactoryList.push(factory);
         return factory;
@@ -318,7 +321,7 @@ export class Race {
     if (lookKey(car, look) === this.playerCarKey) return;
     const old = this.player.visual;
     const oldFactory = this.factory;
-    this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, lod: 'drive', ...look }));
+    this.factory = new CarFactory(await loadCar(car, { paintColor: paint.color, finish: paint.finish, lod: 'drive', ...look }), { lite: this.liteCars });
     this.playerCarKey = lookKey(car, look);
     this.player.visual = this.factory.build({ player: true });
     this.player.visual.root.traverse((o) => o.layers.set(2));
@@ -338,7 +341,7 @@ export class Race {
   // The player car's cabin: its own cockpit model when it has one (race/carCockpit.js), else
   // the shared cabin (race/cockpit.js, loaded only then). Its eye, cockpit effects and door
   // windows come with it.
-  async buildCockpit(car, job = loadCarCockpit(car)) {
+  async buildCockpit(car, job = loadCarCockpit(car, { tier: this.cockpitTier })) {
     const own = await job;
     if (this.cockpit) {
       this.cockpit.group.removeFromParent();

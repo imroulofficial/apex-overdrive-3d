@@ -65,9 +65,10 @@ const car = (id, tier, role, stats, feel, unlock, length) => ({
   stats,
   feel,
   // `length` is metres nose to tail; the loader scales the model to fit.
-  // `cockpitUrl` is the car's own driver-view cabin (v75); a car without one uses the shared
+  // `cockpitUrl` is the car's own driver-view cabin (v75), `cockpitLowUrl` its light copy for
+  // the low tier (tools/cars/lowLods.mjs); a car without one uses the shared
   // cabin (race/cockpit.js).
-  model: { url: `${file(id)}.glb`, driveUrl: `${file(id)}_drive.glb`, raceUrl: `${file(id)}_race.glb`, cockpitUrl: `${file(id)}_cockpit.glb`, length },
+  model: { url: `${file(id)}.glb`, driveUrl: `${file(id)}_drive.glb`, raceUrl: `${file(id)}_race.glb`, cockpitUrl: `${file(id)}_cockpit.glb`, cockpitLowUrl: `${file(id)}_cockpit_low.glb`, length },
   unlock,
   released: true,
 });

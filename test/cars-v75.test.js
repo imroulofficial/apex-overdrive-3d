@@ -190,11 +190,19 @@ test('lamp lenses: headlight_lens and taillight_lens glow with the lights and br
       });
       assert.ok(kinds.head > 0 && kinds.tail > 0, `${car.id} ${lod} lamps: ${JSON.stringify(kinds)}`);
     }
-    // On track each car has its own lamp materials (brake lights per car).
+    // On track each car's head and tail lenses are one mesh with its own glow levels (brake
+    // lights per car).
     const f = new CarFactory(DRIVE(car.id));
     const a = f.build({ color: '#ff0000' });
     const b = f.build({ color: '#00ff00' });
-    assert.ok(a.tail && a.head && a.tail !== b.tail);
+    assert.ok(a.lamps && b.lamps && a.lamps !== b.lamps, car.id);
+    let lampMeshes = 0;
+    a.root.traverse((o) => o.isMesh && o.material.name === 'Lamps' && lampMeshes++);
+    assert.equal(lampMeshes, 1, `${car.id}: one lamp mesh`);
+    const drive = (braking) => ({ pos: new THREE.Vector3(), heading: 0, pitch: 0, forward: 20, yawRate: 0, airborne: false, drifting: false, braking });
+    a.update(drive(true), 1 / 30, 0);
+    b.update(drive(false), 1 / 30, 0);
+    assert.ok(a.lamps.uTail.value > b.lamps.uTail.value, `${car.id}: brake lights`);
     for (const v of [a, b]) v.dispose();
     f.dispose();
   }
@@ -259,7 +267,11 @@ test("the player's car: cabin parts apart for the driver view, door windows and 
     const v = f.build({ player: true });
     const hide = rig.meta.hideInCockpit ?? DEFAULT_HIDE_IN_COCKPIT;
     const present = hide.filter((n) => rig.group.getObjectByName(n));
-    assert.deepEqual(v.cabin.children.map((g) => g.name.replace(/^cabin-/, '')).sort(), [...present].sort(), car.id);
+    // The parts that move (door windows, steering wheel) are groups of their own; every other
+    // cabin part bakes into one group ('parts').
+    const moving = present.filter((n) => rig.meta.windows?.[n]?.open || n === 'steering_wheel');
+    const expected = [...moving, ...(present.length > moving.length ? ['parts'] : [])];
+    assert.deepEqual(v.cabin.children.map((g) => g.name.replace(/^cabin-/, '')).sort(), expected.sort(), car.id);
     v.setCabinShown(false);
     assert.equal(v.cabin.visible, false);
     v.setCabinShown(true);

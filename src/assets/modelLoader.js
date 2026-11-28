@@ -111,13 +111,16 @@ export async function loadCar(def, { paintColor, finish, lod = 'garage', rim } =
 }
 
 // The car's own driver-view cabin (`model.cockpitUrl`): { scene, meta } or null when the car
-// has none (or it cannot be loaded), and the race then uses the shared cabin.
-export async function loadCarCockpit(def) {
-  const url = def.model?.cockpitUrl;
-  if (!url) return null;
-  const gltf = await fetchGltf(resolveUrl(url));
-  if (!gltf) return null;
-  return { scene: gltf.scene, meta: readMeta(gltf.scene) };
+// has none (or it cannot be loaded), and the race then uses the shared cabin. The low tier
+// loads the light file (`model.cockpitLowUrl`: tools/cars/lowLods.mjs) and falls back to the
+// full one.
+export async function loadCarCockpit(def, { tier } = {}) {
+  const urls = [tier === 'low' && def.model?.cockpitLowUrl, def.model?.cockpitUrl].filter(Boolean);
+  for (const url of urls) {
+    const gltf = await fetchGltf(resolveUrl(url));
+    if (gltf) return { scene: gltf.scene, meta: readMeta(gltf.scene), url };
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

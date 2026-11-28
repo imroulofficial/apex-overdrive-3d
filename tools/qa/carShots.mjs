@@ -187,6 +187,9 @@ for (const car of CARS) {
       } else if (set === 'lowend') {
         await race(page, { car, stage: 'ec-01', view: 'cockpit' });
         await shot(page, car, 'lowend-auto', await state(page));
+        for (let i = 0; i < 3 && (await page.evaluate(() => window.__app.state.settings.cameraView)) !== 'chase'; i++) await page.keyboard.press('KeyC');
+        await frames(page, 30);
+        await shot(page, car, 'lowend-chase', await state(page));
       } else if (set === 'lowhigh') {
         await race(page, { car, stage: 'ec-01', view: 'cockpit', quality: 'high', manual: true });
         await shot(page, car, 'lowend-graphics-high', await state(page));

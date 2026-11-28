@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { applyFinish, liveryPaint } from '../garage/carPaint.js';
 import { FINISHES } from '../data/catalog.js';
-import { backFace, createVertexPbrMaterial, describeMaterial, isFlatMaterial, mergePainted, paintVertices } from '../render/vertexPbr.js';
+import { createVertexPbrMaterial, describeMaterial, isFlatMaterial, mergePainted, paintVertices } from '../render/vertexPbr.js';
 
 // Race-ready cars baked from a car rig (a track LOD of a real model, see modelLoader.js). A
 // model has dozens of meshes; on track six of them would cost hundreds of draw calls. Here
@@ -10,6 +10,13 @@ import { backFace, createVertexPbrMaterial, describeMaterial, isFlatMaterial, me
 // vertex-coloured "atlas" mesh, paint, glass, textured parts and the lights keep their own
 // materials, and the wheels of every car from one factory are a single InstancedMesh. A rival
 // costs ~4 draw calls; the player's textured car a few more.
+//
+// v75: a car's glass (clear and tinted, every pane) is one transparent vertex-colour mesh, its
+// head and tail lenses one mesh with the lamp levels in uniforms, and the player's cabin
+// (interior, driver: their texture's colour baked into the model's vertices, _BAKEDCOLOR) folds
+// into the atlas. `lite` factories (the low tier: a low-end GPU on Graphics Auto) go further:
+// rivals' paint joins the atlas, the player's car shows 512 px textures without normal maps,
+// rims and tyres baked into the atlas, one cabin group and the uprights in the body.
 //
 // Grounding: car bodies receive the sun's shadow (dark under bridges, trees and overpasses
 // like the road around them), every car sits on a soft contact shadow (ContactShadows, one
@@ -66,11 +73,16 @@ function paintBaked(g, description) {
 }
 
 // Collect meshes under `root` (excluding `skip` subtrees) into one merged mesh per material.
-// Parts mapped to ATLAS are painted into vertex attributes and merged under `atlasMaterial`.
+// Parts mapped to ATLAS are painted into vertex attributes and merged under `atlasMaterial`,
+// GLASS into `glassMaterial` (vertex colour with alpha) and LAMP into `lampMaterial`.
 // `skip(p)` is asked for each ancestor of a mesh up to `root`: true leaves the mesh out, KEEP
-// takes it whatever its further ancestors say.
+// takes it whatever its further ancestors say. `materialMap(mat, geo)` sees the part's geometry
+// (a baked colour lets a textured part join the atlas); `describe(mat)` paints atlas parts.
 const KEEP = 'keep';
-function bake(root, relativeTo, skip = () => false, materialMap = (m) => m, atlasMaterial = null) {
+const GLASS = Symbol('glass');
+const LAMP = Symbol('lamp');
+function bake(root, relativeTo, skip = () => false, materialMap = (m) => m, atlas = {}, describe = describeMaterial) {
+  const { atlasMaterial = null, glassMaterial = null, lampMaterial = null } = atlas;
   const buckets = new Map();
   const inv = new THREE.Matrix4().copy(relativeTo.matrixWorld).invert();
   const m = new THREE.Matrix4();
@@ -83,25 +95,128 @@ function bake(root, relativeTo, skip = () => false, materialMap = (m) => m, atla
     }
     m.multiplyMatrices(inv, o.matrixWorld);
     for (const { geo, mat } of sliceGroups(o)) {
-      const target = materialMap(mat);
+      const target = materialMap(mat, geo);
       if (!target) continue;
-      const key = target === ATLAS ? atlasMaterial : target;
+      const key = target === ATLAS ? atlasMaterial : target === GLASS ? glassMaterial : target === LAMP ? lampMaterial : target;
       if (!buckets.has(key)) buckets.set(key, []);
-      const g = normalize(geo, m);
-      if (target === ATLAS) {
-        paintBaked(g, describeMaterial(mat));
-        buckets.get(key).push(g);
-        if (mat.side === THREE.DoubleSide) buckets.get(key).push(backFace(g));
+      const list = buckets.get(key);
+      if (target === ATLAS || target === GLASS || target === LAMP) {
+        const g = normalize(withBakedColor(geo, target === ATLAS), m);
+        if (target === ATLAS) paintBaked(g, describe(mat));
+        else if (target === GLASS) paintGlass(g, mat);
+        else paintLamp(g, mat);
+        // The atlas, glass and lamp materials draw both faces (DoubleSide): a double-sided part
+        // needs no mirrored copy of its triangles.
+        list.push(g);
       } else {
-        buckets.get(key).push(g);
+        list.push(normalize(geo, m));
       }
     }
   });
   return [...buckets].map(([mat, geos]) => {
-    const mesh = new THREE.Mesh(mat === atlasMaterial ? mergePainted(geos) : mergeGeometries(geos), mat);
+    const painted = mat === atlasMaterial || mat === glassMaterial;
+    const geo = mat === lampMaterial ? mergePainted(geos, ['lamp']) : painted ? mergePainted(geos) : mergeGeometries(geos);
+    const mesh = new THREE.Mesh(geo, mat);
     mesh.castShadow = true;
     return mesh;
   });
+}
+
+// A part's texture colour baked into its vertices (tools/cars/lowLods.mjs, sRGB bytes) as its
+// linear vertex colour, for the atlas; without one (or not for the atlas) the part as it is.
+function withBakedColor(geo, use) {
+  const baked = geo.attributes._bakedcolor;
+  if (!baked) return geo;
+  const g = geo.clone();
+  g.deleteAttribute('_bakedcolor');
+  if (!use) return g;
+  const col = new Float32Array(baked.count * 3);
+  const c = new THREE.Color();
+  for (let i = 0; i < baked.count; i++) {
+    c.setRGB(baked.getX(i), baked.getY(i), baked.getZ(i), THREE.SRGBColorSpace);
+    col[i * 3] = c.r;
+    col[i * 3 + 1] = c.g;
+    col[i * 3 + 2] = c.b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return g;
+}
+
+// Glass, clear or tinted, as vertex colour with its opacity in alpha (one transparent mesh).
+function paintGlass(g, mat) {
+  paintVertices(g, describeMaterial(mat));
+  const rgb = g.attributes.color;
+  const col = new Float32Array(rgb.count * 4);
+  const a = mat.opacity ?? 1;
+  for (let i = 0; i < rgb.count; i++) col.set([rgb.getX(i), rgb.getY(i), rgb.getZ(i), a], i * 4);
+  g.setAttribute('color', new THREE.BufferAttribute(col, 4));
+  return g;
+}
+
+// A lamp lens: its colour, and its glow colour with 0 (head) or 1 (tail) in `lamp`.
+function paintLamp(g, mat) {
+  paintVertices(g, { ...describeMaterial(mat), emissive: 0 });
+  const n = g.attributes.position.count;
+  const e = mat.emissive ?? new THREE.Color(0);
+  const flag = mat.userData.tailLight ? 1 : 0;
+  const lamp = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) lamp.set([e.r, e.g, e.b, flag], i * 4);
+  g.setAttribute('lamp', new THREE.BufferAttribute(lamp, 4));
+  return g;
+}
+
+// Glass the race bakes into one transparent vertex-colour mesh: blended, untextured, not a mirror.
+function isGlass(mat) {
+  if (!mat?.transparent || mat.isShaderMaterial || mat.name === 'MirrorGlass') return false;
+  for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'alphaMap', 'emissiveMap']) if (mat[k]) return false;
+  return true;
+}
+
+// One car's lamp lenses (head and tail, one draw): glow levels in uniforms (CarVisual.update).
+function createLampMaterial() {
+  const m = createVertexPbrMaterial({ envMapIntensity: 1.1, emissive: 0xffffff, side: THREE.DoubleSide });
+  const base = m.onBeforeCompile;
+  const uniforms = { uHead: { value: 0 }, uTail: { value: 0.5 } };
+  m.onBeforeCompile = (shader, renderer) => {
+    base(shader, renderer);
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec4 lamp;\nvarying vec4 vLamp;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLamp = lamp;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uHead;\nuniform float uTail;\nvarying vec4 vLamp;')
+      .replace('totalEmissiveRadiance = diffuseColor.rgb * vPbr.z;', 'totalEmissiveRadiance = vLamp.rgb * mix(uHead, uTail, vLamp.a);');
+  };
+  m.customProgramCacheKey = () => 'vertex-pbr-lamp';
+  m.name = 'Lamps';
+  m.userData.lamps = uniforms;
+  return m;
+}
+
+// The low tier's copy of a textured part (Body): colour at 512 px, ORM at 256 px, no normal map.
+const LITE_COLOR = 512;
+const LITE_ORM = 256;
+function smaller(tex, size, made) {
+  const img = tex?.image;
+  if (!img || typeof document === 'undefined' || !(img.width > size)) return tex;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  c.getContext('2d').drawImage(img, 0, 0, size, size);
+  const t = new THREE.CanvasTexture(c);
+  for (const k of ['flipY', 'colorSpace', 'wrapS', 'wrapT', 'channel', 'magFilter', 'minFilter', 'anisotropy']) t[k] = tex[k];
+  t.name = `${tex.name}-lite`;
+  made.push(t);
+  return t;
+}
+function liteMaterial(src, made) {
+  const m = src.clone();
+  m.map = smaller(src.map, LITE_COLOR, made);
+  const orm = smaller(src.roughnessMap ?? src.metalnessMap, LITE_ORM, made);
+  if (m.roughnessMap) m.roughnessMap = orm;
+  if (m.metalnessMap) m.metalnessMap = orm;
+  if (m.aoMap) m.aoMap = null;
+  m.normalMap = null;
+  return m;
 }
 
 // Clear-coated paint for rivals: the showroom's flake normal map and iridescence are left
@@ -256,16 +371,24 @@ export function frontDraw(material, uniform = PLAYER_FRONT) {
 
 export class CarFactory {
   // `template` is a car rig from loadCar(); the factory never mutates it.
-  constructor(template) {
+  // `lite`: the low tier (see the top of this file).
+  constructor(template, { lite = false } = {}) {
     this.template = template;
+    this.lite = lite;
+    this.made = []; // the lite textures this factory made
     template.group.updateMatrixWorld(true);
     this.paint = template.paintMaterial;
     this.flameTex = flameTexture();
-    this.atlas = createVertexPbrMaterial({ envMapIntensity: 1.1 });
+    // Both faces (the models' parts are double-sided): half the vertices of a mirrored copy.
+    this.atlas = createVertexPbrMaterial({ envMapIntensity: 1.1, side: THREE.DoubleSide });
     // The same shading for the instanced wheels, as its own material: one material drawn both
     // instanced and not makes three.js rebuild its program parameters at every switch, twice
     // a frame per car (garbage the collector then has to clear mid-race).
-    this.wheelAtlas = createVertexPbrMaterial({ envMapIntensity: 1.1 });
+    this.wheelAtlas = createVertexPbrMaterial({ envMapIntensity: 1.1, side: THREE.DoubleSide });
+    // Every car's glass from this factory: blended vertex colour, its alpha per pane.
+    this.glass = createVertexPbrMaterial({ envMapIntensity: 1.1, transparent: true, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true });
+    this.glass.name = 'Glass';
+    this.liteMats = new Map(); // template material -> its lite copy (player, low tier)
     // Length and width of the car on the ground, for its contact shadow.
     const box = new THREE.Box3().setFromObject(template.group, true);
     const size = box.getSize(new THREE.Vector3());
@@ -297,6 +420,9 @@ export class CarFactory {
     }
     this.atlas.dispose();
     this.wheelAtlas.dispose();
+    this.glass.dispose();
+    for (const m of this.liteMats.values()) m.dispose();
+    for (const t of this.made) t.dispose();
     this.flameTex.dispose();
   }
 
@@ -331,7 +457,6 @@ export class CarFactory {
         const g = normalize(geo, m);
         paintBaked(g, describeMaterial(mat));
         geos.push(g);
-        if (mat.side === THREE.DoubleSide) geos.push(backFace(g));
       }
     });
     if (!flat || !geos.length) return null;
@@ -372,19 +497,37 @@ export class CarFactory {
   // `castShadow: false` leaves the car out of the sun's shadow map (its contact shadow stays).
   build({ color, finish = 'gloss', player = false, castShadow = true }) {
     const t = this.template.group;
+    const lite = this.lite;
     const own = new Map();
+    // Lite rivals: the paint joins the atlas (no clear coat), so the whole car is one opaque draw.
     const paint = player ? this.paint : createRivalPaint(color, finish, this.paint.userData.livery);
-    const materialMap = (mat) => {
-      if (mat === this.paint) return paint;
+    const paintInAtlas = lite && !player;
+    const lamps = createLampMaterial();
+    const atlas = { atlasMaterial: this.atlas, glassMaterial: this.glass, lampMaterial: lamps };
+    const describe = (m) => (m === this.paint ? describeMaterial(paint) : describeMaterial(m));
+    // `baked`: this part may use its baked texture colour (cabin parts; lite rims and tyres).
+    const mapFor = (baked) => (mat, geo) => {
+      if (mat === this.paint) return paintInAtlas ? ATLAS : paint;
       if (mat.name === 'skip') return null;
-      // Tail lenses are per car so brake lights can glow independently; the player's mirror
-      // glass stays apart so the driver view can show the live rear view in it.
-      if (mat.userData.tailLight || mat.userData.headLight || (player && mat.name === 'MirrorGlass')) {
+      // Head and tail lenses: one mesh per car so its brake lights glow on their own; the
+      // player's mirror glass stays apart so the driver view can show the live rear view in it.
+      if (mat.userData.tailLight || mat.userData.headLight) return LAMP;
+      // (Lite: no live mirror on the low tier, so it joins the atlas.)
+      if (player && !lite && mat.name === 'MirrorGlass') {
         if (!own.has(mat)) own.set(mat, mat.clone());
         return own.get(mat);
       }
-      return isFlatMaterial(mat) ? ATLAS : mat;
+      if (isGlass(mat)) return GLASS;
+      if (isFlatMaterial(mat) || (baked && geo?.attributes._bakedcolor)) return ATLAS;
+      if (lite && player && !mat.transparent) {
+        if (!this.liteMats.has(mat)) this.liteMats.set(mat, liteMaterial(mat, this.made));
+        return this.liteMats.get(mat);
+      }
+      return mat;
     };
+    // Parts with a baked colour (cabin and dash: tools/cars/lowLods.mjs) join the atlas; rims and
+    // tyres only on lite cars.
+    const materialMap = mapFor(true);
     const wheelsSrc = t.children.filter((c) => c.isGroup && c.userData.wheelIndex !== undefined);
     const isWheel = (o) => wheelsSrc.includes(o);
     // The player's driver-view parts (see DEFAULT_HIDE_IN_COCKPIT) come out of the body bake.
@@ -393,9 +536,10 @@ export class CarFactory {
     const cabinNodes = [];
     if (cabinNames.size) t.traverse((o) => cabinNames.has(o.name) && !cabinNodes.some((n) => isAncestor(n, o)) && cabinNodes.push(o));
     const isCabin = (o) => cabinNodes.includes(o);
-    // Rivals keep the uprights, discs and calipers in the body (one draw, no steering); the
-    // player's steer with the front wheels.
-    const bodySkip = (p) => (!player && p.userData.still ? KEEP : isWheel(p) || isCabin(p));
+    // Rivals (and the lite player) keep the uprights, discs and calipers in the body (one draw,
+    // no steering); the player's steer with the front wheels.
+    const stillInBody = !player || lite;
+    const bodySkip = (p) => (stillInBody && p.userData.still ? KEEP : isWheel(p) || isCabin(p));
 
     const root = new THREE.Group(); // position + yaw + pitch + road roll (suspension)
     // Body lean (cornering roll, squat) pivots at axle height, so the sills never swing
@@ -407,15 +551,18 @@ export class CarFactory {
     body.position.y = -pivot;
     lean.add(body);
     root.add(lean);
-    bake(t, t, bodySkip, materialMap, this.atlas).forEach((mesh) => {
+    bake(t, t, bodySkip, materialMap, atlas, describe).forEach((mesh) => {
       // One shadow caster per car keeps the shadow pass cheap; the paint shell is the silhouette.
-      mesh.castShadow = castShadow && mesh.material === paint;
+      mesh.castShadow = castShadow && (mesh.material === paint || (paintInAtlas && mesh.material === this.atlas));
       // Every opaque part takes the sun's shadow so the car darkens with the road around it.
       mesh.receiveShadow = !mesh.material.transparent;
       body.add(mesh);
     });
-    // Cabin parts in groups of their own under the body: windows and the steering wheel move
-    // through a matrix in the rig frame (model frame pose, conjugated by the model matrix).
+    // Cabin parts under the body. The door windows and the steering wheel move, through a
+    // matrix in the rig frame (model frame pose, conjugated by the model matrix), so each is a
+    // group of its own; every other cabin part (interior, driver, glass) bakes into one group.
+    // Lite: the steering wheel and the door windows join them (no turning wheel; the windows
+    // only open in the driver view, where the cockpit model draws its own).
     const cabin = new THREE.Group();
     cabin.name = 'cabin';
     body.add(cabin);
@@ -423,32 +570,37 @@ export class CarFactory {
     let steer = null;
     const M = this.template.modelMatrix ?? new THREE.Matrix4();
     const Minv = new THREE.Matrix4().copy(M).invert();
-    for (const node of cabinNodes) {
+    const moving = lite ? [] : cabinNodes.filter((n) => meta?.windows?.[n.name]?.open || n.name === 'steering_wheel');
+    const resting = cabinNodes.filter((n) => !moving.includes(n));
+    const addCabin = (name, meshes) => {
       const group = new THREE.Group();
-      group.name = `cabin-${node.name}`;
-      bake(node, t, () => false, materialMap, this.atlas).forEach((mesh) => {
+      group.name = `cabin-${name}`;
+      for (const mesh of meshes) {
         mesh.castShadow = false;
         mesh.receiveShadow = !mesh.material.transparent;
         group.add(mesh);
-      });
+      }
       cabin.add(group);
+      return group;
+    };
+    if (resting.length) addCabin('parts', bake(t, t, (p) => (resting.includes(p) ? KEEP : p.parent === t), materialMap, atlas, describe));
+    for (const node of moving) {
+      const group = addCabin(node.name, bake(node, t, () => false, materialMap, atlas, describe));
       const pose = meta?.windows?.[node.name];
       if (pose?.open) {
         group.matrixAutoUpdate = false;
         windows.push({ group, pose, M, Minv });
-      } else if (node.name === 'steering_wheel') {
+      } else {
         // Turns about its own local x (the column).
         const S = new THREE.Matrix4().copy(t.matrixWorld).invert().multiply(node.matrixWorld);
         group.matrixAutoUpdate = false;
         steer = { group, S, Sinv: new THREE.Matrix4().copy(S).invert() };
       }
     }
-    const lights = [...own.values()].filter((m) => m.name !== 'MirrorGlass');
     const mirrorGlass = [];
     body.traverse((o) => o.isMesh && o.material.name === 'MirrorGlass' && mirrorGlass.push({ mesh: o, own: o.material }));
-    const tail = lights.find((m) => m.userData.tailLight) ?? null;
-    const head = lights.find((m) => m.userData.headLight) ?? null;
 
+    const wheelMap = mapFor(lite);
     const wheels = wheelsSrc.map((src, index) => {
       const wheel = new THREE.Group();
       wheel.position.copy(src.position);
@@ -458,17 +610,18 @@ export class CarFactory {
       if (batch && batch.slots.length < WHEEL_CAPACITY) {
         batch.slots.push(spin);
       } else {
-        // Textured wheels: everything except the caliper spins, one mesh per material.
-        const merged = bake(src, src, (o) => o.name === 'caliper' || o.userData.still);
+        // Textured wheels: everything except the caliper spins, one mesh per material (lite:
+        // rim and tyre in one atlas mesh).
+        const merged = bake(src, src, (o) => o.name === 'caliper' || o.userData.still, wheelMap, atlas, describe);
         merged.forEach((mesh) => {
           mesh.castShadow = false;
           spin.add(mesh);
         });
       }
       // The player's upright, disc and caliper: on the wheel, steering, not spinning.
-      const still = player && src.children.find((c) => c.userData.still);
+      const still = player && !lite && src.children.find((c) => c.userData.still);
       if (still) {
-        bake(still, src, () => false, materialMap, this.atlas).forEach((mesh) => {
+        bake(still, src, () => false, materialMap, atlas, describe).forEach((mesh) => {
           mesh.castShadow = false;
           wheel.add(mesh);
         });
@@ -500,16 +653,18 @@ export class CarFactory {
       body.add(fl);
       flames.push(fl);
     }
-    const visual = new CarVisual(root, lean, wheels, tail, flames, flameMat, this.template.wheelRadius);
+    const visual = new CarVisual(root, lean, wheels, null, flames, flameMat, this.template.wheelRadius);
+    let hasLamps = false;
+    root.traverse((o) => o.isMesh && o.material === lamps && (hasLamps = true));
+    visual.lamps = hasLamps ? lamps.userData.lamps : null;
     visual.cabin = cabin;
     visual.windows = windows;
     visual.steerPart = steer;
-    visual.head = head;
     visual.mirrorGlass = mirrorGlass;
     visual.footprint = this.footprint;
     visual.chassis = this.chassis;
-    // Materials made for this car alone (the atlas, wheels and template parts are shared).
-    visual.owned = [...own.values(), flameMat, ...(player ? [] : [paint])];
+    // Materials made for this car alone (the atlas, glass, wheels and template parts are shared).
+    visual.owned = [...own.values(), lamps, flameMat, ...(player ? [] : [paint])];
     return visual;
   }
 
@@ -547,6 +702,8 @@ export class CarVisual {
     this.tail = tail;
     this.flames = flames;
     this.flameMat = flameMat;
+    this.lamps = null; // { uHead, uTail } of the car's lamp lenses (one mesh)
+    this.head = null;
     this.roll = 0;
     this.squat = 0;
     this.nitroFx = null; // { color, pulse: [a, b] } colours, or null for the stock blue
@@ -687,8 +844,14 @@ export class CarVisual {
       sp.group.matrix.multiplyMatrices(sp.S, _m.makeRotationAxis(X_AXIS, a)).multiply(sp.Sinv);
     }
 
-    if (this.tail) this.tail.emissiveIntensity = v.braking ? 3.6 : LIGHTS.on ? 1.4 : 0.5;
-    if (this.head) this.head.emissiveIntensity = LIGHTS.on ? 2.6 : 0;
+    const tailLevel = v.braking ? 3.6 : LIGHTS.on ? 1.4 : 0.5;
+    const headLevel = LIGHTS.on ? 2.6 : 0;
+    if (this.lamps) {
+      this.lamps.uTail.value = tailLevel;
+      this.lamps.uHead.value = headLevel;
+    }
+    if (this.tail) this.tail.emissiveIntensity = tailLevel;
+    if (this.head) this.head.emissiveIntensity = headLevel;
 
     const on = v.tier > 0;
     for (const fl of this.flames) {
